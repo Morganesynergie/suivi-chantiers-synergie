@@ -3,6 +3,15 @@ import "./globals.css";
 export const metadata = {
   title: "Suivi Chantiers — SYNERGIE BTP",
   description: "Suivi des chantiers, situations, règlements et retenues de garantie",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Suivi Chantiers",
+  },
+};
+
+export const viewport = {
+  themeColor: "#16233B",
 };
 
 export default function RootLayout({ children }) {
