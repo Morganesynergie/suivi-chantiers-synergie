@@ -1,7 +1,7 @@
 "use client";
 import { storage } from "@/lib/kv";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -275,21 +275,47 @@ function hasBetArchi(chantier) {
   const v = (chantier.betArchi || "").trim().toLowerCase();
   return v !== "" && v !== "-";
 }
+// A document entry can be a legacy plain boolean (old data) or the new
+// { present, fileName, filePath, uploadedAt } shape (uploaded file). This
+// normalizes either form, and also folds in the old tri-state dc4Statut
+// field so previously-collected data keeps its meaning.
+function getDocMeta(docs, key) {
+  const v = docs && docs[key];
+  if (v && typeof v === "object") return v;
+  if (typeof v === "boolean") return { present: v };
+  if (key === "dc4" && docs && docs.dc4Statut === "present") return { present: true };
+  return { present: false };
+}
+function docPresent(docs, key) {
+  return !!getDocMeta(docs, key).present;
+}
 function requiredDocuments(chantier) {
   if (chantier.isFacturesLibres) return [];
-  const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "manquant" };
-  const base = hasBetArchi(chantier)
-    ? [
-        { key: "acteEngagement", label: "Acte d'engagement", present: !!docs.acteEngagement },
-        { key: "ccap", label: "CCAP", present: !!docs.ccap },
-      ]
-    : [{ key: "devisSigne", label: "Devis signé", present: !!docs.devisSigne }];
-  const dc4Statut = docs.dc4Statut || "manquant";
-  if (dc4Statut !== "non_concerne") {
-    base.push({ key: "dc4", label: "DC4 / contrat de sous-traitance", present: dc4Statut === "present" });
+  const docs = chantier.documents || {};
+  const has = (k) => docPresent(docs, k);
+  const isSousTraitant = has("contratSousTraitance");
+  const hasOfficialDoc = has("ccap") || has("acteEngagement") || has("contratSousTraitance");
+  const items = [];
+  // CCAP / Acte d'engagement : uniquement pertinents s'il y a un BET/Archi et
+  // qu'on n'intervient pas comme sous-traitant (auquel cas on ne les reçoit pas).
+  if (hasBetArchi(chantier) && !isSousTraitant) {
+    items.push({ key: "acteEngagement", label: "Acte d'engagement", present: has("acteEngagement") });
+    items.push({ key: "ccap", label: "CCAP", present: has("ccap") });
   }
-  const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: !!a.present }));
-  return [...base, ...avenants];
+  // Devis signé : uniquement pour les petits chantiers sans BET/Archi, et
+  // seulement si aucun document officiel (CCAP/Acte/sous-traitance) ne le remplace déjà.
+  if (!hasBetArchi(chantier) && !hasOfficialDoc) {
+    items.push({ key: "devisSigne", label: "Devis signé", present: has("devisSigne") });
+  }
+  // Anciennes données marquées "non concerné" pour le DC4 : on ne les fait pas
+  // réapparaître comme "manquant" tant qu'aucun fichier n'a été déposé depuis.
+  const dc4LegacyNonConcerne = docs.dc4Statut === "non_concerne" && !has("dc4");
+  if (!dc4LegacyNonConcerne) {
+    items.push({ key: "dc4", label: "DC4", present: has("dc4") });
+  }
+  items.push({ key: "contratSousTraitance", label: "Contrat de sous-traitance", present: has("contratSousTraitance") });
+  const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: !!a.present, isAvenant: true }));
+  return [...items, ...avenants];
 }
 function missingDocuments(chantier) {
   return requiredDocuments(chantier).filter((d) => !d.present);
@@ -299,7 +325,7 @@ function computeAutoRgCumulees(chantiers) {
   const out = [];
   for (const c of chantiers) {
     if (c.rgExtracted) continue;
-    const nonBanqueMarches = c.marches.filter((m) => m.rgMode !== "banque");
+    const nonBanqueMarches = c.marches.filter((m) => m.rgMode !== "banque" && m.rgMode !== "aucune");
     if (nonBanqueMarches.length === 0) continue;
     const totalMarcheHtNonBanque = nonBanqueMarches.reduce((a, m) => a + (m.montantHt || 0), 0);
     if (!totalMarcheHtNonBanque) continue;
@@ -1094,6 +1120,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const [form, setForm] = useState(emptySituation());
   const [headerEdit, setHeaderEdit] = useState(false);
   const [payingSituation, setPayingSituation] = useState(null);
+  const [uploadingDocKey, setUploadingDocKey] = useState(null);
+  const [dragOverDocKey, setDragOverDocKey] = useState(null);
+  const [docError, setDocError] = useState("");
+  const [pendingUploadKey, setPendingUploadKey] = useState(null);
+  const docFileInputRef = useRef(null);
 
   function updateHeaderField(patch) {
     updateChantier({ ...chantier, ...patch });
@@ -1111,9 +1142,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const regime = TVA_REGIMES[marche.tvaRegime] ? marche.tvaRegime : "085";
     const tva = Math.round(ht * TVA_REGIMES[regime].rate * 100) / 100;
     const ttc = Math.round((ht + tva) * 100) / 100;
-    const rgBanque = marche.rgMode === "banque";
+    const rgOff = marche.rgMode === "banque" || marche.rgMode === "aucune";
     const rgPct = typeof marche.rgPct === "number" ? marche.rgPct : 0.05;
-    const rg = rgBanque ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    const rg = rgOff ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
     const prorata = num(f.prorata);
     const remb = num(f.rembAdd);
     const fournisseurs = (f.fournisseurs || []).map((x) => ({ nom: x.nom || "", montant: num(x.montant) })).filter((x) => x.nom || x.montant);
@@ -1156,9 +1187,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const rate = TVA_REGIMES[selMarcheCalc.tvaRegime]?.rate ?? 0.085;
     const ht = num(f.montantHt);
     const ttc = Math.round((ht + ht * rate) * 100) / 100;
-    const rgBanque = selMarcheCalc.rgMode === "banque";
+    const rgOff = selMarcheCalc.rgMode === "banque" || selMarcheCalc.rgMode === "aucune";
     const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
-    const rg = rgBanque ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    const rg = rgOff ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
     const prorata = num(f.prorata);
     const fournisseurTotal = (f.fournisseurs || []).reduce((a, x) => a + (num(x.montant) || 0), 0);
     const remb = num(f.rembAdd);
@@ -1272,7 +1303,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <td style="text-align:right">${fmtPct(s.pctAvancement)}</td>
           <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
           <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
-          <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") : "En attente"}</td>
+          <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (s.montantRegle != null && Math.abs(s.montantRegle - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
         </tr>`).join("");
       return `
         <h3>${m.nom}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
@@ -1311,13 +1342,74 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     setTimeout(() => win.print(), 300);
   }
 
-  function toggleDoc(key) {
-    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
-    updateChantier({ ...chantier, documents: { ...docs, [key]: !docs[key] } });
+  function setDocMeta(key, meta) {
+    const docs = chantier.documents || {};
+    updateChantier({ ...chantier, documents: { ...docs, [key]: meta } });
   }
-  function setDc4Statut(statut) {
-    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
-    updateChantier({ ...chantier, documents: { ...docs, dc4Statut: statut } });
+  function triggerDocUpload(key) {
+    if (!unlocked) return;
+    setPendingUploadKey(key);
+    docFileInputRef.current?.click();
+  }
+  function handleDocFileInputChange(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (file && pendingUploadKey) uploadDocument(pendingUploadKey, file);
+  }
+  async function uploadDocument(key, file) {
+    if (!unlocked) return;
+    const MAX_SIZE = 4 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setDocError("Fichier trop volumineux (4 Mo max). Essayez de le compresser.");
+      return;
+    }
+    setDocError("");
+    setUploadingDocKey(key);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("chantierId", chantier.id);
+      fd.append("docKey", key);
+      const res = await fetch("/api/documents", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de l'envoi du document.");
+      setDocMeta(key, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+    } catch (err) {
+      setDocError(err.message || "Échec de l'envoi du document.");
+    } finally {
+      setUploadingDocKey(null);
+    }
+  }
+  async function removeDocument(key) {
+    if (!unlocked) return;
+    const docs = chantier.documents || {};
+    const meta = getDocMeta(docs, key);
+    setUploadingDocKey(key);
+    setDocError("");
+    try {
+      if (meta.filePath) {
+        await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
+      }
+      setDocMeta(key, { present: false, fileName: null, filePath: null, uploadedAt: null });
+    } catch (err) {
+      setDocError(err.message || "Échec de la suppression du document.");
+    } finally {
+      setUploadingDocKey(null);
+    }
+  }
+  async function openDocument(key) {
+    const docs = chantier.documents || {};
+    const meta = getDocMeta(docs, key);
+    if (!meta.filePath) return;
+    setDocError("");
+    try {
+      const res = await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de l'ouverture du document.");
+      window.open(data.url, "_blank");
+    } catch (err) {
+      setDocError(err.message || "Impossible d'ouvrir le document.");
+    }
   }
   function addAvenant() {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
@@ -1364,61 +1456,109 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           {unlocked && <Btn variant="ghost" size="sm" onClick={() => setHeaderEdit(!headerEdit)}>{headerEdit ? "Fermer" : "Modifier les infos"}</Btn>}
         </div>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs" style={{ color: COLORS.inkSoft }}>
-        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>BET/Archi :</span> {chantier.betArchi || "non renseigné"}</span>
-        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>Démarrage :</span> {chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "non renseigné"}</span>
-        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>Durée prévue :</span> {chantier.dureePrevue || "non renseignée"}</span>
-      </div>
+      <Card className="p-0 mb-4 overflow-hidden">
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+          {[
+            { icon: Building2, label: "BET / Architecte", value: chantier.betArchi },
+            { icon: Clock, label: "Démarrage", value: chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : null },
+            { icon: Clock, label: "Durée prévue", value: chantier.dureePrevue },
+          ].map((it, i) => (
+            <div
+              key={it.label}
+              className="flex items-center gap-2.5 px-3.5 py-3"
+              style={{ borderLeft: i === 0 ? "none" : `1px solid ${COLORS.line}`, borderTop: "none" }}
+            >
+              <div className="flex items-center justify-center rounded-md shrink-0" style={{ width: 30, height: 30, background: COLORS.accentSoft }}>
+                <it.icon size={15} color={COLORS.accent} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-medium uppercase tracking-wide" style={{ color: COLORS.inkSoft }}>{it.label}</div>
+                <div className="text-sm font-medium truncate" style={{ color: it.value ? COLORS.ink : COLORS.inkSoft }}>{it.value || "non renseigné"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-3 mb-4" style={{ background: missingDocs.length ? COLORS.redSoft : COLORS.greenSoft, border: `1px solid ${missingDocs.length ? "#E8C4BE" : "#BFE0CD"}` }}>
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-3">
           <FileWarning size={15} color={missingDocs.length ? COLORS.red : COLORS.green} />
           <span className="text-xs font-semibold" style={{ color: missingDocs.length ? COLORS.red : COLORS.green }}>
             {missingDocs.length ? `${missingDocs.length} document(s) manquant(s)` : "Tous les documents essentiels sont réunis"}
           </span>
-          {!hasBetArchi(chantier) && <span className="text-xs" style={{ color: COLORS.inkSoft }}>(petit chantier sans BET/archi — devis signé suffit)</span>}
+          {!hasBetArchi(chantier) && <span className="text-xs" style={{ color: COLORS.inkSoft }}>(petit chantier sans BET/archi)</span>}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {["acteEngagement", "ccap", "devisSigne"].filter((k) => reqDocs.some((d) => d.key === k)).map((k) => {
-            const d = reqDocs.find((x) => x.key === k);
+        {docError && <p className="text-xs mb-2" style={{ color: COLORS.red }}>{docError}</p>}
+        <input
+          ref={docFileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
+          style={{ display: "none" }}
+          onChange={handleDocFileInputChange}
+        />
+        <div className="flex flex-wrap gap-2.5">
+          {reqDocs.filter((d) => !d.isAvenant).map((d) => {
+            const meta = getDocMeta(docs, d.key);
+            const isUploading = uploadingDocKey === d.key;
+            const isDragOver = dragOverDocKey === d.key;
+            const clickable = !isUploading && (meta.present || unlocked);
             return (
-              <button
-                key={k}
-                onClick={() => unlocked && toggleDoc(k)}
-                disabled={!unlocked}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs"
-                style={{ background: d.present ? COLORS.greenSoft : "#fff", border: `1px solid ${d.present ? "#BFE0CD" : COLORS.line}`, color: d.present ? COLORS.green : COLORS.ink, cursor: unlocked ? "pointer" : "default" }}
+              <div
+                key={d.key}
+                onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverDocKey(d.key); }}
+                onDragLeave={() => setDragOverDocKey((k) => (k === d.key ? null : k))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverDocKey((k) => (k === d.key ? null : k));
+                  if (!unlocked || isUploading) return;
+                  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                  if (f) uploadDocument(d.key, f);
+                }}
+                onClick={() => {
+                  if (isUploading) return;
+                  if (meta.present) { openDocument(d.key); return; }
+                  if (unlocked) triggerDocUpload(d.key);
+                }}
+                title={meta.present ? (meta.fileName || "Document réuni — cliquer pour ouvrir") : (unlocked ? "Cliquer ou glisser-déposer un fichier ici" : "Document manquant")}
+                className="relative flex flex-col items-center justify-center text-center gap-1"
+                style={{
+                  width: 118,
+                  minHeight: 92,
+                  borderRadius: 16,
+                  padding: "10px 8px",
+                  border: `2px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.red}`,
+                  background: meta.present ? "#fff" : isDragOver ? COLORS.accentSoft : "#fff",
+                  cursor: clickable ? "pointer" : "default",
+                  opacity: isUploading ? 0.6 : 1,
+                  transition: "background 0.15s, border-color 0.15s",
+                }}
               >
-                {d.present ? <Check size={12} /> : <X size={12} color={COLORS.red} />}
-                {d.label}
-              </button>
+                {unlocked && meta.present && !isUploading && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeDocument(d.key); }}
+                    title="Retirer le document"
+                    style={{ position: "absolute", top: 4, right: 4 }}
+                  >
+                    <X size={11} color={COLORS.red} />
+                  </button>
+                )}
+                {isUploading ? (
+                  <Loader2 size={20} color={COLORS.accent} className="animate-spin" />
+                ) : (
+                  <FileWarning size={20} color={meta.present ? COLORS.green : COLORS.red} />
+                )}
+                <span className="text-[11px] font-medium leading-tight" style={{ color: COLORS.ink }}>{d.label}</span>
+                {meta.present ? (
+                  <span className="text-[10px] truncate" style={{ color: COLORS.inkSoft, maxWidth: 100 }}>{meta.fileName || "Réuni"}</span>
+                ) : (
+                  <span className="text-[10px]" style={{ color: COLORS.inkSoft }}>{isUploading ? "Envoi..." : unlocked ? "glisser un fichier" : "manquant"}</span>
+                )}
+              </div>
             );
           })}
-          {(() => {
-            const dc4 = docs.dc4Statut || "manquant";
-            const style = dc4 === "present"
-              ? { background: COLORS.greenSoft, border: "1px solid #BFE0CD", color: COLORS.green }
-              : dc4 === "non_concerne"
-              ? { background: "#EDEAE0", border: `1px solid ${COLORS.line}`, color: COLORS.inkSoft }
-              : { background: "#fff", border: `1px solid ${COLORS.line}`, color: COLORS.ink };
-            return unlocked ? (
-              <select
-                value={dc4}
-                onChange={(e) => setDc4Statut(e.target.value)}
-                className="px-2.5 py-1 rounded-md text-xs outline-none"
-                style={{ ...style, cursor: "pointer" }}
-              >
-                <option value="manquant">DC4 / sous-traitance : manquant</option>
-                <option value="present">DC4 / sous-traitance : réuni</option>
-                <option value="non_concerne">DC4 / sous-traitance : non concerné</option>
-              </select>
-            ) : (
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={style}>
-                {dc4 === "present" ? <Check size={12} /> : dc4 === "non_concerne" ? null : <X size={12} color={COLORS.red} />}
-                DC4 / sous-traitance : {dc4 === "present" ? "réuni" : dc4 === "non_concerne" ? "non concerné" : "manquant"}
-              </span>
-            );
-          })()}
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-3">
           {(docs.avenants || []).map((a) => (
             <div key={a.id} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs" style={{ background: a.present ? COLORS.greenSoft : "#fff", border: `1px solid ${a.present ? "#BFE0CD" : COLORS.line}` }}>
               <button onClick={() => unlocked && toggleAvenant(a.id)} disabled={!unlocked} className="flex items-center gap-1" style={{ color: a.present ? COLORS.green : COLORS.ink }}>
@@ -1482,6 +1622,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                     <select value={m.rgMode || "5pct"} onChange={(e) => updateMarche(m.id, { rgMode: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
                       <option value="5pct">5 %</option>
                       <option value="banque">Caution banque</option>
+                      <option value="aucune">Pas de RG</option>
                     </select>
                   </Field>
                   <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
@@ -1577,7 +1718,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               <div key={m.id} className="flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={{ background: "#F0EEE6", color: COLORS.inkSoft }}>
                 <span className="font-medium" style={{ color: COLORS.ink }}>{m.nom}</span>
                 <span>· {fmtEUR(m.montantHt)}</span>
-                <span>· RG {m.rgMode === "banque" ? "caution banque" : fmtPct(m.rgPct)}</span>
+                <span>· RG {m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}</span>
                 {m.addMontant ? <span>· ADD {fmtEUR(m.addMontant)}{m.addDate ? ` le ${fmtDate(m.addDate)}` : ""} · reste à rembourser {fmtEUR(addResteARembourser(m.id))}</span> : null}
               </div>
             ))}
@@ -1600,7 +1741,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold" style={{ color: isProrata ? "#8B5CF6" : COLORS.ink }}>{m.nom}</span>
                 <Pill color={isProrata ? "purple" : "accent"}>{fmtEUR(m.montantHt)} HT marché</Pill>
-                <span className="text-xs" style={{ color: COLORS.inkSoft }}>facturé {fmtEUR(totalHt)} · RG {m.rgMode === "banque" ? "caution banque" : fmtPct(m.rgPct)}{m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}</span>
+                <span className="text-xs" style={{ color: COLORS.inkSoft }}>facturé {fmtEUR(totalHt)} · RG {m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}{m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}</span>
               </div>
               {unlocked && <Btn size="sm" variant="ghost" onClick={() => openNew(m.id)}><Plus size={13} /> Situation sur ce marché</Btn>}
             </div>
@@ -1790,9 +1931,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               })()}
               {(() => {
                 const selMarche = getMarche(form.marcheId || chantier.marches[0]?.id);
-                const rgOff = selMarche && selMarche.rgMode === "banque";
+                const selRgMode = selMarche && selMarche.rgMode;
+                const rgOff = selRgMode === "banque" || selRgMode === "aucune";
+                const rgOffLabel = selRgMode === "banque" ? "RG (couverte par caution banque)" : selRgMode === "aucune" ? "RG (aucune retenue de garantie)" : "RG (auto si vide, 5 %)";
                 return (
-                  <Field label={rgOff ? "RG (couverte par caution banque)" : "RG (auto si vide, 5 %)"}>
+                  <Field label={rgOffLabel}>
                     {rgOff ? (
                       <div style={{ ...inputStyle, background: "#F0EEE6", color: COLORS.inkSoft }}>0,00 €</div>
                     ) : (
@@ -1808,9 +1951,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                 const rate = TVA_REGIMES[selMarcheCalc.tvaRegime]?.rate ?? 0.085;
                 const ht = num(form.montantHt);
                 const ttc = Math.round((ht + ht * rate) * 100) / 100;
-                const rgBanque = selMarcheCalc.rgMode === "banque";
+                const rgOff = selMarcheCalc.rgMode === "banque" || selMarcheCalc.rgMode === "aucune";
                 const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
-                const rg = rgBanque ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
+                const rg = rgOff ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
                 const prorata = num(form.prorata);
                 const fournisseurTotal = (form.fournisseurs || []).reduce((a, f) => a + (num(f.montant) || 0), 0);
                 const remb = num(form.rembAdd);
