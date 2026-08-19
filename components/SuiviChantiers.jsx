@@ -1,5 +1,6 @@
 "use client";
 import { storage } from "@/lib/kv";
+import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning } from "lucide-react";
@@ -274,6 +275,16 @@ function MarkPaidModal({ defaultDate, defaultMontant, alreadyPaid, onConfirm, on
 function hasBetArchi(chantier) {
   const v = (chantier.betArchi || "").trim().toLowerCase();
   return v !== "" && v !== "-";
+}
+// Nom de fichier sûr pour les PDF générés (accents retirés, caractères
+// spéciaux remplacés) — utilisé quand l'export doit produire un vrai
+// fichier téléchargeable (voir lib/exportPdf.js).
+function sanitizeFileName(v) {
+  return String(v || "export")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80) || "export";
 }
 // A document entry can be a legacy plain boolean (old data) or the new
 // { present, fileName, filePath, uploadedAt } shape (uploaded file). This
@@ -697,6 +708,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
   }, [computed.impayees]);
 
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportPdfError, setExportPdfError] = useState("");
   const [exportSelectedMonths, setExportSelectedMonths] = useState([]);
 
   function openExportPanel() {
@@ -711,8 +723,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
   function exportReglementsPdf(selectedKeys) {
     const monthsToExport = exportGroups.filter((g) => selectedKeys.includes(g.key));
     if (!monthsToExport.length) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
+    setExportPdfError("");
     const grandTotal = monthsToExport.reduce((a, g) => a + g.total, 0);
     const isGlobal = selectedKeys.length === exportGroups.length;
     const periodLabel = isGlobal ? "Toutes échéances" : monthsToExport.map((g) => g.label).join(", ");
@@ -729,7 +740,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
           <tbody>${rows}</tbody></table>
         </div>`;
     }).join("");
-    win.document.write(`
+    const html = `
       <html><head><title>Règlements en attente — SYNERGIE BTP</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
@@ -780,10 +791,9 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
       ${blocks}
       <footer>SYNERGIE BTP — Suivi Chantiers</footer>
       </body></html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
+    `;
+    const fileName = `Reglements_clients_${new Date().toISOString().slice(0, 10)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setExportPdfError });
   }
 
   const [payingSituation, setPayingSituation] = useState(null);
@@ -815,6 +825,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
         </div>
       </div>
       <p className="text-sm mb-3" style={{ color: COLORS.inkSoft }}>Situations facturées et non réglées, groupées par mois de facturation</p>
+      {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
       <div className="relative mb-2 max-w-sm">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
@@ -1173,6 +1184,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const [docError, setDocError] = useState("");
   const [pendingUploadKey, setPendingUploadKey] = useState(null);
   const docFileInputRef = useRef(null);
+  const [exportPdfError, setExportPdfError] = useState("");
 
   function updateHeaderField(patch) {
     updateChantier({ ...chantier, ...patch });
@@ -1376,8 +1388,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const totalMarcheHtX = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
     const totalFactureX = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
     const totalAttenteX = chantier.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
-    const win = window.open("", "_blank");
-    if (!win) return;
+    setExportPdfError("");
     const blocks = chantier.marches.map((m) => {
       const sits = chantier.situations.filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
       const rows = sits.map((s) => `<tr>
@@ -1392,7 +1403,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>À recevoir</th><th>Paiement</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
     }).join("");
-    win.document.write(`
+    const html = `
       <html><head><title>Suivi — ${chantier.titre}</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
@@ -1437,10 +1448,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
       </div>
       ${blocks}
       </body></html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
+    `;
+    const fileName = `Suivi_${sanitizeFileName(chantier.titre)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setExportPdfError });
   }
 
   function setDocMeta(key, meta) {
@@ -1561,6 +1571,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           {unlocked && <Btn variant="ghost" size="sm" onClick={() => setHeaderEdit(!headerEdit)}>{headerEdit ? "Fermer" : "Modifier les infos"}</Btn>}
         </div>
       </div>
+      {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
       <Card className="p-0 mb-4 overflow-hidden">
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
           {[
@@ -2159,17 +2170,17 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [showVenir, setShowVenir] = useState(false);
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
+  const [exportPdfError, setExportPdfError] = useState("");
 
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
 
   function extractAutoRgPdf(item) {
     const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
     const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
-    const win = window.open("", "_blank");
-    if (!win) return;
+    setExportPdfError("");
     const findMarcheNom = (marcheId) => (item.marches.find((m) => m.id === marcheId) || {}).nom || "—";
     const rows = item.sits.map((s) => `<tr><td>${findMarcheNom(s.marcheId)}</td><td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td><td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.rg)}</td></tr>`).join("");
-    win.document.write(`
+    const html = `
       <html><head><title>RG à réclamer — ${item.chantierTitre}</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
@@ -2209,10 +2220,9 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
       <table><thead><tr><th>Marché/TS</th><th>N° sit.</th><th>N° facture</th><th>Date</th><th>Montant HT</th><th>RG</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="total">Total RG à réclamer (TTC) : ${fmtEUR(item.totalRg)} — soit ${fmtEUR(montantHtRg)} HT</p>
       </body></html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
+    `;
+    const fileName = `RG_a_reclamer_${sanitizeFileName(item.chantierTitre)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setExportPdfError });
     onExtractMarcheRg(item.chantierId);
   }
 
@@ -2241,6 +2251,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
     <div className="p-4 max-w-6xl">
       <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Retenues de garantie</h1>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
+      {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
       {autoRg.length > 0 && (
         <div className="mb-6">
