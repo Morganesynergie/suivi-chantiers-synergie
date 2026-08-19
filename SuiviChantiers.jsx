@@ -1,0 +1,2357 @@
+"use client";
+import { storage } from "@/lib/kv";
+
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+
+const LOGO_SYNERGIE = "data:image/png;base64,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";
+
+const SEED_CHANTIERS = [{"id": "agence-pigeon", "sheet": "AGENCE PIGEON", "titre": "AGENCE BANCAIRE PIGEON", "client": "REDNECK SCI", "nChantier": "CH001373", "dateDemarrage": null, "betArchi": "INGIENERIE PLUS", "dureePrevue": "3 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 216204.89, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 46916.46, "addDate": "2026-04-01", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "AVENANT", "montantHt": 14628.89, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003673", "dateFacture": "2026-05-26", "pctAvancement": 0.38, "montantHt": 73617.63, "tva": 6257.5, "montantTtc": 79875.13, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 23962.54, "fournisseurs": [{"nom": "Transbéton", "montant": 3994.15}], "totalARecevoir": 51918.44, "dateEnvoi": "2026-05-26", "validBet": "2026-06-11", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "agence-pigeon-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003690", "dateFacture": "2026-06-25", "pctAvancement": 0.47, "montantHt": 18226.96, "tva": 1549.29, "montantTtc": 19776.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 2359.42}], "totalARecevoir": 13423.07, "dateEnvoi": "2026-06-25", "validBet": "2026-06-26", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "agence-pigeon-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003732", "dateFacture": "2026-07-29", "pctAvancement": 0.67, "montantHt": 39097.98, "tva": 3323.33, "montantTtc": 42421.31, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 12726.39, "fournisseurs": [{"nom": "Transbéton", "montant": 1561.32}], "totalARecevoir": 28133.6, "dateEnvoi": "2026-07-29", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "agence-pigeon-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003734", "dateFacture": "2026-07-29", "pctAvancement": 0.65, "montantHt": 9508.78, "tva": 808.25, "montantTtc": 10317.03, "rg": 515.85, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 9801.17, "dateEnvoi": "2026-07-29", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "agence-pigeon-sit-3", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Transbéton", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "agore", "sheet": "AGORE", "titre": "AGORE", "client": "AGORE", "nChantier": "CH001361", "dateDemarrage": "2026-02-12", "betArchi": "lavilleandco", "dureePrevue": "3 SEMAINES", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 30900, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 10057.95, "addDate": "2026-03-26", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "MARCHE VRD", "montantHt": 124720, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 40596.36, "addDate": "2026-04-27", "type": "ts", "tvaRegime": "085"}, {"id": "prorata", "nom": "PRORATA", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "prorata", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003560", "dateFacture": "2026-02-24", "pctAvancement": 0.59, "montantHt": 18225, "tva": 1549.12, "montantTtc": 19774.12, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 5932.24, "fournisseurs": [], "totalARecevoir": 13841.89, "dateEnvoi": "2026-03-02", "validBet": "2026-03-25", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-30", "marcheId": "marche-0", "isRedFont": false, "id": "agore-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003589", "dateFacture": "2026-03-25", "pctAvancement": 1, "montantHt": 12675, "tva": 1077.38, "montantTtc": 13752.38, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 4125.71, "fournisseurs": [], "totalARecevoir": 9626.66, "dateEnvoi": "2026-03-27", "validBet": "2026-04-01", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-14", "marcheId": "marche-0", "isRedFont": false, "id": "agore-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003617", "dateFacture": "2026-04-27", "pctAvancement": 0.63, "montantHt": 87821.5, "tva": 7464.83, "montantTtc": 95286.33, "rg": 4764.32, "avanceDeduite": 0, "prorata": 1429.29, "rembAdd": 28972.43, "fournisseurs": [], "totalARecevoir": 60120.29, "dateEnvoi": "2026-04-30", "validBet": "2026-05-19", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-30", "marcheId": "marche-1", "isRedFont": false, "id": "agore-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003650", "dateFacture": "2026-05-25", "pctAvancement": 0.98, "montantHt": 34404.1, "tva": 2924.35, "montantTtc": 37328.45, "rg": 1866.42, "avanceDeduite": 0, "prorata": 559.93, "rembAdd": 11623.93, "fournisseurs": [], "totalARecevoir": 23278.17, "dateEnvoi": "2026-05-26", "validBet": "2026-05-29", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-30", "marcheId": "marche-1", "isRedFont": false, "id": "agore-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "3702", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 2494.4, "tva": 212.02, "montantTtc": 2706.42, "rg": 135.32, "avanceDeduite": 0, "prorata": 40.6, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 2530.51, "dateEnvoi": "2026-06-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "agore-sit-4", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"id": "agore-sit-prorata-0", "nSituation": null, "nFact": "0003666", "dateFacture": "2026-06-30", "pctAvancement": null, "montantHt": 2007.25, "tva": 0, "montantTtc": 2007.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 2007.25, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "Bloc PRORATA (format libre dans le fichier source)", "marcheId": "prorata", "montantRegle": null, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "babou", "sheet": "BABOU", "titre": "BABOU", "client": "SCI BABOU", "nChantier": "CH001372", "dateDemarrage": null, "betArchi": "BARBOTTEAU", "dureePrevue": "8 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 188314.23, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "TS", "montantHt": 24000, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003603", "dateFacture": "2026-03-27", "pctAvancement": 0.09, "montantHt": 16077.5, "tva": 1366.59, "montantTtc": 17444.09, "rg": 872.2, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16571.88, "dateEnvoi": "2026-03-27", "validBet": "2026-04-01", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-08", "marcheId": "marche-0", "isRedFont": false, "id": "babou-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003616", "dateFacture": "2026-04-27", "pctAvancement": 0.21, "montantHt": 25910.78, "tva": 2202.42, "montantTtc": 28113.2, "rg": 1405.66, "avanceDeduite": 0, "prorata": 169.27, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 26538.27, "dateEnvoi": "2026-04-27", "validBet": "2026-04-27", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-06", "marcheId": "marche-0", "isRedFont": false, "id": "babou-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003649", "dateFacture": "2026-05-25", "pctAvancement": 0.35, "montantHt": 24853.97, "tva": 2112.59, "montantTtc": 26966.56, "rg": 1348.33, "avanceDeduite": 0, "prorata": 263.82, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 25354.41, "dateEnvoi": "2026-05-26", "validBet": "2026-05-30", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-26", "marcheId": "marche-0", "isRedFont": false, "id": "babou-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003648", "dateFacture": "2026-06-24", "pctAvancement": 0.42, "montantHt": 11812.85, "tva": 1004.09, "montantTtc": 12816.94, "rg": 640.85, "avanceDeduite": 0, "prorata": 128.17, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 12047.93, "dateEnvoi": "2026-06-25", "validBet": "2026-06-29", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-07", "marcheId": "marche-0", "isRedFont": false, "id": "babou-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003678", "dateFacture": "2026-05-25", "pctAvancement": 0.2, "montantHt": 4886.03, "tva": 415.31, "montantTtc": 5301.34, "rg": 265.07, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5036.28, "dateEnvoi": "2026-05-26", "validBet": "2026-05-30", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-26", "marcheId": "marche-1", "isRedFont": false, "id": "babou-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "bel-canto", "sheet": "BEL CANTO", "titre": "BEL CANTO", "client": "IMMO DESTRELLAN", "nChantier": "CH001321", "dateDemarrage": "2025-09-01", "betArchi": "SOGERIM", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL (devis 0003780)", "montantHt": 599876.75, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 19468.14, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "Nouvelle facturation devis 0003780", "montantHt": null, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 19468.14, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "Nouvelle facturation devis 0003792", "montantHt": null, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 19468.14, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003349", "dateFacture": "2025-09-17", "pctAvancement": 0.09, "montantHt": 22598.12, "tva": 1920.84, "montantTtc": 24518.96, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 24518.96, "dateEnvoi": "2025-09-19", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-29", "marcheId": "marche-0", "isRedFont": false, "id": "bel-canto-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "00003372", "dateFacture": "2025-09-25", "pctAvancement": 0.14, "montantHt": 10315.44, "tva": 876.81, "montantTtc": 11192.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 11192.25, "dateEnvoi": "2025-09-19", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-11-03", "marcheId": "marche-0", "isRedFont": false, "id": "bel-canto-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003550", "dateFacture": "2026-01-30", "pctAvancement": 0.07, "montantHt": 12212.53, "tva": 1038.07, "montantTtc": 13250.6, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 13250.6, "dateEnvoi": "2026-02-13", "validBet": "2026-02-17", "validAmo": null, "validAutre": null, "datePaiement": "2025-03-27", "marcheId": "marche-1", "isRedFont": false, "id": "bel-canto-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003587", "dateFacture": "2026-03-24", "pctAvancement": 0.1, "montantHt": 4950.28, "tva": 420.77, "montantTtc": 5371.05, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5371.05, "dateEnvoi": "2026-03-13", "validBet": "2026-03-24", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-30", "marcheId": "marche-1", "isRedFont": false, "id": "bel-canto-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003660", "dateFacture": "2026-05-26", "pctAvancement": null, "montantHt": 8239.54, "tva": 700.36, "montantTtc": 8939.9, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 8939.9, "dateEnvoi": null, "validBet": "2026-06-19", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": false, "id": "bel-canto-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003736", "dateFacture": "2026-07-30", "pctAvancement": 0.17, "montantHt": 5263.2, "tva": 447.37, "montantTtc": 5710.57, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5710.57, "dateEnvoi": "2026-07-30", "validBet": "2026-07-30", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "bel-canto-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003613", "dateFacture": "2026-04-24", "pctAvancement": 0.02, "montantHt": 6870, "tva": 583.95, "montantTtc": 7453.95, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 7453.95, "dateEnvoi": "2026-05-04", "validBet": "2026-05-06", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-28", "marcheId": "marche-2", "isRedFont": false, "id": "bel-canto-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003661", "dateFacture": "2026-05-26", "pctAvancement": 0.05, "montantHt": 12329.25, "tva": 1047.99, "montantTtc": 13377.24, "rg": 1041.86, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 12335.38, "dateEnvoi": "2026-05-26", "validBet": "2026-06-19", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-30", "marcheId": "marche-2", "isRedFont": false, "id": "bel-canto-sit-7", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "LBC", "enveloppe": 50911.15}], "cessionPaiement": "OUI"}, {"id": "cabesto", "sheet": "CABESTO", "titre": "CABESTO", "client": "SCI CABESTO HOUELBOURG", "nChantier": "CH1384", "dateDemarrage": "2026-05-06", "betArchi": "BEASSE", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 77741, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 25304.7, "addDate": "2026-05-08", "type": "principal", "tvaRegime": "085"}, {"id": "prorata", "nom": "PRORATA", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "prorata", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003651", "dateFacture": "2026-05-25", "pctAvancement": 0.82, "montantHt": 63489.1, "tva": 5396.57, "montantTtc": 68885.67, "rg": 0, "avanceDeduite": 0, "prorata": 1033.29, "rembAdd": 20665.7, "fournisseurs": [], "totalARecevoir": 47186.69, "dateEnvoi": "2026-05-26", "validBet": "2026-05-29", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-10", "marcheId": "marche-0", "isRedFont": false, "id": "cabesto-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003693", "dateFacture": "2026-06-25", "pctAvancement": 1, "montantHt": 14251.9, "tva": 1211.41, "montantTtc": 15463.31, "rg": 0, "avanceDeduite": 0, "prorata": 231.95, "rembAdd": 4638.99, "fournisseurs": [], "totalARecevoir": 10592.37, "dateEnvoi": "2026-06-25", "validBet": "2026-07-10", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "cabesto-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003731", "dateFacture": "2026-07-27", "pctAvancement": 1, "montantHt": 10342, "tva": 879.07, "montantTtc": 11221.07, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 11221.07, "dateEnvoi": "2026-07-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "cabesto-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"id": "cabesto-sit-prorata-0", "nSituation": null, "nFact": "0003687", "dateFacture": "2026-06-25", "pctAvancement": null, "montantHt": 3150.84, "tva": 0, "montantTtc": 3150.84, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3150.84, "dateEnvoi": "2026-06-25", "validBet": "2026-07-10", "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "Bloc PRORATA (format libre dans le fichier source)", "marcheId": "prorata", "montantRegle": null, "dateDepotChorus": null}, {"id": "cabesto-sit-prorata-1", "nSituation": null, "nFact": "0003720", "dateFacture": "2026-07-27", "pctAvancement": null, "montantHt": 4451.32, "tva": 0, "montantTtc": 4451.32, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4451.32, "dateEnvoi": "2026-07-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "Bloc PRORATA (format libre dans le fichier source)", "marcheId": "prorata", "montantRegle": null, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "c2e", "sheet": "C2E", "titre": "LOT 3 SYMEG", "client": "C2E", "nChantier": null, "dateDemarrage": null, "betArchi": "Cession de paiement", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 15678, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "chbt", "sheet": "CHBT", "titre": "CHBT", "client": "ICM", "nChantier": null, "dateDemarrage": null, "betArchi": "Cession de paiement", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 12495, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}, {"id": "marche-1", "nom": "NOUVEAU MARCHE PRINCIPAL", "montantHt": 119820.73, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0002736", "dateFacture": null, "pctAvancement": 1, "montantHt": 7361, "tva": 0, "montantTtc": 7361, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 7361, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "chbt-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003576", "dateFacture": "2026-03-12", "pctAvancement": 1, "montantHt": 4150, "tva": 0, "montantTtc": 4150, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4150, "dateEnvoi": "2026-05-19", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "chbt-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003577", "dateFacture": "2026-03-12", "pctAvancement": 1, "montantHt": 3785, "tva": 0, "montantTtc": 3785, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3785, "dateEnvoi": "2026-05-19", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "chbt-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003671", "dateFacture": "2026-06-05", "pctAvancement": 1, "montantHt": 6114, "tva": 0, "montantTtc": 6114, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 6114, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "chbt-sit-3", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003716", "dateFacture": "2026-07-20", "pctAvancement": 0.09, "montantHt": 35119.35, "tva": 0, "montantTtc": 35119.35, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 35119.35, "dateEnvoi": "2026-07-21", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "chbt-sit-4", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "cod", "sheet": "COD", "titre": "COD PREFECTURE", "client": "THELEMAQUE", "nChantier": "CH001331", "dateDemarrage": "2025-10-25", "betArchi": "BETA INGENIERIE", "dureePrevue": "4 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 249365.98, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 88574.6, "addDate": "2025-10-29", "type": "principal", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003413", "dateFacture": "2025-10-24", "pctAvancement": 0.09, "montantHt": 24034.3, "tva": 0, "montantTtc": 24034.3, "rg": 1201.71, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 22832.59, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": "2025-11-28", "datePaiement": "2026-03-02", "marcheId": "marche-0", "isRedFont": false, "id": "cod-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003458", "dateFacture": "2025-11-27", "pctAvancement": 0.1, "montantHt": 5828, "tva": 0, "montantTtc": 5828, "rg": 291.4, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5536.6, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": "2025-01-14", "datePaiement": "2026-03-23", "marcheId": "marche-0", "isRedFont": false, "id": "cod-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003573", "dateFacture": "2025-12-19", "pctAvancement": 0.13, "montantHt": 12062.72, "tva": 0, "montantTtc": 12062.72, "rg": 603.14, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 11459.58, "dateEnvoi": "2026-01-28", "validBet": null, "validAmo": null, "validAutre": "2026-03-03", "datePaiement": "2026-05-19", "marcheId": "marche-0", "isRedFont": false, "id": "cod-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003574", "dateFacture": "2026-01-30", "pctAvancement": 0.26, "montantHt": 43183.16, "tva": 0, "montantTtc": 43183.16, "rg": 2159.16, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 41024.0, "dateEnvoi": "2026-01-28", "validBet": null, "validAmo": null, "validAutre": "2026-03-03", "datePaiement": "2026-05-19", "marcheId": "marche-0", "isRedFont": false, "id": "cod-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003596", "dateFacture": "2026-03-25", "pctAvancement": 0.44, "montantHt": 29198.29, "tva": 0, "montantTtc": 29198.29, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 29198.29, "dateEnvoi": "2026-03-27", "validBet": null, "validAmo": null, "validAutre": "2026-04-15", "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "cod-sit-4", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003646", "dateFacture": "2026-05-14", "pctAvancement": 0.56, "montantHt": 66100, "tva": 0, "montantTtc": 66100, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 66100.0, "dateEnvoi": "2026-05-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "cod-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003692", "dateFacture": "2026-06-25", "pctAvancement": 0.6, "montantHt": 32896.38, "tva": 0, "montantTtc": 32896.38, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 32896.38, "dateEnvoi": "2026-06-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "cod-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "crous", "sheet": "CROUS", "titre": "CITERNES AEP DU CROUS AG", "client": "CROUS AG", "nChantier": "CH001375", "dateDemarrage": "2026-04-13", "betArchi": "ETEC", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 130486.37, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 7078.89, "addDate": "2026-06-22", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003662", "dateFacture": "2026-05-26", "pctAvancement": 0.36, "montantHt": 46807.43, "tva": 3978.63, "montantTtc": 50786.06, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 50786.06, "dateEnvoi": "2026-05-26", "validBet": "2026-06-05", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-24", "marcheId": "marche-0", "isRedFont": false, "id": "crous-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003691", "dateFacture": "2026-06-25", "pctAvancement": 0.45, "montantHt": 11863.25, "tva": 1008.38, "montantTtc": 12871.63, "rg": 643.58, "avanceDeduite": 0, "prorata": 0, "rembAdd": 3861.49, "fournisseurs": [], "totalARecevoir": 8366.56, "dateEnvoi": "2026-06-26", "validBet": "2026-07-03", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "crous-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003729", "dateFacture": "2026-07-24", "pctAvancement": 0.78, "montantHt": 43525.7, "tva": 3699.68, "montantTtc": 47225.38, "rg": 2361.27, "avanceDeduite": 0, "prorata": 0, "rembAdd": 2361.27, "fournisseurs": [], "totalARecevoir": 42502.85, "dateEnvoi": "2026-07-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "crous-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "domaine-de-bel-air", "sheet": "DOMAINE DE BEL AIR", "titre": "DOMAINE DE BEL AIR", "client": "PAYEN", "nChantier": null, "dateDemarrage": null, "betArchi": "-", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 32825, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 14246.05, "addDate": "2026-07-20", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003728", "dateFacture": "2026-07-30", "pctAvancement": 0.87, "montantHt": 28672.5, "tva": 2437.16, "montantTtc": 31109.66, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 12443.86, "fournisseurs": [], "totalARecevoir": 18665.8, "dateEnvoi": "2026-07-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "domaine-de-bel-air-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "domaine-de-monteran", "sheet": "DOMAINE DE MONTERAN", "titre": "MONTMIR", "client": "Laurence LIGNIERES", "nChantier": null, "dateDemarrage": "2025-12-01", "betArchi": "-", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 124880, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 40000, "addDate": "2025-12-17", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003520", "dateFacture": "2026-01-26", "pctAvancement": 0.43, "montantHt": 54328.5, "tva": 4617.92, "montantTtc": 58946.42, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 41262.5, "dateEnvoi": "2026-01-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-02-08", "marcheId": "marche-0", "isRedFont": false, "id": "domaine-de-monteran-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003549", "dateFacture": "2026-02-19", "pctAvancement": 0.99, "montantHt": 69151.5, "tva": 5877.88, "montantTtc": 75029.38, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "BTP 971 services", "montant": 17956.75}, {"nom": "JJ BTP", "montant": 18691.76}], "totalARecevoir": 16064.79, "dateEnvoi": "2026-02-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-03-03", "marcheId": "marche-0", "isRedFont": false, "id": "domaine-de-monteran-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "BTP 971 services", "enveloppe": null}, {"nom": "JJ BTP", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "domdirgest", "sheet": "DOMDIRGEST", "titre": "RELAIS DU MOULIN", "client": "DOMDIRGEST", "nChantier": "CH0001273", "dateDemarrage": "2025-06-01", "betArchi": "CEC INFRA", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 409528, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 44433.79, "addDate": "2025-03-03", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003231", "dateFacture": "2025-06-27", "pctAvancement": 0.04, "montantHt": 15750, "tva": 1338.75, "montantTtc": 17088.75, "rg": 854.44, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16234.31, "dateEnvoi": "2025-06-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-21", "marcheId": "marche-0", "isRedFont": false, "id": "domdirgest-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003304", "dateFacture": "2025-07-24", "pctAvancement": 0.07, "montantHt": 11812.5, "tva": 1004.06, "montantTtc": 12816.56, "rg": 640.83, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 12175.73, "dateEnvoi": "2025-07-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-17", "marcheId": "marche-0", "isRedFont": false, "id": "domdirgest-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003337", "dateFacture": "2025-08-28", "pctAvancement": 0.11, "montantHt": 15750, "tva": 1338.75, "montantTtc": 17088.75, "rg": 854.44, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16234.31, "dateEnvoi": "2025-08-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-17", "marcheId": "marche-0", "isRedFont": false, "id": "domdirgest-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003370", "dateFacture": "2025-09-25", "pctAvancement": 0.17, "montantHt": 28012.5, "tva": 2381.06, "montantTtc": 30393.56, "rg": 1519.68, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 28873.88, "dateEnvoi": "2025-09-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-11-06", "marcheId": "marche-0", "isRedFont": false, "id": "domdirgest-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003451", "dateFacture": "2025-11-24", "pctAvancement": 0.29, "montantHt": 49005, "tva": 4165.43, "montantTtc": 53170.43, "rg": 2658.52, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 34560.78, "dateEnvoi": "2025-11-24", "validBet": "2025-12-05", "validAmo": null, "validAutre": null, "datePaiement": "2025-12-08", "marcheId": "marche-0", "isRedFont": false, "id": "domdirgest-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003733", "dateFacture": "2026-07-29", "pctAvancement": 0.34, "montantHt": 17940, "tva": 1524.9, "montantTtc": 19464.9, "rg": 973.25, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14598.68, "dateEnvoi": "2026-07-29", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "domdirgest-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "eden-bay", "sheet": "EDEN-BAY", "titre": "EDEN BAY", "client": "ABR INVESTISSMENT", "nChantier": null, "dateDemarrage": null, "betArchi": "JL CAILLEUX", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 797000, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 86474.5, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "SOGETRA", "enveloppe": 86016}], "cessionPaiement": "OUI"}, {"id": "edt", "sheet": "EDT", "titre": "VILLAGE DES FAMILLES", "client": "EDT", "nChantier": "CH001363", "dateDemarrage": "2026-03-09", "betArchi": "VIALIS INGENIERIE", "dureePrevue": "3 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 90107.34, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003588", "dateFacture": "2026-03-24", "pctAvancement": 0.17, "montantHt": 17489.83, "tva": 0, "montantTtc": 17489.83, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 17489.83, "dateEnvoi": "2026-03-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "edt-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003615", "dateFacture": "2026-04-24", "pctAvancement": 0.3, "montantHt": 9503.53, "tva": 0, "montantTtc": 9503.53, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 9503.53, "dateEnvoi": "2026-04-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "edt-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003663", "dateFacture": "2026-05-26", "pctAvancement": 0.38, "montantHt": 3812.64, "tva": 0, "montantTtc": 3812.64, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3812.64, "dateEnvoi": "2026-05-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "edt-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "gadarkan-fils", "sheet": "GADARKAN&FILS", "titre": "CHU", "client": "GADARKAN&FILS TP", "nChantier": "CH001255", "dateDemarrage": "2024-04-01", "betArchi": "ETEC", "dureePrevue": null, "marches": [{"id": "marche-principal", "nom": "Marché principal BETON", "montantHt": 785091, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}, {"id": "ts-muret-chu", "nom": "TS MURET CHU", "montantHt": 23535, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}, {"id": "ts-reglage-plateformes", "nom": "TS REGLAGE PLATEFORMES", "montantHt": 60668.75, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}, {"id": "pose-borne-sgec", "nom": "POSE BORNE - SGEC (CH001365)", "montantHt": 57675, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003201", "dateFacture": "2025-05-26", "pctAvancement": 0.0519, "montantHt": 37422, "tva": 0, "montantTtc": 37422, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 37422, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2024-07-30", "paye": true, "note": "", "marcheId": "marche-principal", "montantRegle": 38000, "id": "gadarkan-fils-sit-0", "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003353", "dateFacture": "2025-09-22", "pctAvancement": 0.2706, "montantHt": 157675, "tva": 0, "montantTtc": 157675, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 157675, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-12-22", "paye": true, "note": "", "marcheId": "marche-principal", "montantRegle": 145943.15, "id": "gadarkan-fils-sit-1", "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003423", "dateFacture": "2025-11-21", "pctAvancement": 0.3883, "montantHt": 84882.2, "tva": 0, "montantTtc": 84882.2, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 84882.2, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-03-05", "paye": true, "note": "", "marcheId": "marche-principal", "montantRegle": 40348, "id": "gadarkan-fils-sit-2", "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003518", "dateFacture": "2026-02-26", "pctAvancement": 0.7489, "montantHt": 260020.8, "tva": 0, "montantTtc": 260020.8, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 260020.8, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-05-07", "paye": true, "note": "", "marcheId": "marche-principal", "montantRegle": 335615.35, "id": "gadarkan-fils-sit-3", "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003593", "dateFacture": "2026-04-30", "pctAvancement": 1.1264, "montantHt": 239681.04, "tva": 0, "montantTtc": 239681.04, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 239681.04, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-06-26", "paye": true, "note": "% avancement > 100% dans le fichier source — à vérifier", "marcheId": "marche-principal", "montantRegle": 37563.2, "id": "gadarkan-fils-sit-4", "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003097", "dateFacture": "2025-02-27", "pctAvancement": 0.5, "montantHt": 11767.5, "tva": 0, "montantTtc": 11767.5, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 11767.5, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-04-17", "paye": true, "note": "", "marcheId": "ts-muret-chu", "montantRegle": 11767.5, "id": "gadarkan-fils-sit-5", "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003170", "dateFacture": "2025-03-30", "pctAvancement": 0.95, "montantHt": 10590.75, "tva": 0, "montantTtc": 10590.75, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10590.75, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-05-28", "paye": true, "note": "", "marcheId": "ts-muret-chu", "montantRegle": 10120.05, "id": "gadarkan-fils-sit-6", "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003575", "dateFacture": "2026-03-06", "pctAvancement": 1, "montantHt": 1176.75, "tva": 0, "montantTtc": 1176.75, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1176.75, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-01", "paye": true, "note": "", "marcheId": "ts-muret-chu", "montantRegle": 1647.45, "id": "gadarkan-fils-sit-7", "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003345", "dateFacture": "2025-08-30", "pctAvancement": 1, "montantHt": 42524.75, "tva": 0, "montantTtc": 42524.75, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 42524.75, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "", "marcheId": "ts-reglage-plateformes", "montantRegle": null, "id": "gadarkan-fils-sit-8", "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003540", "dateFacture": "2025-08-31", "pctAvancement": 1, "montantHt": 18144, "tva": 0, "montantTtc": 18144, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 18144, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "", "marcheId": "ts-reglage-plateformes", "montantRegle": null, "id": "gadarkan-fils-sit-9", "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003571", "dateFacture": "2025-12-22", "pctAvancement": 0.1899, "montantHt": 10951.1, "tva": 0, "montantTtc": 10951.1, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10951.1, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-03-05", "paye": true, "note": "", "marcheId": "pose-borne-sgec", "montantRegle": 10951.1, "id": "gadarkan-fils-sit-10", "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003572", "dateFacture": "2026-01-30", "pctAvancement": 0.4283, "montantHt": 13750.3, "tva": 0, "montantTtc": 13750.3, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 13750.3, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-05-07", "paye": true, "note": "", "marcheId": "pose-borne-sgec", "montantRegle": 13750.3, "id": "gadarkan-fils-sit-11", "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003461", "dateFacture": "2026-05-08", "pctAvancement": 0.5203, "montantHt": 5306.2, "tva": 0, "montantTtc": 5306.2, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5306.2, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-06-26", "paye": true, "note": "Montant réglé illisible dans le fichier source (valeur corrompue) — à vérifier avec la banque/le relevé", "marcheId": "pose-borne-sgec", "montantRegle": null, "id": "gadarkan-fils-sit-12", "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003675", "dateFacture": "2026-06-11", "pctAvancement": 0.59, "montantHt": 4297.44, "tva": 0, "montantTtc": 4297.44, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4297.44, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "", "marcheId": "pose-borne-sgec", "montantRegle": null, "id": "gadarkan-fils-sit-13", "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "gtm", "sheet": "GTM", "titre": "RESIDENCE LES GOYAVIERS", "client": "GTM GUADELOUPE", "nChantier": "CH001308", "dateDemarrage": "2025-11-01", "betArchi": "GTM", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 28466, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}, {"id": "marche-1", "nom": "TENNIS CLUB - MARCHE PRINCIPAL", "montantHt": 9396, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003435", "dateFacture": "2025-11-13", "pctAvancement": 0.35, "montantHt": 9949.5, "tva": 0, "montantTtc": 9949.5, "rg": 497.48, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 9452.02, "dateEnvoi": "2025-11-14", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "gtm-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003514", "dateFacture": "2026-01-16", "pctAvancement": 1, "montantHt": 10611.1, "tva": 0, "montantTtc": 10611.1, "rg": 530.56, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10080.55, "dateEnvoi": "2026-01-23", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-10", "marcheId": "marche-0", "isRedFont": false, "id": "gtm-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003501", "dateFacture": "2025-12-30", "pctAvancement": 0.9, "montantHt": 8456.4, "tva": 0, "montantTtc": 8456.4, "rg": 422.82, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 8033.58, "dateEnvoi": "2026-01-05", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-30", "marcheId": "marche-1", "isRedFont": false, "id": "gtm-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "gtp", "sheet": "GTP", "titre": "GTP", "client": "GTP", "nChantier": "CH001332", "dateDemarrage": "2026-02-15", "betArchi": "CCET", "dureePrevue": "1 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 26680, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "MARCHE PRINCIPAL", "montantHt": 86445.25, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003619", "dateFacture": "2026-04-24", "pctAvancement": 0.05, "montantHt": 4750, "tva": 0, "montantTtc": 4750, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4750, "dateEnvoi": "2026-04-27", "validBet": "2026-06-30", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "gtp-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "hta-cgp-hta", "sheet": "HTA-CGP (HTA)", "titre": "HTA", "client": "HTA-CGP", "nChantier": "CH001392", "dateDemarrage": null, "betArchi": "BARBOTTEAU", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 403116.08, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003683", "dateFacture": "2026-06-26", "pctAvancement": 13.35, "montantHt": 53801.45, "tva": 4573.12, "montantTtc": 58374.57, "rg": 2918.73, "avanceDeduite": 0, "prorata": 583.75, "rembAdd": 0, "fournisseurs": [{"nom": "SGB", "montant": 35431.85}], "totalARecevoir": 19440.25, "dateEnvoi": "2026-06-30", "validBet": "2026-07-02", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "hta-cgp-hta-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003722", "dateFacture": "2026-07-28", "pctAvancement": 0.33, "montantHt": 79076.75, "tva": 6721.52, "montantTtc": 85798.27, "rg": 4289.91, "avanceDeduite": 0, "prorata": 857.98, "rembAdd": 0, "fournisseurs": [{"nom": "SOTRAG", "montant": 20168.99}, {"nom": "SGB", "montant": 2271.24}], "totalARecevoir": 58210.15, "dateEnvoi": "2026-07-28", "validBet": "2026-07-29", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "hta-cgp-hta-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "SGB", "enveloppe": 52500}, {"nom": "SOTRAG", "enveloppe": 67229.96}], "cessionPaiement": "OUI"}, {"id": "hta-cgp-cpg", "sheet": "HTA-CGP (CPG)", "titre": "CPG", "client": "HTA-CGP", "nChantier": "CH001391", "dateDemarrage": null, "betArchi": "BARBOTTEAU", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": null, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 145657.65, "addDate": "2026-06-15", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003684", "dateFacture": "2026-06-26", "pctAvancement": 15.18, "montantHt": 67941.15, "tva": 5775.0, "montantTtc": 73716.15, "rg": 3685.81, "avanceDeduite": 0, "prorata": 737.16, "rembAdd": 22114.84, "fournisseurs": [], "totalARecevoir": 47178.33, "dateEnvoi": "2026-06-30", "validBet": "2026-07-02", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-14", "marcheId": "marche-0", "isRedFont": false, "id": "hta-cgp-cpg-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003723", "dateFacture": "2026-07-28", "pctAvancement": 0.37, "montantHt": 134571.78, "tva": 11438.6, "montantTtc": 146010.38, "rg": 7300.52, "avanceDeduite": 0, "prorata": 1460.1, "rembAdd": 43803.11, "fournisseurs": [{"nom": "SOTRAG", "montant": 71451.98}, {"nom": "SGB", "montant": 0}], "totalARecevoir": 21994.66, "dateEnvoi": "2026-07-28", "validBet": "2026-07-29", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "hta-cgp-cpg-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "SGB", "enveloppe": 80300}, {"nom": "SOTRAG", "enveloppe": 102074.25}], "cessionPaiement": "OUI"}, {"id": "jlm-antilles", "sheet": "JLM ANTILLES", "titre": "JLM ANTILLES", "client": "JLM ANTILLES", "nChantier": null, "dateDemarrage": null, "betArchi": "Cession de paiement:", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 22077, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 7186.06, "addDate": "2026-06-22", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003701", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 22077, "tva": 1876.55, "montantTtc": 23953.54, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 7186.06, "fournisseurs": [], "totalARecevoir": 16767.48, "dateEnvoi": "2026-07-27", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "jlm-antilles-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "horizon", "sheet": "HORIZON", "titre": "SCI HORIZON", "client": "SODIPA", "nChantier": "CH001317", "dateDemarrage": "2025-09-01", "betArchi": "ETEC", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 343600, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 55920.9, "addDate": "2025-08-11", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "MARCHE PRINCIPAL", "montantHt": 97332, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 15840.78, "addDate": "2025-08-11", "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "TS VRD MURET MITOYEN + CLOTURE", "montantHt": 33035, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-3", "nom": "TS VRD - RESEAUX ENROBES RALENTISSEURS", "montantHt": 51920, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-4", "nom": "TS GO DEMOLITION ANCIEN REFECTOIRE", "montantHt": 2850, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-5", "nom": "TS VRD QUAIE DECHARGEMENT", "montantHt": 5120, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-6", "nom": "TS VRD RESEAUX EDF", "montantHt": 10659.4, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-7", "nom": "TS VRD ZONE SOGEDIS", "montantHt": 4130, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-8", "nom": "TS VRD PHASE 4", "montantHt": 27497, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003328", "dateFacture": "2025-08-27", "pctAvancement": 0.22, "montantHt": 76226, "tva": 6479.21, "montantTtc": 82705.21, "rg": 4135.26, "avanceDeduite": 0, "prorata": 0, "rembAdd": 12405.78, "fournisseurs": [], "totalARecevoir": 66164.17, "dateEnvoi": "2025-08-27", "validBet": "2025-09-05", "validAmo": "2025-09-10", "validAutre": null, "datePaiement": "2025-09-19", "marcheId": "marche-0", "isRedFont": false, "id": "horizon-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003364", "dateFacture": "2025-09-25", "pctAvancement": 0.62, "montantHt": 136649, "tva": 11615.17, "montantTtc": 148264.17, "rg": -4135.26, "avanceDeduite": 0, "prorata": 0, "rembAdd": 22239.62, "fournisseurs": [], "totalARecevoir": 130159.8, "dateEnvoi": "2025-09-26", "validBet": "2025-09-27", "validAmo": "2025-10-05", "validAutre": null, "datePaiement": "2025-11-07", "marcheId": "marche-0", "isRedFont": false, "id": "horizon-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003399", "dateFacture": "2025-10-23", "pctAvancement": 0.94, "montantHt": 109066, "tva": 9270.61, "montantTtc": 118336.61, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 17750.49, "fournisseurs": [], "totalARecevoir": 100586.12, "dateEnvoi": "2025-10-23", "validBet": "2025-11-03", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-0", "isRedFont": false, "id": "horizon-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003449", "dateFacture": "2025-11-24", "pctAvancement": 0.98, "montantHt": 15331.5, "tva": 1303.18, "montantTtc": 16634.68, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 2889.06, "fournisseurs": [], "totalARecevoir": 13745.62, "dateEnvoi": "2025-11-24", "validBet": "2025-12-17", "validAmo": "2025-12-18", "validAutre": null, "datePaiement": "2026-02-04", "marcheId": "marche-0", "isRedFont": false, "id": "horizon-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003493", "dateFacture": "2025-12-18", "pctAvancement": 0.99, "montantHt": 3907.5, "tva": 332.14, "montantTtc": 4239.64, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 635.94, "fournisseurs": [], "totalARecevoir": 3603.7, "dateEnvoi": "2025-12-18", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-02-04", "marcheId": "marche-0", "isRedFont": false, "id": "horizon-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003680", "dateFacture": "2026-06-17", "pctAvancement": 1, "montantHt": 2420, "tva": 205.7, "montantTtc": 2625.7, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 2625.7, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "horizon-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003400", "dateFacture": "2025-10-23", "pctAvancement": 0.2, "montantHt": 19095.5, "tva": 1623.12, "montantTtc": 20718.62, "rg": 1035.93, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 19682.69, "dateEnvoi": "2025-10-23", "validBet": "2025-11-03", "validAmo": null, "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-1", "isRedFont": false, "id": "horizon-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003450", "dateFacture": "2025-11-24", "pctAvancement": 0.51, "montantHt": 30552.7, "tva": 2596.98, "montantTtc": 33149.68, "rg": -1035.93, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 34185.61, "dateEnvoi": "2025-11-24", "validBet": "2025-12-16", "validAmo": null, "validAutre": null, "datePaiement": "2026-01-27", "marcheId": "marche-1", "isRedFont": false, "id": "horizon-sit-7", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003494", "dateFacture": "2025-12-18", "pctAvancement": 1, "montantHt": 47683.8, "tva": 4053.12, "montantTtc": 42066.75, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 15840.78, "fournisseurs": [], "totalARecevoir": 26225.97, "dateEnvoi": "2025-12-18", "validBet": "2026-01-23", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-04", "marcheId": "marche-1", "isRedFont": false, "id": "horizon-sit-8", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003401", "dateFacture": "2025-10-23", "pctAvancement": 0.44, "montantHt": 14671.75, "tva": 1247.1, "montantTtc": 15918.85, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 15918.85, "dateEnvoi": "2025-10-23", "validBet": "2025-11-03", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-2", "isRedFont": false, "id": "horizon-sit-9", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003453", "dateFacture": "2025-11-25", "pctAvancement": 1, "montantHt": 18363.25, "tva": 1560.88, "montantTtc": 19924.13, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 19924.13, "dateEnvoi": "2026-01-12", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-02-04", "marcheId": "marche-2", "isRedFont": false, "id": "horizon-sit-10", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003418", "dateFacture": "2025-10-28", "pctAvancement": 1, "montantHt": 51920, "tva": 4413.2, "montantTtc": 56333.2, "rg": 2816.66, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 53516.54, "dateEnvoi": "2025-10-28", "validBet": "2025-11-03", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-12", "marcheId": "marche-3", "isRedFont": false, "id": "horizon-sit-11", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003419", "dateFacture": "2025-10-28", "pctAvancement": 1, "montantHt": 2850, "tva": 242.25, "montantTtc": 3092.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3092.25, "dateEnvoi": "2025-10-28", "validBet": "2025-11-05", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-4", "isRedFont": false, "id": "horizon-sit-12", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003420", "dateFacture": "2025-10-28", "pctAvancement": 1, "montantHt": 5120, "tva": 435.2, "montantTtc": 5555.2, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5555.2, "dateEnvoi": "2025-10-28", "validBet": "2025-11-05", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-5", "isRedFont": false, "id": "horizon-sit-13", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003513", "dateFacture": "2012-11-27", "pctAvancement": 1, "montantHt": 10659.4, "tva": 906.05, "montantTtc": 11565.45, "rg": 578.27, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10987.18, "dateEnvoi": "2025-10-28", "validBet": "2025-11-05", "validAmo": "2025-12-16", "validAutre": null, "datePaiement": "2026-02-04", "marcheId": "marche-6", "isRedFont": false, "id": "horizon-sit-14", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003408", "dateFacture": "2025-10-28", "pctAvancement": 0.74, "montantHt": 3037, "tva": 258.15, "montantTtc": 3295.14, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3295.14, "dateEnvoi": "2025-10-28", "validBet": "2025-11-05", "validAmo": "2025-11-14", "validAutre": null, "datePaiement": "2025-12-15", "marcheId": "marche-7", "isRedFont": false, "id": "horizon-sit-15", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003452", "dateFacture": "2025-11-25", "pctAvancement": 1, "montantHt": 1093, "tva": 92.91, "montantTtc": 1185.9, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1185.9, "dateEnvoi": "2026-01-12", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-7", "isRedFont": false, "id": "horizon-sit-16", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003624", "dateFacture": "2026-04-27", "pctAvancement": null, "montantHt": 27497, "tva": 2337.25, "montantTtc": 29834.24, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 29834.24, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-8", "isRedFont": true, "id": "horizon-sit-17", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "le-green", "sheet": "LE GREEN", "titre": "LE GREEN", "client": "PROIMMO", "nChantier": "CH001212", "dateDemarrage": "2025-01-01", "betArchi": "V2C", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 811827.3, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 88083.26, "addDate": "2024-06-03", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "Avenant", "montantHt": 49191.99, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "TS", "montantHt": 15447.45, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0002844", "dateFacture": "2024-08-30", "pctAvancement": 0.02, "montantHt": 18480, "tva": 1570.8, "montantTtc": 20050.8, "rg": 1002.54, "avanceDeduite": 0, "prorata": 300.76, "rembAdd": 3007.62, "fournisseurs": [], "totalARecevoir": 15739.88, "dateEnvoi": "2024-08-30", "validBet": "2024-09-13", "validAmo": null, "validAutre": null, "datePaiement": "2024-10-07", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0002895", "dateFacture": "2024-09-30", "pctAvancement": 0.04, "montantHt": 10750, "tva": 913.75, "montantTtc": 11663.75, "rg": 583.19, "avanceDeduite": 0, "prorata": 174.96, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10905.61, "dateEnvoi": "2024-09-30", "validBet": "2024-10-18", "validAmo": null, "validAutre": null, "datePaiement": "2024-10-31", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0002930", "dateFacture": "2024-10-25", "pctAvancement": 0.11, "montantHt": 59027.35, "tva": 5017.32, "montantTtc": 64044.67, "rg": 3202.23, "avanceDeduite": 0, "prorata": 960.67, "rembAdd": 6404.47, "fournisseurs": [], "totalARecevoir": 53477.3, "dateEnvoi": "2024-10-25", "validBet": "2024-11-05", "validAmo": null, "validAutre": null, "datePaiement": "2024-11-15", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0002957", "dateFacture": "2024-11-25", "pctAvancement": 0.22, "montantHt": 86409.28, "tva": 8240.33, "montantTtc": 105185.36, "rg": 5259.27, "avanceDeduite": 0, "prorata": 1577.78, "rembAdd": 10234.73, "fournisseurs": [], "totalARecevoir": 88113.58, "dateEnvoi": "2024-11-25", "validBet": "2024-12-11", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003019", "dateFacture": "2024-12-26", "pctAvancement": 0.33, "montantHt": 95793.48, "tva": 8142.45, "montantTtc": 103935.93, "rg": 5196.8, "avanceDeduite": 0, "prorata": 1559.04, "rembAdd": 10366.03, "fournisseurs": [], "totalARecevoir": 86814.06, "dateEnvoi": "2024-12-26", "validBet": "2025-01-07", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003052", "dateFacture": "2025-01-28", "pctAvancement": 0.39, "montantHt": 47013.2, "tva": 3996.12, "montantTtc": 51009.32, "rg": 2550.47, "avanceDeduite": 0, "prorata": 765.14, "rembAdd": 5100.93, "fournisseurs": [{"nom": "Dyn TP", "montant": 15380.1}], "totalARecevoir": 27212.69, "dateEnvoi": "2025-01-28", "validBet": "2025-02-10", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003151", "dateFacture": "2025-02-25", "pctAvancement": 0.44, "montantHt": 43091.87, "tva": 3662.81, "montantTtc": 46754.68, "rg": 2337.73, "avanceDeduite": 0, "prorata": 701.32, "rembAdd": 0, "fournisseurs": [{"nom": "Dyn TP", "montant": 8027.2}], "totalARecevoir": 35688.42, "dateEnvoi": "2025-02-25", "validBet": "2025-03-13", "validAmo": null, "validAutre": null, "datePaiement": "2025-03-28", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 8, "nFact": "0003152", "dateFacture": "2025-03-25", "pctAvancement": 0.47, "montantHt": 23084.12, "tva": 1962.15, "montantTtc": 25046.27, "rg": 1252.31, "avanceDeduite": 0, "prorata": 375.69, "rembAdd": 2504.63, "fournisseurs": [], "totalARecevoir": 20913.63, "dateEnvoi": "2025-03-25", "validBet": "2025-03-30", "validAmo": null, "validAutre": null, "datePaiement": "2025-05-21", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-7", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 9, "nFact": "0003191", "dateFacture": "2025-05-25", "pctAvancement": 0.65, "montantHt": 146684.23, "tva": 12468.16, "montantTtc": 159152.39, "rg": 7957.62, "avanceDeduite": 0, "prorata": 2387.29, "rembAdd": 15915.24, "fournisseurs": [], "totalARecevoir": 132892.24, "dateEnvoi": "2025-05-25", "validBet": "2025-06-03", "validAmo": null, "validAutre": null, "datePaiement": "2025-07-09", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-8", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 10, "nFact": "0003237", "dateFacture": "2025-06-23", "pctAvancement": 0.75, "montantHt": 77734.59, "tva": 6607.44, "montantTtc": 84342.03, "rg": 4217.1, "avanceDeduite": 0, "prorata": 1265.13, "rembAdd": 17274.81, "fournisseurs": [{"nom": "Dyn TP", "montant": 8307.9}], "totalARecevoir": 53277.09, "dateEnvoi": "2025-06-23", "validBet": "2025-07-07", "validAmo": null, "validAutre": null, "datePaiement": "2025-07-21", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-9", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 11, "nFact": "0003299", "dateFacture": "2025-07-23", "pctAvancement": 0.87, "montantHt": 99373.13, "tva": 8446.72, "montantTtc": 107819.85, "rg": 5390.99, "avanceDeduite": 0, "prorata": 1617.3, "rembAdd": 17274.8, "fournisseurs": [], "totalARecevoir": 83536.76, "dateEnvoi": "2025-07-23", "validBet": "2025-08-01", "validAmo": null, "validAutre": null, "datePaiement": "2025-09-24", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-10", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 12, "nFact": "0003324", "dateFacture": "2025-08-27", "pctAvancement": 0.91, "montantHt": 32628.4, "tva": 2773.41, "montantTtc": 35401.81, "rg": 1770.09, "avanceDeduite": 0, "prorata": 531.03, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 33100.7, "dateEnvoi": "2025-08-23", "validBet": "2025-09-16", "validAmo": null, "validAutre": null, "datePaiement": "2025-10-23", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-11", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 13, "nFact": "0003369", "dateFacture": "2025-09-25", "pctAvancement": 0.98, "montantHt": 55521.1, "tva": 4719.29, "montantTtc": 60240.39, "rg": 3012.02, "avanceDeduite": 0, "prorata": 903.61, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 56324.77, "dateEnvoi": "2025-09-25", "validBet": "2025-10-13", "validAmo": null, "validAutre": null, "datePaiement": "2025-11-18", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-12", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 14, "nFact": "0003509", "dateFacture": "2025-12-30", "pctAvancement": 1, "montantHt": 16236.55, "tva": 1380.11, "montantTtc": 17616.66, "rg": 880.83, "avanceDeduite": 0, "prorata": 264.25, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16471.57, "dateEnvoi": "2025-12-30", "validBet": "2026-02-04", "validAmo": null, "validAutre": null, "datePaiement": "2025-04-09", "marcheId": "marche-0", "isRedFont": false, "id": "le-green-sit-13", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003510", "dateFacture": "2025-10-30", "pctAvancement": 1, "montantHt": 554.25, "tva": 47.11, "montantTtc": 601.36, "rg": 30.07, "avanceDeduite": 0, "prorata": 9.02, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 562.27, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "le-green-sit-14", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003505", "dateFacture": "2026-01-09", "pctAvancement": 100, "montantHt": 48940.99, "tva": 4159.98, "montantTtc": 53100.97, "rg": 2655.05, "avanceDeduite": 0, "prorata": 796.51, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 49649.41, "dateEnvoi": "2025-11-27", "validBet": "2026-02-04", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-05", "marcheId": "marche-1", "isRedFont": false, "id": "le-green-sit-15", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003508", "dateFacture": "2026-01-13", "pctAvancement": 1, "montantHt": 13878, "tva": 1179.63, "montantTtc": 15057.63, "rg": 752.88, "avanceDeduite": 0, "prorata": 225.86, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14078.88, "dateEnvoi": "2026-04-08", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": true, "id": "le-green-sit-16", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Dyn TP", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "les-hauts-de-bergnolle", "sheet": "LES HAUTS DE BERGNOLLE", "titre": "LES HAUTS DE BERGNOLLE", "client": "LIGNIERES LOUIS", "nChantier": "CH001347", "dateDemarrage": "2026-01-15", "betArchi": "RONALD PASCAUD", "dureePrevue": "4 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 424460, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003604", "dateFacture": "2026-03-30", "pctAvancement": 0.51, "montantHt": 113150.26, "tva": 9617.77, "montantTtc": 122768.03, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 122768.03, "dateEnvoi": "2026-03-31", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "les-hauts-de-bergnolle-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003618", "dateFacture": "2026-04-26", "pctAvancement": 0.74, "montantHt": 47648.16, "tva": 4050.09, "montantTtc": 51698.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 51698.25, "dateEnvoi": "2026-04-27", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-06-02", "marcheId": "marche-0", "isRedFont": false, "id": "les-hauts-de-bergnolle-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003642", "dateFacture": "2026-05-31", "pctAvancement": 0.92, "montantHt": 42979.28, "tva": 3653.24, "montantTtc": 46632.52, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 46632.52, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-hauts-de-bergnolle-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003679", "dateFacture": "2026-06-17", "pctAvancement": 0.96, "montantHt": 9747.3, "tva": 828.52, "montantTtc": 10575.82, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10575.82, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-hauts-de-bergnolle-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003607", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 8130, "tva": 691.05, "montantTtc": 8821.05, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 8821.05, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-hauts-de-bergnolle-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "luigi-sci", "sheet": "LUIGI SCI", "titre": "LUIGI", "client": "NACTO", "nChantier": "CH001344", "dateDemarrage": "2025-12-15", "betArchi": "Bet Bat&co", "dureePrevue": "2 mois", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 120663, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 28904.63, "addDate": "2026-01-06", "type": "principal", "tvaRegime": "autoliq"}, {"id": "marche-1", "nom": "TS", "montantHt": 34208.8, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "TS", "montantHt": 4220, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003259", "dateFacture": "2026-01-28", "pctAvancement": 0.4, "montantHt": 48808.51, "tva": 0, "montantTtc": 48808.51, "rg": 2440.43, "avanceDeduite": 0, "prorata": 0, "rembAdd": 11714.04, "fournisseurs": [], "totalARecevoir": 34654.04, "dateEnvoi": "2026-01-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-03-06", "marcheId": "marche-0", "isRedFont": false, "id": "luigi-sci-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003556", "dateFacture": "2026-02-24", "pctAvancement": 0.67, "montantHt": 32148.57, "tva": 0, "montantTtc": 32148.57, "rg": 1607.43, "avanceDeduite": 0, "prorata": 0, "rembAdd": 7715.66, "fournisseurs": [], "totalARecevoir": 22825.48, "dateEnvoi": "2026-02-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-04-21", "marcheId": "marche-0", "isRedFont": false, "id": "luigi-sci-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003595", "dateFacture": "2026-03-25", "pctAvancement": 0.91, "montantHt": 28927.5, "tva": 0, "montantTtc": 28927.5, "rg": 1446.38, "avanceDeduite": 0, "prorata": 0, "rembAdd": 6942.6, "fournisseurs": [], "totalARecevoir": 15586.87, "dateEnvoi": "2026-03-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "luigi-sci-sit-2", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003622", "dateFacture": "2026-04-27", "pctAvancement": 1, "montantHt": 10778.42, "tva": 0, "montantTtc": 10778.42, "rg": 538.92, "avanceDeduite": 0, "prorata": 0, "rembAdd": 2532.33, "fournisseurs": [], "totalARecevoir": 7707.17, "dateEnvoi": "2026-04-27", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "luigi-sci-sit-3", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003608", "dateFacture": "2026-03-25", "pctAvancement": 0.75, "montantHt": 25601.05, "tva": 2176.09, "montantTtc": 27777.14, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 27777.14, "dateEnvoi": "2026-03-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-04-20", "marcheId": "marche-1", "isRedFont": false, "id": "luigi-sci-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003623", "dateFacture": "2026-04-27", "pctAvancement": 1, "montantHt": 8607.75, "tva": 731.66, "montantTtc": 9339.41, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 9339.41, "dateEnvoi": "2026-04-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-06-03", "marcheId": "marche-1", "isRedFont": false, "id": "luigi-sci-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003652", "dateFacture": "2026-05-19", "pctAvancement": 1, "montantHt": 4220, "tva": 358.7, "montantTtc": 4578.7, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4578.7, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-05-15", "marcheId": "marche-2", "isRedFont": false, "id": "luigi-sci-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "malajo", "sheet": "MALAJO", "titre": "SCI MALAJO", "client": "GHP", "nChantier": "CH001370", "dateDemarrage": null, "betArchi": "V2C", "dureePrevue": "8 mois", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 278063.6, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 60339.8, "addDate": "2026-03-30", "type": "principal", "tvaRegime": "085"}, {"id": "prorata", "nom": "PRORATA", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "prorata", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003626", "dateFacture": "2026-04-27", "pctAvancement": 0.02, "montantHt": 6822.68, "tva": 579.93, "montantTtc": 7402.61, "rg": 370.13, "avanceDeduite": 0, "prorata": 0, "rembAdd": 2220.78, "fournisseurs": [], "totalARecevoir": 4811.7, "dateEnvoi": "2026-04-27", "validBet": "2026-05-05", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-12", "marcheId": "marche-0", "isRedFont": false, "id": "malajo-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003656", "dateFacture": "2026-05-25", "pctAvancement": 0.17, "montantHt": 39579.32, "tva": 3364.24, "montantTtc": 42943.56, "rg": 2147.18, "avanceDeduite": 0, "prorata": 0, "rembAdd": 12883.07, "fournisseurs": [], "totalARecevoir": 27913.32, "dateEnvoi": "2026-05-26", "validBet": "2026-06-02", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "malajo-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003677", "dateFacture": "2026-06-24", "pctAvancement": 0.29, "montantHt": 34971.75, "tva": 2972.6, "montantTtc": 37944.35, "rg": 1897.22, "avanceDeduite": 0, "prorata": 0, "rembAdd": 11383.31, "fournisseurs": [], "totalARecevoir": 24663.82, "dateEnvoi": "2026-06-25", "validBet": "2026-07-01", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-02", "marcheId": "marche-0", "isRedFont": false, "id": "malajo-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"id": "malajo-sit-prorata-0", "nSituation": null, "nFact": "0003665", "dateFacture": "2026-05-26", "pctAvancement": null, "montantHt": 1963.85, "tva": 0, "montantTtc": 1963.85, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1963.85, "dateEnvoi": null, "validBet": "2026-06-09", "validAmo": null, "validAutre": null, "datePaiement": null, "paye": false, "note": "Bloc PRORATA (format libre dans le fichier source)", "marcheId": "prorata", "montantRegle": null, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "les-villas-de-convenance", "sheet": "LES VILLAS DE CONVENANCE", "titre": "LES VILLAS DE CONVENANCE", "client": "SAS LES VILLAS DE CONVENANCE", "nChantier": "CH001314", "dateDemarrage": "2025-01-01", "betArchi": "V2C", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 260000, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 40000, "addDate": "2025-09-10", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003327", "dateFacture": "2025-08-27", "pctAvancement": 0.11, "montantHt": 28402.79, "tva": 2414.24, "montantTtc": 30817.03, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 30817.03, "dateEnvoi": "2025-08-27", "validBet": "2025-08-30", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003357", "dateFacture": "2025-09-24", "pctAvancement": 0.27, "montantHt": 42345.57, "tva": 3599.37, "montantTtc": 45944.94, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 45944.94, "dateEnvoi": "2025-09-25", "validBet": "2025-09-30", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003395", "dateFacture": "2025-10-25", "pctAvancement": 0.39, "montantHt": 22080.9, "tva": 1876.88, "montantTtc": 23957.78, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 23957.78, "dateEnvoi": "2025-10-29", "validBet": "2025-11-10", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003443", "dateFacture": "2025-11-21", "pctAvancement": 0.48, "montantHt": 21324.18, "tva": 1812.56, "montantTtc": 23136.74, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 23136.74, "dateEnvoi": "2025-11-21", "validBet": "2025-12-05", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003559", "dateFacture": "2026-02-24", "pctAvancement": 0.67, "montantHt": 60794.53, "tva": 5167.54, "montantTtc": 65962.07, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 21456.14}], "totalARecevoir": 44505.93, "dateEnvoi": "2026-03-02", "validBet": "2026-03-15", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003591", "dateFacture": "2026-03-25", "pctAvancement": 0.83, "montantHt": 42014.39, "tva": 3571.22, "montantTtc": 45585.61, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 19216.86}], "totalARecevoir": 26368.75, "dateEnvoi": "2026-03-27", "validBet": "2026-04-13", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003658", "dateFacture": "2026-05-25", "pctAvancement": 0.87, "montantHt": 9228.84, "tva": 784.45, "montantTtc": 10013.29, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10013.29, "dateEnvoi": "2025-05-26", "validBet": "2026-06-26", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "les-villas-de-convenance-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 8, "nFact": "0003730", "dateFacture": "2026-07-27", "pctAvancement": 0.97, "montantHt": 25372.74, "tva": 2156.68, "montantTtc": 27529.42, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 25066.54, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "les-villas-de-convenance-sit-7", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Transbéton", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "martinique-courrier", "sheet": "MARTINIQUE COURRIER", "titre": "MARTINIQUE COURRIER", "client": "MARTINIQUE COURRIER", "nChantier": "CH001296", "dateDemarrage": "2025-11-17", "betArchi": "ITEC / DEROIRE", "dureePrevue": "1 AN", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 250067.1, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 81396.84, "addDate": "2025-12-24", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003496", "dateFacture": "2025-12-23", "pctAvancement": 0.19, "montantHt": 46884.88, "tva": 3985.21, "montantTtc": 50870.09, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 50870.09, "dateEnvoi": "2026-01-05", "validBet": "2026-01-09", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-18", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003558", "dateFacture": "2026-02-24", "pctAvancement": 0.26, "montantHt": 18849.32, "tva": 1602.19, "montantTtc": 20451.51, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14316.06, "dateEnvoi": "2026-02-24", "validBet": "2026-03-04", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-07", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003582", "dateFacture": "2026-03-24", "pctAvancement": 0.35, "montantHt": 21485.75, "tva": 1826.29, "montantTtc": 23312.04, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 6641.18}], "totalARecevoir": 9677.25, "dateEnvoi": "2026-03-27", "validBet": "2026-04-07", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003625", "dateFacture": "2026-04-27", "pctAvancement": 0.44, "montantHt": 22300.55, "tva": 1895.55, "montantTtc": 24196.1, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16937.27, "dateEnvoi": "2026-04-27", "validBet": "2026-05-19", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-06", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003654", "dateFacture": "2026-05-25", "pctAvancement": 0.5, "montantHt": 13878.3, "tva": 1179.66, "montantTtc": 15057.96, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10540.57, "dateEnvoi": "2026-05-26", "validBet": "2026-06-18", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-23", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003685", "dateFacture": "2026-06-25", "pctAvancement": 0.86, "montantHt": 91537.4, "tva": 7780.68, "montantTtc": 99318.08, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 32950.95}], "totalARecevoir": 36571.71, "dateEnvoi": "2026-06-26", "validBet": "2026-07-15", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-21", "marcheId": "marche-0", "isRedFont": false, "id": "martinique-courrier-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003718", "dateFacture": "2026-07-27", "pctAvancement": 0.94, "montantHt": 21263.64, "tva": 1807.41, "montantTtc": 23071.05, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 2112.68}], "totalARecevoir": 2958.37, "dateEnvoi": "2026-07-31", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "martinique-courrier-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003719", "dateFacture": "2026-07-27", "pctAvancement": 100, "montantHt": 8932, "tva": 759.22, "montantTtc": 9691.22, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "Transbéton", "montant": 7793.84}], "totalARecevoir": 1897.38, "dateEnvoi": "2026-07-31", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "martinique-courrier-sit-7", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Transbéton", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "petit-canal", "sheet": "PETIT-CANAL", "titre": "PARC PAYSAGER PETIT CANAL", "client": "COMMUNE PETIT CANAL", "nChantier": null, "dateDemarrage": "2026-08-24", "betArchi": "CCET", "dureePrevue": "15 mois", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 800491.75, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 86853.35, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "nolivier", "sheet": "NOLIVIER", "titre": "NOLIVIER", "client": "VERNHET RENE", "nChantier": "CH001356", "dateDemarrage": "2026-02-09", "betArchi": "V2C", "dureePrevue": "9 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 178500, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003565", "dateFacture": "2026-02-27", "pctAvancement": 0.14, "montantHt": 25784.45, "tva": 2191.68, "montantTtc": 27976.13, "rg": 1398.81, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 26577.32, "dateEnvoi": "2026-02-27", "validBet": "2026-03-05", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-18", "marcheId": "marche-0", "isRedFont": false, "id": "nolivier-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003590", "dateFacture": "2026-03-25", "pctAvancement": 0.27, "montantHt": 22817.75, "tva": 1939.51, "montantTtc": 24757.26, "rg": 1237.86, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 23519.4, "dateEnvoi": "2026-03-25", "validBet": "2027-04-09", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-04", "marcheId": "marche-0", "isRedFont": false, "id": "nolivier-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003614", "dateFacture": "2026-04-24", "pctAvancement": 0.35, "montantHt": 14449.3, "tva": 1228.19, "montantTtc": 15677.49, "rg": 783.87, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14893.62, "dateEnvoi": "2026-04-24", "validBet": "2026-05-05", "validAmo": null, "validAutre": null, "datePaiement": "2026-07-31", "marcheId": "marche-0", "isRedFont": false, "id": "nolivier-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "port-coton", "sheet": "PORT COTON", "titre": "PORT COTON", "client": "PORT COTON", "nChantier": "CH001237", "dateDemarrage": "2025-01-01", "betArchi": "BEASSE", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 108198, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 35218.45, "addDate": "2025-04-11", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "TS / RESEAUX EP 0003393", "montantHt": 73519, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 23930.43, "addDate": "2025-04-16", "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "TS / MURET POUR JARDINIERE", "montantHt": 17571, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 5719.36, "addDate": "2025-04-11", "type": "ts", "tvaRegime": "085"}, {"id": "marche-3", "nom": "TS / BAC A GRAISSE 00003359", "montantHt": 21100, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003376", "dateFacture": "2025-09-25", "pctAvancement": 0.19, "montantHt": 20848.3, "tva": 1772.11, "montantTtc": 22620.41, "rg": 1131.02, "avanceDeduite": 0, "prorata": 339.31, "rembAdd": 6786.12, "fournisseurs": [], "totalARecevoir": 14363.96, "dateEnvoi": "2025-09-26", "validBet": "2025-10-02", "validAmo": null, "validAutre": null, "datePaiement": "2025-10-17", "marcheId": "marche-0", "isRedFont": false, "id": "port-coton-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003404", "dateFacture": "2025-10-24", "pctAvancement": 0.6, "montantHt": 44400.65, "tva": 3774.06, "montantTtc": 48174.71, "rg": 2408.74, "avanceDeduite": 0, "prorata": 722.62, "rembAdd": 14452.41, "fournisseurs": [], "totalARecevoir": 30590.94, "dateEnvoi": "2025-10-24", "validBet": "2025-11-07", "validAmo": null, "validAutre": null, "datePaiement": "2025-12-02", "marcheId": "marche-0", "isRedFont": false, "id": "port-coton-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003445", "dateFacture": "2025-11-26", "pctAvancement": 0.98, "montantHt": 40714.49, "tva": 3460.73, "montantTtc": 44175.22, "rg": 2208.76, "avanceDeduite": 0, "prorata": 662.63, "rembAdd": 13979.92, "fournisseurs": [], "totalARecevoir": 27323.91, "dateEnvoi": "2025-11-26", "validBet": "2025-12-12", "validAmo": null, "validAutre": null, "datePaiement": "2026-01-28", "marcheId": "marche-0", "isRedFont": false, "id": "port-coton-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003481", "dateFacture": "2025-12-10", "pctAvancement": 1, "montantHt": 2234.56, "tva": 189.94, "montantTtc": 2424.5, "rg": 121.22, "avanceDeduite": 0, "prorata": 36.37, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 2266.91, "dateEnvoi": "2025-01-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "port-coton-sit-3", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003320", "dateFacture": "2025-05-31", "pctAvancement": 0.47, "montantHt": 34714.95, "tva": 2950.77, "montantTtc": 37665.72, "rg": 1883.29, "avanceDeduite": 0, "prorata": 564.99, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 35217.44, "dateEnvoi": "2025-05-31", "validBet": "2025-07-15", "validAmo": null, "validAutre": null, "datePaiement": "2025-07-23", "marcheId": "marche-1", "isRedFont": false, "id": "port-coton-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003297", "dateFacture": "2025-08-29", "pctAvancement": 0.91, "montantHt": 32520.95, "tva": 2764.28, "montantTtc": 35285.23, "rg": 1764.26, "avanceDeduite": 0, "prorata": 529.28, "rembAdd": 10585.57, "fournisseurs": [], "totalARecevoir": 22406.12, "dateEnvoi": "2025-08-29", "validBet": "2025-08-29", "validAmo": null, "validAutre": null, "datePaiement": "2025-09-10", "marcheId": "marche-1", "isRedFont": false, "id": "port-coton-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003377", "dateFacture": "2025-09-25", "pctAvancement": 0.98, "montantHt": 5109.72, "tva": 434.33, "montantTtc": 5544.05, "rg": 277.2, "avanceDeduite": 0, "prorata": 83.16, "rembAdd": 1663.22, "fournisseurs": [], "totalARecevoir": 3520.46, "dateEnvoi": "2025-09-26", "validBet": "2025-10-02", "validAmo": null, "validAutre": null, "datePaiement": "2025-10-15", "marcheId": "marche-1", "isRedFont": false, "id": "port-coton-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003502", "dateFacture": "2025-12-30", "pctAvancement": 1, "montantHt": 1173.38, "tva": 99.74, "montantTtc": 1273.12, "rg": 63.66, "avanceDeduite": 0, "prorata": 19.1, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1190.36, "dateEnvoi": "2025-01-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "port-coton-sit-7", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003203", "dateFacture": "2025-05-26", "pctAvancement": 0.47, "montantHt": 8421, "tva": 715.79, "montantTtc": 9136.78, "rg": 456.84, "avanceDeduite": 0, "prorata": 137.05, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 8542.89, "dateEnvoi": "2025-07-15", "validBet": "2025-08-25", "validAmo": null, "validAutre": null, "datePaiement": "2025-07-25", "marcheId": "marche-2", "isRedFont": false, "id": "port-coton-sit-8", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003298", "dateFacture": "2025-07-22", "pctAvancement": 0.95, "montantHt": 8235, "tva": 699.98, "montantTtc": 8934.98, "rg": 446.75, "avanceDeduite": 0, "prorata": 134.02, "rembAdd": 4467.49, "fournisseurs": [], "totalARecevoir": 3886.71, "dateEnvoi": "2025-08-25", "validBet": "2025-08-25", "validAmo": null, "validAutre": null, "datePaiement": "2025-09-02", "marcheId": "marche-2", "isRedFont": false, "id": "port-coton-sit-9", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003504", "dateFacture": "2025-12-30", "pctAvancement": 1, "montantHt": 915, "tva": 77.78, "montantTtc": 992.77, "rg": 49.64, "avanceDeduite": 0, "prorata": 14.89, "rembAdd": 900, "fournisseurs": [], "totalARecevoir": 28.24, "dateEnvoi": "2025-01-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": true, "id": "port-coton-sit-10", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003339", "dateFacture": "2025-08-30", "pctAvancement": 0.95, "montantHt": 20054.95, "tva": 1704.67, "montantTtc": 21759.62, "rg": 1087.98, "avanceDeduite": 0, "prorata": 326.39, "rembAdd": 11681.65, "fournisseurs": [], "totalARecevoir": 8663.6, "dateEnvoi": "2025-10-24", "validBet": "2025-11-07", "validAmo": null, "validAutre": null, "datePaiement": "2025-11-07", "marcheId": "marche-3", "isRedFont": false, "id": "port-coton-sit-11", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003503", "dateFacture": "2025-12-30", "pctAvancement": 1, "montantHt": 1055.05, "tva": 89.68, "montantTtc": 1144.73, "rg": 57.24, "avanceDeduite": 0, "prorata": 17.17, "rembAdd": 351.87, "fournisseurs": [], "totalARecevoir": 718.45, "dateEnvoi": "2025-01-26", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-3", "isRedFont": true, "id": "port-coton-sit-12", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "quai-12", "sheet": "QUAI 12", "titre": "QUAI 12", "client": "EIFFAGE MARITIME", "nChantier": "CH001369", "dateDemarrage": "2026-03-18", "betArchi": "-", "dureePrevue": "12 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 131316, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 17508.8, "addDate": "2026-05-27", "type": "principal", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003601", "dateFacture": "2026-03-26", "pctAvancement": 0.04, "montantHt": 5332, "tva": 0, "montantTtc": 5332, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 5332, "dateEnvoi": "2026-03-26", "validBet": "2026-03-27", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-27", "marcheId": "marche-0", "isRedFont": false, "id": "quai-12-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003631", "dateFacture": "2026-04-28", "pctAvancement": 0.07, "montantHt": 3809.28, "tva": 0, "montantTtc": 3809.28, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 3809.28, "dateEnvoi": "2026-04-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-07-14", "marcheId": "marche-0", "isRedFont": false, "id": "quai-12-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "ti-perou", "sheet": "TI PEROU", "titre": "TI PEROU", "client": null, "nChantier": "CH001292", "dateDemarrage": "2025-06-02", "betArchi": "BEASSE/ETRA", "dureePrevue": "8 mois", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 143972.45, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 23431.53, "addDate": "2025-06-25", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "TS", "montantHt": 14760, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "prorata", "nom": "PRORATA", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "prorata", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003240", "dateFacture": "2025-06-27", "pctAvancement": 0.28, "montantHt": 39656.49, "tva": 3370.8, "montantTtc": 43027.29, "rg": 2151.36, "avanceDeduite": 0, "prorata": 645.41, "rembAdd": 6454.09, "fournisseurs": [], "totalARecevoir": 33776.43, "dateEnvoi": "2025-06-30", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-14", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003283", "dateFacture": "2025-07-21", "pctAvancement": 0.45, "montantHt": 25837.82, "tva": 2196.21, "montantTtc": 28034.03, "rg": 1401.7, "avanceDeduite": 0, "prorata": 420.51, "rembAdd": 4205.1, "fournisseurs": [], "totalARecevoir": 22006.72, "dateEnvoi": "2025-07-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-10", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003447", "dateFacture": "2025-07-21", "pctAvancement": 0.6, "montantHt": 21382.77, "tva": 1817.54, "montantTtc": 23200.31, "rg": 1160.02, "avanceDeduite": 0, "prorata": 348.0, "rembAdd": 3480.05, "fournisseurs": [], "totalARecevoir": 18212.24, "dateEnvoi": "2025-11-26", "validBet": "2025-12-03", "validAmo": null, "validAutre": null, "datePaiement": "2025-12-18", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003477", "dateFacture": "2025-12-12", "pctAvancement": 0.9, "montantHt": 42179.02, "tva": 3585.22, "montantTtc": 45764.24, "rg": 2288.21, "avanceDeduite": 0, "prorata": 686.46, "rembAdd": 6864.64, "fournisseurs": [{"nom": "Transbéton", "montant": 21287.59}], "totalARecevoir": 14637.34, "dateEnvoi": "2025-12-22", "validBet": "2026-01-15", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-23", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003522", "dateFacture": "2026-01-28", "pctAvancement": 0.96, "montantHt": 9558.92, "tva": 812.51, "montantTtc": 10371.43, "rg": 518.57, "avanceDeduite": 0, "prorata": 155.57, "rembAdd": 1555.71, "fournisseurs": [], "totalARecevoir": 8141.57, "dateEnvoi": "2026-01-28", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003554", "dateFacture": "2026-02-24", "pctAvancement": 0.99, "montantHt": 4334.98, "tva": 368.47, "montantTtc": 4703.45, "rg": 235.17, "avanceDeduite": 0, "prorata": 70.55, "rembAdd": 871.94, "fournisseurs": [], "totalARecevoir": 3525.79, "dateEnvoi": "2026-02-24", "validBet": "2026-02-27", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "ti-perou-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003580", "dateFacture": "2026-03-24", "pctAvancement": 1, "montantHt": 1022.5, "tva": 86.91, "montantTtc": 1109.41, "rg": 55.47, "avanceDeduite": 0, "prorata": 16.64, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1037.3, "dateEnvoi": "2026-04-22", "validBet": "2026-04-28", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "ti-perou-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003479", "dateFacture": "2025-12-10", "pctAvancement": 0.98, "montantHt": 14464.8, "tva": 1229.51, "montantTtc": 15694.31, "rg": 784.72, "avanceDeduite": 0, "prorata": 235.41, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14674.18, "dateEnvoi": "2025-12-22", "validBet": "2026-01-15", "validAmo": null, "validAutre": null, "datePaiement": "2026-02-23", "marcheId": "marche-1", "isRedFont": false, "id": "ti-perou-sit-7", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003523", "dateFacture": "2026-01-28", "pctAvancement": 1, "montantHt": 295.2, "tva": 25.09, "montantTtc": 320.29, "rg": 16.01, "avanceDeduite": 0, "prorata": 4.8, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 299.48, "dateEnvoi": "2026-01-28", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-1", "isRedFont": false, "id": "ti-perou-sit-8", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": "PRORATA", "nFact": "0003612", "dateFacture": "2026-04-24", "pctAvancement": 1, "montantHt": 1450, "tva": 123.25, "montantTtc": 1573.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1573.25, "dateEnvoi": "2026-04-24", "validBet": "2026-06-11", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "prorata", "isRedFont": false, "id": "ti-perou-sit-9", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Transbéton", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "sagip", "sheet": "SAGIP", "titre": "SAGIP", "client": "SAGIP GUADELOUPE", "nChantier": "CH001305", "dateDemarrage": "2025-06-02", "betArchi": "BEASSE/ETRA", "dureePrevue": "8 mois", "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 143972.45, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 23431.53, "addDate": "2025-06-25", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "TS", "montantHt": 19710, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003241", "dateFacture": "2025-06-23", "pctAvancement": 0.28, "montantHt": 39656.49, "tva": 3370.8, "montantTtc": 43027.29, "rg": 2151.36, "avanceDeduite": 0, "prorata": 645.41, "rembAdd": 6454.09, "fournisseurs": [], "totalARecevoir": 33776.42, "dateEnvoi": "2025-06-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-14", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003284", "dateFacture": "2025-07-21", "pctAvancement": 0.45, "montantHt": 25837.82, "tva": 2196.21, "montantTtc": 28034.03, "rg": 1401.7, "avanceDeduite": 0, "prorata": 420.51, "rembAdd": 4205.11, "fournisseurs": [], "totalARecevoir": 22006.72, "dateEnvoi": "2025-07-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-10", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003448", "dateFacture": "2025-11-21", "pctAvancement": 0.6, "montantHt": 21074.02, "tva": 1791.29, "montantTtc": 22865.31, "rg": 1143.27, "avanceDeduite": 0, "prorata": 342.98, "rembAdd": 3429.8, "fournisseurs": [], "totalARecevoir": 17949.27, "dateEnvoi": "2025-11-26", "validBet": "2025-12-03", "validAmo": null, "validAutre": null, "datePaiement": "2025-12-18", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003478", "dateFacture": "2025-12-12", "pctAvancement": 0.9, "montantHt": 42487.77, "tva": 3611.46, "montantTtc": 46099.23, "rg": 2304.96, "avanceDeduite": 0, "prorata": 691.49, "rembAdd": 6914.88, "fournisseurs": [{"nom": "Transbéton", "montant": 35438.36}], "totalARecevoir": 749.54, "dateEnvoi": "2025-12-22", "validBet": "2026-01-15", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-04", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003524", "dateFacture": "2026-01-28", "pctAvancement": 0.96, "montantHt": 9558.92, "tva": 812.51, "montantTtc": 10371.43, "rg": 518.57, "avanceDeduite": 0, "prorata": 155.57, "rembAdd": 1555.71, "fournisseurs": [], "totalARecevoir": 8141.57, "dateEnvoi": "2026-01-28", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003555", "dateFacture": "2026-02-24", "pctAvancement": 0.99, "montantHt": 4334.98, "tva": 368.47, "montantTtc": 4703.45, "rg": 235.17, "avanceDeduite": 0, "prorata": 70.55, "rembAdd": 871.94, "fournisseurs": [], "totalARecevoir": 3525.79, "dateEnvoi": "2026-02-24", "validBet": "2026-02-27", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-0", "isRedFont": false, "id": "sagip-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003581", "dateFacture": "2026-03-24", "pctAvancement": 1, "montantHt": 1022.5, "tva": 86.91, "montantTtc": 1109.41, "rg": 55.47, "avanceDeduite": 0, "prorata": 16.64, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1037.3, "dateEnvoi": "2026-04-22", "validBet": "2026-04-28", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "sagip-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003480", "dateFacture": "2025-12-12", "pctAvancement": 0.98, "montantHt": 19315.8, "tva": 1641.84, "montantTtc": 20957.64, "rg": 1047.88, "avanceDeduite": 0, "prorata": 314.36, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 19595.4, "dateEnvoi": "2025-12-22", "validBet": "2026-01-15", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-04", "marcheId": "marche-1", "isRedFont": false, "id": "sagip-sit-7", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003531", "dateFacture": "2025-12-12", "pctAvancement": 1, "montantHt": 394.2, "tva": 33.51, "montantTtc": 427.71, "rg": 21.39, "avanceDeduite": 0, "prorata": 6.42, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 399.9, "dateEnvoi": "2026-01-28", "validBet": "2026-02-10", "validAmo": null, "validAutre": null, "datePaiement": "2026-04-15", "marcheId": "marche-1", "isRedFont": false, "id": "sagip-sit-8", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "Transbéton", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "serco", "sheet": "SERCO", "titre": "SERCO", "client": "SERCO", "nChantier": "CH001343", "dateDemarrage": "2026-01-12", "betArchi": "-", "dureePrevue": "1 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE VRD", "montantHt": 18295.96, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 5955.33, "addDate": "2025-12-24", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003585", "dateFacture": "2026-03-25", "pctAvancement": 0.79, "montantHt": 14445.96, "tva": 1227.91, "montantTtc": 15673.87, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 5955.33, "fournisseurs": [], "totalARecevoir": 9718.54, "dateEnvoi": "2026-03-27", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-04-14", "marcheId": "marche-0", "isRedFont": false, "id": "serco-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003708", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 3850, "tva": 327.25, "montantTtc": 4177.25, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4177.25, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "serco-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "serco-serco-marche-vrd", "sheet": "SERCO (SERCO (Marche Vrd))", "titre": "SERCO (Marche Vrd)", "client": "SERCO", "nChantier": "CH001380", "dateDemarrage": "2026-01-12", "betArchi": "-", "dureePrevue": "1 MOIS", "marches": [{"id": "marche-0", "nom": "MARCHE VRD", "montantHt": 25970, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 8453.24, "addDate": "2026-05-06", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "MARCHE GO", "montantHt": 4499, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 1483.45, "addDate": "2026-05-06", "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "MARCHE DEMOLITION", "montantHt": 12000, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-3", "nom": "MARCHE TS", "montantHt": 6937.5, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-4", "nom": "MARCHE TS", "montantHt": 225, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003698", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 28563.5, "tva": 2427.9, "montantTtc": 30991.4, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 8453.24, "fournisseurs": [], "totalARecevoir": 22538.16, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": false, "id": "serco-serco-marche-vrd-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003697", "dateFacture": "2026-06-30", "pctAvancement": 1, "montantHt": 4499, "tva": 382.42, "montantTtc": 4881.41, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 1483.45, "fournisseurs": [], "totalARecevoir": 3397.97, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": false, "id": "serco-serco-marche-vrd-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003689", "dateFacture": "2026-06-25", "pctAvancement": 1, "montantHt": 10000, "tva": 850.0, "montantTtc": 10850, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 10850, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": false, "id": "serco-serco-marche-vrd-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "00003710", "dateFacture": "2026-07-06", "pctAvancement": 1, "montantHt": 6937.5, "tva": 589.69, "montantTtc": 7527.19, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 7527.19, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-3", "isRedFont": false, "id": "serco-serco-marche-vrd-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "00003711", "dateFacture": "2026-07-06", "pctAvancement": 1, "montantHt": 225, "tva": 19.12, "montantTtc": 244.12, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 244.12, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-4", "isRedFont": false, "id": "serco-serco-marche-vrd-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "sgdm", "sheet": "SGDM", "titre": "SGDM", "client": "SGDM", "nChantier": "CH001188", "dateDemarrage": "2025-09-01", "betArchi": "MPH ARCHI", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "Marché principal", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "sgtc", "sheet": "SGTC", "titre": "SGTC", "client": "SGTC", "nChantier": "CH001340", "dateDemarrage": "2026-11-01", "betArchi": "Cession de paiement:", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 35295, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}, {"id": "marche-1", "nom": "REPRISE DOTHEMARE", "montantHt": null, "tauxTva": null, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": null, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003288", "dateFacture": "2025-08-30", "pctAvancement": 1, "montantHt": 35295, "tva": 0, "montantTtc": 35295, "rg": 1764.75, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 29408.25, "dateEnvoi": "2025-11-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "sgtc-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003605", "dateFacture": "2026-03-30", "pctAvancement": 1, "montantHt": 3960, "tva": 336.6, "montantTtc": 4296.6, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4296.6, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "sgtc-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003607", "dateFacture": "2026-04-01", "pctAvancement": 1, "montantHt": 1130, "tva": 96.05, "montantTtc": 1226.05, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1226.05, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-04-17", "marcheId": "marche-1", "isRedFont": false, "id": "sgtc-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "socrema-bca", "sheet": "SOCREMA BCA", "titre": "SOCREMA", "client": "BCA", "nChantier": "CH001378", "dateDemarrage": "2026-04-22", "betArchi": "-", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 56877, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003635", "dateFacture": "2026-04-30", "pctAvancement": 0.29, "montantHt": 16500, "tva": 0, "montantTtc": 16500, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 16500, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-05-28", "marcheId": "marche-0", "isRedFont": false, "id": "socrema-bca-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003653", "dateFacture": "2026-05-19", "pctAvancement": 1, "montantHt": 40377, "tva": 0, "montantTtc": 40377, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 40377, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2026-07-07", "marcheId": "marche-0", "isRedFont": false, "id": "socrema-bca-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "socrema-cat", "sheet": "SOCREMA CAT", "titre": "SOCREMA", "client": "SOCREMA", "nChantier": "CH001402", "dateDemarrage": null, "betArchi": "STUM BET", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 210640.5, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 71674.61, "addDate": "2026-07-07", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003721", "dateFacture": "2026-07-29", "pctAvancement": 0.58, "montantHt": 122001.18, "tva": 10370.1, "montantTtc": 132371.28, "rg": 6618.56, "avanceDeduite": 0, "prorata": 0, "rembAdd": 39711.38, "fournisseurs": [{"nom": "LBC", "montant": 18996.38}], "totalARecevoir": 67044.95, "dateEnvoi": "2026-07-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "socrema-cat-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "LBC", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "sofijar", "sheet": "SOFIJAR", "titre": "SOFIJAR", "client": "SOFIJAR", "nChantier": "CH001284", "dateDemarrage": "2025-03-01", "betArchi": "SIRENGI", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE VRD", "montantHt": 540548.1, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 58649.47, "addDate": "2024-04-11", "type": "principal", "tvaRegime": "085"}, {"id": "marche-1", "nom": "MARCHE VRD", "montantHt": 540548.1, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003133", "dateFacture": "2025-03-30", "pctAvancement": 0.06, "montantHt": 31515, "tva": 2657.34, "montantTtc": 33920.22, "rg": 1696.01, "avanceDeduite": 0, "prorata": 252.12, "rembAdd": 3419.38, "fournisseurs": [], "totalARecevoir": 28804.83, "dateEnvoi": "2025-04-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-05-26", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003169", "dateFacture": "2025-04-25", "pctAvancement": 0.19, "montantHt": 70818.75, "tva": 5971.44, "montantTtc": 76223.64, "rg": 3811.18, "avanceDeduite": 0, "prorata": 566.55, "rembAdd": 7683.83, "fournisseurs": [], "totalARecevoir": 64728.63, "dateEnvoi": "2025-04-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-05-26", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003199", "dateFacture": "2025-05-23", "pctAvancement": 0.23, "montantHt": 23158.19, "tva": 1952.7, "montantTtc": 24925.62, "rg": 1246.28, "avanceDeduite": 0, "prorata": 185.27, "rembAdd": 2512.66, "fournisseurs": [], "totalARecevoir": 21166.68, "dateEnvoi": "2025-05-23", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-16", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003236", "dateFacture": "2025-06-23", "pctAvancement": 0.32, "montantHt": 49375.7, "tva": 4163.36, "montantTtc": 53144.05, "rg": 2657.2, "avanceDeduite": 0, "prorata": 395.01, "rembAdd": 5357.26, "fournisseurs": [], "totalARecevoir": 45129.59, "dateEnvoi": "2025-06-23", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-16", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003301", "dateFacture": "2025-07-25", "pctAvancement": 0.39, "montantHt": 35548.35, "tva": 2997.44, "montantTtc": 38261.4, "rg": 1913.07, "avanceDeduite": 0, "prorata": 284.39, "rembAdd": 3826.14, "fournisseurs": [], "totalARecevoir": 32522.19, "dateEnvoi": "2025-07-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-09-16", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003557", "dateFacture": "2026-02-24", "pctAvancement": 0.44, "montantHt": 27469.31, "tva": 2316.21, "montantTtc": 29565.77, "rg": 1478.29, "avanceDeduite": 0, "prorata": 219.75, "rembAdd": 2956.58, "fournisseurs": [], "totalARecevoir": 25130.9, "dateEnvoi": "2026-02-24", "validBet": "2026-03-03", "validAmo": null, "validAutre": null, "datePaiement": "2025-03-25", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sit-5", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003133", "dateFacture": "2026-07-27", "pctAvancement": 0.95, "montantHt": 9690, "tva": 823.65, "montantTtc": 10513.65, "rg": 525.68, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 9987.97, "dateEnvoi": "2026-07-29", "validBet": "2026-08-04", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-1", "isRedFont": true, "id": "sofijar-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "LBC", "enveloppe": 65985.9}], "cessionPaiement": "OUI"}, {"id": "sofijar-sofijar-marche-go", "sheet": "SOFIJAR (SOFIJAR (Marche Go))", "titre": "SOFIJAR (Marche Go)", "client": "SOFIJAR", "nChantier": "CH001285", "dateDemarrage": "2025-03-01", "betArchi": "SIRENGI", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE GO", "montantHt": 599248.1, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 56257.25, "addDate": "2025-05-07", "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003394", "dateFacture": "2025-10-13", "pctAvancement": 0.11, "montantHt": 64624.47, "tva": 5493.08, "montantTtc": 70117.55, "rg": 3505.88, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 59633.36, "dateEnvoi": "2025-10-13", "validBet": "2025-10-22", "validAmo": null, "validAutre": null, "datePaiement": "2025-11-03", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sofijar-marche-go-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003459", "dateFacture": "2025-11-30", "pctAvancement": 0.27, "montantHt": 94598.82, "tva": 8040.9, "montantTtc": 102639.72, "rg": -3505.88, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 96910.59, "dateEnvoi": "2025-11-28", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-12-23", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sofijar-marche-go-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003500", "dateFacture": "2025-12-24", "pctAvancement": 0.37, "montantHt": 62850.25, "tva": 5342.27, "montantTtc": 68192.52, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 61197.5, "dateEnvoi": "2025-01-07", "validBet": "2026-02-09", "validAmo": null, "validAutre": null, "datePaiement": "2026-02-16", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sofijar-marche-go-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003566", "dateFacture": "2026-02-27", "pctAvancement": 0.45, "montantHt": 44636.12, "tva": 3794.07, "montantTtc": 48430.19, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 43587.17, "dateEnvoi": "2026-03-04", "validBet": "2026-03-03", "validAmo": null, "validAutre": null, "datePaiement": "2026-03-25", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sofijar-marche-go-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 5, "nFact": "0003668", "dateFacture": "2026-05-28", "pctAvancement": 0.48, "montantHt": 18593, "tva": 1580.41, "montantTtc": 20173.4, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 20173.4, "dateEnvoi": null, "validBet": "2025-06-03", "validAmo": null, "validAutre": null, "datePaiement": "2026-06-24", "marcheId": "marche-0", "isRedFont": false, "id": "sofijar-sofijar-marche-go-sit-4", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 6, "nFact": "0003699", "dateFacture": "2026-06-29", "pctAvancement": 0.59, "montantHt": 65736.36, "tva": 5587.59, "montantTtc": 71323.95, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 62174.21, "dateEnvoi": null, "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "sofijar-sofijar-marche-go-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 7, "nFact": "0003758", "dateFacture": "2026-07-29", "pctAvancement": 0.64, "montantHt": 31221.66, "tva": 2653.84, "montantTtc": 33875.5, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 30487.95, "dateEnvoi": "2026-07-29", "validBet": "2026-08-04", "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "sofijar-sofijar-marche-go-sit-6", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}, {"id": "sogetra", "sheet": "SOGETRA", "titre": "SOGETRA", "client": null, "nChantier": "CH001287", "dateDemarrage": null, "betArchi": null, "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PREFECTURE", "montantHt": null, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}, {"id": "marche-1", "nom": "MARCHE PREFECTURE", "montantHt": 0, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-2", "nom": "REQUALIFICATION DE LA RUE RENEE ACHILLE BOISNEUF", "montantHt": 1207894.58, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-3", "nom": "REQUALIFICATION DE LA RUE RENEE ACHILLE BOISNEUF", "montantHt": 13200, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}, {"id": "marche-4", "nom": "REQUALIFICATION DE LA RUE RENEE ACHILLE BOISNEUF", "montantHt": 10312.5, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "ts", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003147", "dateFacture": "2025-04-10", "pctAvancement": 1, "montantHt": 80660, "tva": 0, "montantTtc": 80660, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 80660, "dateEnvoi": "2025-04-15", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-07-21", "marcheId": "marche-0", "isRedFont": false, "id": "sogetra-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003168", "dateFacture": "2025-04-23", "pctAvancement": 1, "montantHt": 1122, "tva": 95.37, "montantTtc": 1217.37, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 1217.37, "dateEnvoi": "2025-03-20", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": "2025-08-05", "marcheId": "marche-1", "isRedFont": false, "id": "sogetra-sit-1", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003439", "dateFacture": "2026-06-21", "pctAvancement": 0.1, "montantHt": 100605, "tva": 8413.66, "montantTtc": 107397.87, "rg": 5369.89, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 102027.97, "dateEnvoi": "2025-11-25", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": false, "id": "sogetra-sit-2", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 2, "nFact": "0003594", "dateFacture": "2026-05-05", "pctAvancement": 0.16, "montantHt": 214352.8, "tva": 17981.36, "montantTtc": 229526.83, "rg": 11716.56, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 82935.38, "dateEnvoi": "2026-04-09", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": false, "id": "sogetra-sit-3", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}, {"nSituation": 3, "nFact": "0003682", "dateFacture": "2026-06-19", "pctAvancement": 0.31, "montantHt": 33375, "tva": 2836.88, "montantTtc": 36211.88, "rg": 1810.59, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "SGB", "montant": 23334.32}], "totalARecevoir": 11066.96, "dateEnvoi": "2026-06-29", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": true, "id": "sogetra-sit-4", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 4, "nFact": "0003724", "dateFacture": "2026-07-24", "pctAvancement": 0.36, "montantHt": 48672.2, "tva": 4137.14, "montantTtc": 52809.34, "rg": 2640.47, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [{"nom": "SGB", "montant": 42829.27}, {"nom": "SGB", "montant": 14388.16}], "totalARecevoir": -14388.16, "dateEnvoi": "2026-07-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-2", "isRedFont": true, "id": "sogetra-sit-5", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003561", "dateFacture": "2026-02-24", "pctAvancement": 1, "montantHt": 13200, "tva": 1122, "montantTtc": 14322, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 14322, "dateEnvoi": "2026-02-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-3", "isRedFont": false, "id": "sogetra-sit-6", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [{"nom": "SGB", "enveloppe": null}], "cessionPaiement": "OUI"}, {"id": "rsma", "sheet": "SOGETRA (RSMA)", "titre": "RSMA", "client": null, "nChantier": null, "dateDemarrage": null, "betArchi": null, "dureePrevue": null, "cessionPaiement": "NON", "fournisseurs": [], "marches": [{"id": "marche-0", "nom": "Marché principal", "montantHt": 12000, "tauxTva": 0, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "autoliq"}], "situations": [{"nSituation": 1, "nFact": "0003713", "dateFacture": "2026-07-06", "pctAvancement": 1, "montantHt": 12000, "tva": 0, "montantTtc": 12000, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 12000, "dateEnvoi": "2026-07-24", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "rsma-sit-0", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}, {"nSituation": 1, "nFact": "0003712", "dateFacture": "2026-07-06", "pctAvancement": 1, "montantHt": 4556, "tva": 0, "montantTtc": 4556, "rg": 0, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 4556, "dateEnvoi": "2026-07-07", "validBet": null, "validAmo": null, "validAutre": null, "datePaiement": null, "marcheId": "marche-0", "isRedFont": true, "id": "rsma-sit-1", "note": "", "montantRegle": null, "paye": false, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}}, {"id": "villa-yam", "sheet": "VILLA YAM", "titre": "VILLA YAM", "client": "DAN BENDENNOUNE", "nChantier": "CH001373", "dateDemarrage": null, "betArchi": "ETRA", "dureePrevue": null, "marches": [{"id": "marche-0", "nom": "MARCHE PRINCIPAL", "montantHt": 16675.5, "tauxTva": 0.09, "rgMode": "5pct", "rgPct": 0.05, "prorataPct": null, "addMontant": 0, "addDate": null, "type": "principal", "tvaRegime": "085"}], "situations": [{"nSituation": 1, "nFact": "0003586", "dateFacture": "2026-03-23", "pctAvancement": 0.68, "montantHt": 11361.59, "tva": 965.74, "montantTtc": 12327.33, "rg": 616.37, "avanceDeduite": 0, "prorata": 0, "rembAdd": 0, "fournisseurs": [], "totalARecevoir": 11710.96, "dateEnvoi": "2026-03-26", "validBet": "2026-04-28", "validAmo": null, "validAutre": null, "datePaiement": "2026-05-05", "marcheId": "marche-0", "isRedFont": false, "id": "villa-yam-sit-0", "note": "", "montantRegle": null, "paye": true, "dateDepotChorus": null}], "documents": {"acteEngagement": false, "ccap": false, "devisSigne": false, "avenants": [], "dc4Statut": "manquant"}, "fournisseurs": [], "cessionPaiement": "NON"}];
+const SEED_RG = {"echues": [{"nChantier": "CH000896", "nom": "TOP CARAIBES", "montantHt": 15780.26, "montantTtc": 17121.58, "betMo": null, "dateEnvoi": "2025-09-25", "notes": "AVOCAT", "id": "rg-e-0"}, {"nChantier": "CH001182", "nom": "ORCA", "montantHt": 6151.38, "montantTtc": 6674.25, "betMo": "BEASSE", "dateEnvoi": "2025-09-29", "notes": null, "id": "rg-e-1"}, {"nChantier": "CH001051", "nom": "BMJ / MUR", "montantHt": 1612.5, "montantTtc": 1612.5, "betMo": "BMJ", "dateEnvoi": "2025-10-08", "notes": null, "id": "rg-e-2"}, {"nChantier": "CH001124", "nom": "BMJ / MARINA MP", "montantHt": 14512.51, "montantTtc": 14512.51, "betMo": "BMJ", "dateEnvoi": "2025-10-08", "notes": null, "id": "rg-e-3"}, {"nChantier": "CH001124", "nom": "BMJ / MARINA TS", "montantHt": 1420.87, "montantTtc": 1420.87, "betMo": "BMJ", "dateEnvoi": "2025-10-08", "notes": null, "id": "rg-e-4"}, {"nChantier": "CH001031", "nom": "LES GALERIES DE MOKO", "montantHt": 18034.01, "montantTtc": 19566.9, "betMo": "BADEL", "dateEnvoi": "2025-10-06", "notes": null, "id": "rg-e-5"}, {"nChantier": "CH000123", "nom": "NAUTILUS", "montantHt": 8610.7, "montantTtc": 9342.61, "betMo": null, "dateEnvoi": null, "notes": null, "id": "rg-e-6"}, {"nChantier": "CH001158", "nom": "CONSTELLATION", "montantHt": 1812.73, "montantTtc": 1966.81, "betMo": null, "dateEnvoi": "2026-02-19", "notes": null, "id": "rg-e-7"}, {"nChantier": "CH001180", "nom": "PIZZAROTI", "montantHt": 20600.25, "montantTtc": 0, "betMo": "PIZZAROTI", "dateEnvoi": "2026-07-10", "notes": null, "id": "rg-e-8"}, {"nChantier": "CH001222", "nom": "CAJOU 19", "montantHt": 2179.57, "montantTtc": 2364.83, "betMo": "ETRA", "dateEnvoi": "2026-05-02", "notes": null, "id": "rg-e-9"}], "aVenir": [{"nChantier": "CH001171", "nom": "GETELEC TP - PLACE PB", "montantHt": 26688.14, "montantTtc": 28956.63, "betMo": "GETELEC", "dateEcheance": "2026-08-11", "id": "rg-v-0"}, {"nChantier": "CH001312", "nom": "ELODIE GIRARD", "montantHt": 1549.72, "montantTtc": 1681.45, "betMo": "ETRA", "dateEcheance": "2026-09-19", "id": "rg-v-1"}, {"nChantier": "CH001258", "nom": "GVH", "montantHt": 3449.99, "montantTtc": 3743.24, "betMo": "MPH", "dateEcheance": "2026-10-01", "id": "rg-v-2"}, {"nChantier": "CH001258", "nom": "GVH", "montantHt": 54966.76, "montantTtc": 59638.94, "betMo": "MPH", "dateEcheance": "2026-10-01", "id": "rg-v-3"}, {"nChantier": "CH001310", "nom": "BLEU ETROIT", "montantHt": 2316.0, "montantTtc": 2512.86, "betMo": "BEASSE", "dateEcheance": "2026-11-01", "id": "rg-v-4"}, {"nChantier": "CH001043", "nom": "GETELEC TP - PLACE REP", "montantHt": 8511.25, "montantTtc": 9234.71, "betMo": "GETELEC", "dateEcheance": "2026-11-21", "id": "rg-v-5"}, {"nChantier": "CH001238", "nom": "PRESTIGE", "montantHt": 8937.07, "montantTtc": 9696.72, "betMo": "ETRA", "dateEcheance": "2026-11-14", "id": "rg-v-6"}, {"nChantier": "CH001311", "nom": "GETELEC DADS", "montantHt": 405, "montantTtc": 405, "betMo": "GETELEC", "dateEcheance": "2026-12-04", "id": "rg-v-7"}, {"nChantier": "CH001317", "nom": "SCI HORIZONS", "montantHt": 3128.97, "montantTtc": 3394.93, "betMo": "ETEC", "dateEcheance": "2027-01-31", "id": "rg-v-8"}, {"nChantier": "CH001308", "nom": "GTM LES GOYAVIERS", "montantHt": 1028.03, "montantTtc": 1028.03, "betMo": "GTM", "dateEcheance": "2027-02-10", "id": "rg-v-9"}, {"nChantier": "CH001150", "nom": "CROIX ROUGE", "montantHt": 24463.19, "montantTtc": 26542.56, "betMo": "GENE CEDRIC", "dateEcheance": "2027-03-11", "id": "rg-v-10"}, {"nChantier": "CH001132", "nom": "BMJ / ZAE", "montantHt": 12391.69, "montantTtc": 12391.69, "betMo": "BMJ", "dateEcheance": "2027-05-26", "id": "rg-v-11"}, {"nChantier": "CH001162", "nom": "DOTHEMARE 26", "montantHt": 29135.94, "montantTtc": 31612.49, "betMo": "BARBOTTEAU", "dateEcheance": null, "id": "rg-v-12"}, {"nChantier": "CH001311", "nom": "GETELEC TP - DADS", "montantHt": 405, "montantTtc": 0, "betMo": "GETELEC", "dateEcheance": null, "id": "rg-v-13"}, {"nChantier": "CH001218", "nom": "SANDRINE DAMOISEAU", "montantHt": 6729.2, "montantTtc": 7301.18, "betMo": "BARBOTTEAU", "dateEcheance": null, "id": "rg-v-14"}, {"nChantier": "CH001212", "nom": "PROMO IMMO", "montantHt": 41145.86, "montantTtc": 44643.26, "betMo": "V2C", "dateEcheance": null, "id": "rg-v-15"}, {"nChantier": "CH001237", "nom": "PORT COTON", "montantHt": 11019.9, "montantTtc": 11956.59, "betMo": "BEASSE", "dateEcheance": null, "id": "rg-v-16"}, {"nChantier": "CH001304", "nom": "DESPROGES - SINERGIS", "montantHt": 16507.96, "montantTtc": 17911.14, "betMo": "ITEC", "dateEcheance": null, "id": "rg-v-17"}, {"nChantier": null, "nom": "SOGETRA - JARDIBRUN", "montantHt": 4318.5, "montantTtc": 0, "betMo": "SOGETRA", "dateEcheance": null, "id": "rg-v-18"}, {"nChantier": "CH001291", "nom": "SCI JADE", "montantHt": 53677.8, "montantTtc": 58240.41, "betMo": "BARBOTTEAU", "dateEcheance": null, "id": "rg-v-19"}, {"nChantier": "CH001346", "nom": "TAPENADE", "montantHt": 1657.0, "montantTtc": 1797.85, "betMo": "ETRA", "dateEcheance": null, "id": "rg-v-20"}]};
+
+
+// ---------- Style tokens ----------
+const COLORS = {
+  bg: "#F3F1EA",
+  paper: "#FFFFFF",
+  ink: "#1C2431",
+  inkSoft: "#5B6472",
+  navy: "#16233B",
+  navySoft: "#22314D",
+  line: "#E1DCCE",
+  accent: "#2B6CB0",
+  accentSoft: "#DCE9F7",
+  amber: "#B8720A",
+  amberSoft: "#FBEBD2",
+  red: "#B23A2E",
+  redSoft: "#F7E1DD",
+  green: "#1E7A52",
+  greenSoft: "#DDEFE5",
+};
+
+const MONTHS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+
+function fmtEUR(n) {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+}
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("fr-FR");
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return (n * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " %";
+}
+function monthKey(iso) {
+  if (!iso) return "0000-00";
+  return iso.slice(0, 7);
+}
+function monthLabel(key) {
+  if (key === "0000-00") return "Sans date";
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS_FR[m - 1]} ${y}`;
+}
+function daysSince(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + "T00:00:00");
+  const now = new Date();
+  return Math.floor((now - d) / 86400000);
+}
+function daysUntil(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + "T00:00:00");
+  const now = new Date();
+  return Math.floor((d - now) / 86400000);
+}
+// Montant restant à percevoir sur une situation : plein montant si rien n'a encore été reçu,
+// sinon le solde après déduction des règlements partiels déjà encaissés.
+function soldeRestant(s) {
+  const total = s.totalARecevoir || 0;
+  if (s.paye) return 0;
+  const recu = s.montantRegle || 0;
+  return Math.round(Math.max(0, total - recu) * 100) / 100;
+}
+function addDays(iso, days) {
+  if (!iso) return null;
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+// Règlement dû 30 jours après la validation BET (pas après la date de facture).
+function echeanceReglement(s) {
+  return s.validBet ? addDays(s.validBet, 30) : null;
+}
+function joursRetardReglement(s) {
+  const ech = echeanceReglement(s);
+  return ech ? daysSince(ech) : null;
+}
+function uid(prefix) {
+  return prefix + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function useIsMobile(breakpoint = 760) {
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false));
+  useEffect(() => {
+    function onResize() { setIsMobile(window.innerWidth < breakpoint); }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+// A grid that reflows its own columns based on available width — no breakpoint plumbing needed.
+function ResponsiveGrid({ children, min = 150, gap = 12, style = {}, className = "" }) {
+  return (
+    <div className={className} style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${min}px, 1fr))`, gap, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+// ---------- Small UI atoms ----------
+function Pill({ children, color = "ink" }) {
+  const map = {
+    ink: { bg: "#EDEAE0", fg: COLORS.inkSoft },
+    amber: { bg: COLORS.amberSoft, fg: COLORS.amber },
+    red: { bg: COLORS.redSoft, fg: COLORS.red },
+    green: { bg: COLORS.greenSoft, fg: COLORS.green },
+    accent: { bg: COLORS.accentSoft, fg: COLORS.accent },
+    purple: { bg: "#EDE9FE", fg: "#6D28D9" },
+  };
+  const c = map[color] || map.ink;
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap"
+      style={{ background: c.bg, color: c.fg }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Card({ children, className = "", style = {} }) {
+  return (
+    <div
+      className={`rounded-lg ${className}`}
+      style={{ background: COLORS.paper, border: `1px solid ${COLORS.line}`, ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Btn({ children, onClick, variant = "primary", size = "md", disabled, type = "button", title }) {
+  const base = "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
+  const variants = {
+    primary: { background: COLORS.navy, color: "#fff" },
+    accent: { background: COLORS.accent, color: "#fff" },
+    ghost: { background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.line}` },
+    danger: { background: COLORS.redSoft, color: COLORS.red },
+  };
+  return (
+    <button type={type} title={title} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]}`} style={variants[variant]}>
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      <span style={{ color: COLORS.inkSoft }} className="font-medium">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  border: `1px solid ${COLORS.line}`,
+  borderRadius: 6,
+  padding: "6px 8px",
+  fontSize: 13,
+  background: "#fff",
+  color: COLORS.ink,
+};
+
+function TextInput(props) {
+  return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} className="outline-none focus:ring-2" />;
+}
+
+// ---------- Edit gate ----------
+function EditGateModal({ onClose, onUnlock, currentCode }) {
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+      <Card className="w-full max-w-sm p-5" style={{ background: COLORS.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-base" style={{ color: COLORS.ink }}>Déverrouiller la modification</h3>
+          <button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+          Consultation libre pour tous. Seule Morgane modifie les données : saisir le code d'édition.
+        </p>
+        <TextInput
+          autoFocus
+          type="password"
+          placeholder="Code d'édition"
+          value={code}
+          onChange={(e) => { setCode(e.target.value); setErr(""); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { code === currentCode ? onUnlock() : setErr("Code incorrect"); } }}
+        />
+        {err && <p className="text-xs mt-1" style={{ color: COLORS.red }}>{err}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Annuler</Btn>
+          <Btn variant="primary" onClick={() => code === currentCode ? onUnlock() : setErr("Code incorrect")}>Déverrouiller</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function MarkPaidModal({ defaultDate, defaultMontant, alreadyPaid, onConfirm, onUnmark, onClose }) {
+  const [date, setDate] = useState(defaultDate || new Date().toISOString().slice(0, 10));
+  const [montant, setMontant] = useState(defaultMontant ?? "");
+  const ecart = montant !== "" && defaultMontant !== null && defaultMontant !== undefined
+    ? Math.round((parseFloat(montant) - defaultMontant) * 100) / 100
+    : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+      <Card className="w-full max-w-sm p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-base" style={{ color: COLORS.ink }}>{alreadyPaid ? "Modifier le règlement" : "Marquer réglé"}</h3>
+          <button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button>
+        </div>
+        <div className="flex flex-col gap-3">
+          <Field label="Date de règlement">
+            <TextInput type="date" autoFocus value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label={alreadyPaid ? "Montant total réglé" : "Montant reçu (ce règlement)"}>
+            <TextInput type="number" step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder={defaultMontant != null ? String(defaultMontant) : ""} />
+          </Field>
+          {!alreadyPaid && montant !== "" && Math.abs(ecart) > 0.01 && (
+            ecart < 0 ? (
+              <p className="text-xs" style={{ color: COLORS.amber }}>
+                Règlement partiel — il restera {fmtEUR(Math.abs(ecart))} à percevoir, la facture restera dans les règlements en attente.
+              </p>
+            ) : (
+              <p className="text-xs" style={{ color: COLORS.amber }}>
+                {fmtEUR(Math.abs(ecart))} de plus que le solde attendu ({fmtEUR(defaultMontant)}).
+              </p>
+            )
+          )}
+          {alreadyPaid && montant !== "" && Math.abs(ecart) > 0.01 && (
+            <p className="text-xs" style={{ color: ecart < 0 ? COLORS.red : COLORS.amber }}>
+              Écart de {fmtEUR(Math.abs(ecart))} {ecart < 0 ? "en moins" : "en plus"} par rapport au montant attendu ({fmtEUR(defaultMontant)}).
+            </p>
+          )}
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          {alreadyPaid ? (
+            <button className="text-xs font-medium" style={{ color: COLORS.red }} onClick={onUnmark}>Annuler le règlement</button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={onClose}>Annuler</Btn>
+            <Btn variant="primary" disabled={!date} onClick={() => onConfirm(date, montant === "" ? null : parseFloat(montant))}>Valider</Btn>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ---------- Derived data helpers ----------
+// ---------- Documents helpers ----------
+function hasBetArchi(chantier) {
+  const v = (chantier.betArchi || "").trim().toLowerCase();
+  return v !== "" && v !== "-";
+}
+function requiredDocuments(chantier) {
+  if (chantier.isFacturesLibres) return [];
+  const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "manquant" };
+  const base = hasBetArchi(chantier)
+    ? [
+        { key: "acteEngagement", label: "Acte d'engagement", present: !!docs.acteEngagement },
+        { key: "ccap", label: "CCAP", present: !!docs.ccap },
+      ]
+    : [{ key: "devisSigne", label: "Devis signé", present: !!docs.devisSigne }];
+  const dc4Statut = docs.dc4Statut || "manquant";
+  if (dc4Statut !== "non_concerne") {
+    base.push({ key: "dc4", label: "DC4 / contrat de sous-traitance", present: dc4Statut === "present" });
+  }
+  const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: !!a.present }));
+  return [...base, ...avenants];
+}
+function missingDocuments(chantier) {
+  return requiredDocuments(chantier).filter((d) => !d.present);
+}
+
+function computeAutoRgCumulees(chantiers) {
+  const out = [];
+  for (const c of chantiers) {
+    if (c.rgExtracted) continue;
+    const nonBanqueMarches = c.marches.filter((m) => m.rgMode !== "banque");
+    if (nonBanqueMarches.length === 0) continue;
+    const totalMarcheHtNonBanque = nonBanqueMarches.reduce((a, m) => a + (m.montantHt || 0), 0);
+    if (!totalMarcheHtNonBanque) continue;
+    const sits = c.situations.filter((s) => nonBanqueMarches.some((m) => m.id === s.marcheId));
+    if (sits.length === 0) continue;
+    const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
+    const totalRg = sits.reduce((a, s) => a + (s.rg || 0), 0);
+    const resteAFacturerNonBanque = Math.round((totalMarcheHtNonBanque - totalHt) * 100) / 100;
+    const enAttenteNonBanque = Math.round(sits.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0) * 100) / 100;
+    if (resteAFacturerNonBanque !== 0 || enAttenteNonBanque !== 0 || totalRg <= 0) continue;
+    out.push({ chantierId: c.id, chantierTitre: c.titre, client: c.client, nChantier: c.nChantier, tvaRegime: c.marches[0]?.tvaRegime, totalRg, totalHt, sits, marches: c.marches });
+  }
+  return out;
+}
+
+function allSituationsFlat(chantiers) {
+  const out = [];
+  for (const ch of chantiers) {
+    for (const s of ch.situations) {
+      const displayTitre = ch.isFacturesLibres
+        ? ((ch.marches.find((m) => m.id === s.marcheId) || {}).nom || ch.titre)
+        : ch.titre;
+      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier });
+    }
+  }
+  return out;
+}
+
+function computeAddPendingEntries(chantiers) {
+  const out = [];
+  for (const c of chantiers) {
+    for (const m of c.marches) {
+      if (m.addMontant && !m.addDate) {
+        out.push({
+          id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: c.dateDemarrage || null,
+          totalARecevoir: m.addMontant, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+          chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
+          marcheId: m.id, isADDPending: true,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function computeRgEchuesPendingEntries(rgDues) {
+  return (rgDues.echues || [])
+    .filter((r) => r.validBet)
+    .map((r) => ({
+      id: `rg-echue-${r.id}`, nSituation: 0, nFact: "RG", dateFacture: r.dateEnvoi || null,
+      totalARecevoir: r.montantTtc || r.montantHt || 0, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+      chantierId: null, chantierTitre: r.nom, chantierClient: null, chantierNChantier: r.nChantier,
+      isRgPending: true, rgEchueId: r.id,
+    }));
+}
+
+function useComputed(chantiers, rgDues) {
+  return useMemo(() => {
+    const flat = allSituationsFlat(chantiers);
+    const addPending = computeAddPendingEntries(chantiers);
+    const rgPending = computeRgEchuesPendingEntries(rgDues);
+    const impayees = [
+      ...flat.filter((s) => !s.paye && (s.totalARecevoir || 0) >= 0).map((s) => {
+        const restant = soldeRestant(s);
+        return s.montantRegle ? { ...s, totalARecevoirOriginal: s.totalARecevoir, totalARecevoir: restant } : s;
+      }),
+      ...addPending,
+      ...rgPending,
+    ];
+    const totalEnAttente = impayees.reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+    const enRetard = impayees.filter((s) => {
+      if (s.isADDPending || s.isRgPending) return false;
+      const j = joursRetardReglement(s);
+      return j !== null && j > 0;
+    }).sort((a, b) => joursRetardReglement(b) - joursRetardReglement(a));
+    const totalRetard = enRetard.reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+
+    const byMonthFacture = {};
+    for (const s of flat) {
+      const k = monthKey(s.dateFacture);
+      byMonthFacture[k] = (byMonthFacture[k] || 0) + (s.montantHt || 0);
+    }
+    // Année glissante : les 12 derniers mois jusqu'au mois en cours, même si un mois n'a rien facturé.
+    const rollingMonths = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      rollingMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const chartData = rollingMonths.map((k) => ({ mois: monthLabel(k), total: Math.round(byMonthFacture[k] || 0) }));
+
+    const rgAReclamerBientot = (rgDues.aVenir || []).filter((r) => {
+      const d = daysUntil(r.dateEcheance);
+      return d !== null && d <= 30;
+    });
+
+    const totalRgEchues = (rgDues.echues || []).reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0);
+
+    const betARelancer = flat.filter((s) => {
+      if (!s.dateEnvoi || s.validBet) return false;
+      if (s.paye) return false;
+      const d = daysSince(s.dateEnvoi);
+      return d !== null && d > 7;
+    }).sort((a, b) => daysSince(b.dateEnvoi) - daysSince(a.dateEnvoi));
+
+    return { flat, impayees, totalEnAttente, enRetard, totalRetard, byMonthFacture, chartData, rgAReclamerBientot, totalRgEchues, betARelancer };
+  }, [chantiers, rgDues]);
+}
+
+// ---------- Sidebar ----------
+function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, onNavigate }) {
+  const items = [
+    { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+    { key: "reglements", label: "Règlements en attente", icon: Clock },
+    { key: "chantiers", label: "Chantiers", icon: Building2 },
+    { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
+    { key: "documents", label: "Documents manquants", icon: FileWarning },
+  ];
+  return (
+    <div className="h-full flex flex-col justify-between py-5 px-3" style={{ background: COLORS.navy }}>
+      <div>
+        <div className="px-2 mb-6">
+          <img src={LOGO_SYNERGIE} alt="SYNERGIE BTP" style={{ height: 38 }} />
+          <div style={{ color: "#8FA3C4" }} className="text-xs mt-2">Suivi situations & règlements</div>
+        </div>
+        <nav className="flex flex-col gap-1">
+          {items.map((it) => {
+            const Icon = it.icon;
+            const active = tab === it.key;
+            return (
+              <button
+                key={it.key}
+                onClick={() => { setTab(it.key); if (onNavigate) onNavigate(); }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left transition-colors"
+                style={{
+                  background: active ? COLORS.navySoft : "transparent",
+                  color: active ? "#fff" : "#B7C3D6",
+                  fontWeight: active ? 600 : 500,
+                }}
+              >
+                <Icon size={16} />
+                {it.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={onSettingsClick}
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-xs"
+          style={{ color: "#8FA3C4" }}
+        >
+          <Settings size={14} /> Réglages
+        </button>
+        <button
+          onClick={onLockClick}
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-xs font-medium"
+          style={{ background: unlocked ? COLORS.greenSoft : COLORS.navySoft, color: unlocked ? COLORS.green : "#B7C3D6" }}
+        >
+          {unlocked ? <Unlock size={14} /> : <Lock size={14} />}
+          {unlocked ? "Mode édition actif" : "Consultation seule"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Desktop: fixed-width column. Mobile: slide-out drawer with a dimmed backdrop.
+function Sidebar({ tab, setTab, unlocked, onLockClick, onSettingsClick, isMobile, mobileOpen, onCloseMobile }) {
+  if (!isMobile) {
+    return (
+      <div className="w-56 shrink-0 h-full">
+        <SidebarContent tab={tab} setTab={setTab} unlocked={unlocked} onLockClick={onLockClick} onSettingsClick={onSettingsClick} />
+      </div>
+    );
+  }
+  if (!mobileOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0" style={{ background: "rgba(22,35,59,0.55)" }} onClick={onCloseMobile} />
+      <div className="absolute top-0 left-0 h-full" style={{ width: 240, maxWidth: "80vw" }}>
+        <div className="relative h-full">
+          <button onClick={onCloseMobile} className="absolute p-2 rounded-md" style={{ top: 16, right: -44, background: COLORS.navy }}>
+            <X size={18} color="#fff" />
+          </button>
+          <SidebarContent tab={tab} setTab={setTab} unlocked={unlocked} onLockClick={onLockClick} onSettingsClick={onSettingsClick} onNavigate={onCloseMobile} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Dashboard ----------
+function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier }) {
+  const { totalEnAttente, impayees, enRetard, totalRetard, chartData, rgAReclamerBientot, betARelancer } = computed;
+  const chantiersDocsIncomplets = chantiers.filter((c) => missingDocuments(c).length > 0).length;
+  const [showAllBet, setShowAllBet] = useState(false);
+  return (
+    <div className="p-4 max-w-6xl">
+      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Tableau de bord</h1>
+      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Vue d'ensemble des règlements clients et retenues de garantie</p>
+
+      <ResponsiveGrid min={160} className="mb-6">
+        <Card className="p-4">
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Total en attente</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalEnAttente)}</div>
+          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>{impayees.length} situation(s) non réglée(s)</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>En retard (+60j)</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.red }}>{fmtEUR(totalRetard)}</div>
+          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>{enRetard.length} situation(s) à relancer</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>RG à réclamer (30j)</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.amber }}>{rgAReclamerBientot.length}</div>
+          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>échéance proche</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Chantiers actifs</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.ink }}>{chantiers.length}</div>
+          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>tous clients confondus</div>
+        </Card>
+        <Card className="p-4" style={{ cursor: "pointer" }} onClick={() => setTab("documents")}>
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Documents manquants</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: chantiersDocsIncomplets > 0 ? COLORS.red : COLORS.green }}>{chantiersDocsIncomplets}</div>
+          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>chantier(s) incomplet(s)</div>
+        </Card>
+      </ResponsiveGrid>
+
+      {enRetard.length > 0 && (
+        <Card className="p-4 mb-6" style={{ borderColor: COLORS.redSoft, background: COLORS.redSoft }}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} color={COLORS.red} />
+            <span className="text-sm font-semibold" style={{ color: COLORS.red }}>Relances à effectuer</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            {enRetard.slice(0, 5).map((s) => (
+              <div key={s.id} className="text-xs flex justify-between" style={{ color: COLORS.ink }}>
+                <span>{s.chantierTitre} — facture {s.nFact || "—"} ({fmtDate(s.dateFacture)})</span>
+                <span className="font-medium tabular-nums">{fmtEUR(s.totalARecevoir)}</span>
+              </div>
+            ))}
+          </div>
+          {enRetard.length > 5 && (
+            <button onClick={() => setTab("reglements")} className="text-xs font-medium mt-2" style={{ color: COLORS.red }}>
+              Voir les {enRetard.length} situations en retard →
+            </button>
+          )}
+        </Card>
+      )}
+
+      {betARelancer.length > 0 && (
+        <Card className="p-4 mb-6" style={{ borderColor: COLORS.amberSoft, background: COLORS.amberSoft }}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} color={COLORS.amber} />
+            <span className="text-sm font-semibold" style={{ color: COLORS.amber }}>Validations BET à relancer (envoyées depuis plus d'une semaine, sans réponse)</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            {betARelancer.slice(0, showAllBet ? betARelancer.length : 8).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => { setSelectedChantier(s.chantierId); setTab("chantierDetail"); }}
+                className="text-xs flex justify-between text-left hover:underline"
+                style={{ color: COLORS.ink }}
+              >
+                <span>{s.chantierTitre} — facture {s.nFact || "—"} (envoyée le {fmtDate(s.dateEnvoi)})</span>
+                <span className="font-medium tabular-nums" style={{ color: COLORS.amber }}>{daysSince(s.dateEnvoi)} j</span>
+              </button>
+            ))}
+          </div>
+          {betARelancer.length > 8 && (
+            <button onClick={() => setShowAllBet(!showAllBet)} className="text-xs mt-2 font-medium hover:underline" style={{ color: COLORS.amber }}>
+              {showAllBet ? "Réduire la liste" : `+ ${betARelancer.length - 8} autre(s) situation(s) en attente de validation BET`}
+            </button>
+          )}
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="text-sm font-semibold mb-3" style={{ color: COLORS.ink }}>Montant total facturé par mois</div>
+        <div style={{ width: "100%", height: 260 }}>
+          <ResponsiveContainer>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
+              <XAxis dataKey="mois" tick={{ fontSize: 11, fill: COLORS.inkSoft }} axisLine={{ stroke: COLORS.line }} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: COLORS.inkSoft }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+              <Tooltip formatter={(v) => fmtEUR(v)} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${COLORS.line}` }} />
+              <Bar dataKey="total" fill={COLORS.accent} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
+// ---------- Reglements en attente ----------
+function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgReceived, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
+  const [q, setQ] = useState("");
+  const groups = useMemo(() => {
+    const qLower = q.trim().toLowerCase();
+    const source = qLower
+      ? computed.impayees.filter((s) =>
+          (s.chantierTitre || "").toLowerCase().includes(qLower) ||
+          (s.chantierClient || "").toLowerCase().includes(qLower) ||
+          (s.chantierNChantier || "").toLowerCase().includes(qLower) ||
+          (s.nFact || "").toLowerCase().includes(qLower)
+        )
+      : computed.impayees;
+    const byMonth = {};
+    for (const s of source) {
+      const k = monthKey(s.dateFacture);
+      if (!byMonth[k]) byMonth[k] = [];
+      byMonth[k].push(s);
+    }
+    return Object.keys(byMonth).sort().map((k) => ({
+      key: k,
+      label: monthLabel(k),
+      items: byMonth[k].sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || "")),
+      total: byMonth[k].reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+    }));
+  }, [computed.impayees, q]);
+
+  const [payingSituation, setPayingSituation] = useState(null);
+  const [confirmDeleteSitId, setConfirmDeleteSitId] = useState(null);
+  const [showFacture, setShowFacture] = useState(false);
+  const [fClient, setFClient] = useState("");
+  const [fNFact, setFNFact] = useState("");
+  const [fDate, setFDate] = useState("");
+  const [fMontant, setFMontant] = useState("");
+  const [fTva, setFTva] = useState("085");
+
+  function submitFacture() {
+    if (!fClient.trim() || !fMontant) return;
+    onCreateFactureSeule({
+      titre: fClient.trim(), client: fClient.trim(), nFact: fNFact.trim(),
+      dateFacture: fDate, montantHt: parseFloat(fMontant) || 0, tvaRegime: fTva,
+    });
+    setFClient(""); setFNFact(""); setFDate(""); setFMontant(""); setFTva("085"); setShowFacture(false);
+  }
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Règlements clients à recevoir</h1>
+        <div className="flex items-center gap-3">
+          {unlocked && <Btn variant="ghost" size="sm" onClick={() => setShowFacture(true)}><Plus size={14} /> Facture seule</Btn>}
+          <div className="text-sm font-semibold tabular-nums" style={{ color: COLORS.accent }}>{fmtEUR(computed.totalEnAttente)}</div>
+        </div>
+      </div>
+      <p className="text-sm mb-3" style={{ color: COLORS.inkSoft }}>Situations facturées et non réglées, groupées par mois de facturation</p>
+
+      <div className="relative mb-2 max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
+        <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      </div>
+      {q.trim() && (
+        <p className="text-sm mb-5" style={{ color: COLORS.ink }}>
+          {groups.reduce((a, g) => a + g.items.length, 0)} résultat(s) — total <span className="font-semibold" style={{ color: COLORS.accent }}>{fmtEUR(groups.reduce((a, g) => a + g.total, 0))}</span>
+        </p>
+      )}
+      {!q.trim() && <div className="mb-5" />}
+
+      {showFacture && (
+        <Card className="p-4 mb-5" style={{ background: COLORS.accentSoft }}>
+          <p className="text-xs font-medium mb-3" style={{ color: COLORS.inkSoft }}>
+            Pour un petit travaux ponctuel facturé en une fois — crée directement la facture sans avoir à configurer un marché.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Nom client"><TextInput value={fClient} onChange={(e) => setFClient(e.target.value)} /></Field>
+            <Field label="N° facture"><TextInput value={fNFact} onChange={(e) => setFNFact(e.target.value)} /></Field>
+            <Field label="Date facture"><TextInput type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} /></Field>
+            <Field label="Montant HT"><TextInput type="number" step="0.01" value={fMontant} onChange={(e) => setFMontant(e.target.value)} /></Field>
+            <Field label="Régime TVA">
+              <select value={fTva} onChange={(e) => setFTva(e.target.value)} style={inputStyle} className="outline-none focus:ring-2">
+                <option value="085">8,5 %</option>
+                <option value="021">2,1 %</option>
+                <option value="autoliq">Autoliquidée (0 %)</option>
+              </select>
+            </Field>
+            <Btn variant="primary" onClick={submitFacture}>Créer la facture</Btn>
+            <Btn variant="ghost" onClick={() => setShowFacture(false)}>Annuler</Btn>
+          </div>
+        </Card>
+      )}
+
+      {groups.length === 0 && (
+        <Card className="p-8 text-center text-sm" style={{ color: COLORS.inkSoft }}>{q.trim() ? "Aucun résultat pour cette recherche" : "Aucun règlement en attente 🎉"}</Card>
+      )}
+
+      <div className="flex flex-col gap-5">
+        {groups.map((g) => (
+          <Card key={g.key} className="overflow-hidden">
+            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: "#F7F5EF", borderBottom: `1px solid ${COLORS.line}` }}>
+              <span className="text-sm font-semibold capitalize" style={{ color: COLORS.ink }}>{g.label}</span>
+              <span className="text-sm font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(g.total)}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+            <table className="text-xs" style={{ width: "100%", minWidth: 720 }}>
+              <thead>
+                <tr style={{ color: COLORS.inkSoft }}>
+                  <th className="text-left font-medium px-4 py-2">Client / Chantier</th>
+                  <th className="text-left font-medium px-2 py-2">N° Sit.</th>
+                  <th className="text-left font-medium px-2 py-2">N° Fact.</th>
+                  <th className="text-left font-medium px-2 py-2">Date</th>
+                  <th className="text-right font-medium px-2 py-2">À recevoir</th>
+                  <th className="text-left font-medium px-2 py-2">Retard</th>
+                  {unlocked && <th className="px-4 py-2"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {g.items.map((s) => {
+                  const retard = joursRetardReglement(s);
+                  return (
+                    <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}`, background: s.isADDPending ? "#FBF8F0" : s.isRgPending ? "#F5F3FF" : undefined }}>
+                      <td className="px-4 py-2">
+                        {s.isRgPending ? (
+                          <button className="font-medium hover:underline text-left" style={{ color: "#8B5CF6" }} onClick={() => setTab("rg")}>
+                            {s.chantierTitre}
+                          </button>
+                        ) : (
+                          <button className="font-medium hover:underline text-left" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier(s.chantierId); setTab("chantierDetail"); }}>
+                            {s.chantierTitre}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-2 py-2" style={{ color: COLORS.ink }}>{s.nSituation ?? "—"}</td>
+                      <td className="px-2 py-2" style={{ color: COLORS.ink, fontWeight: (s.isADDPending || s.isRgPending) ? 600 : 400 }}>{s.nFact || "—"}</td>
+                      <td className="px-2 py-2" style={{ color: COLORS.ink }}>{fmtDate(s.dateFacture)}</td>
+                      <td className="px-2 py-2 text-right font-medium tabular-nums" style={{ color: COLORS.ink }}>
+                        {fmtEUR(s.totalARecevoir)}
+                        {s.montantRegle ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
+                      </td>
+                      <td className="px-2 py-2" title={s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : "Échéance = date de validation BET + 30 jours"}>
+                        {s.montantRegle ? (
+                          <Pill color="amber">partiel</Pill>
+                        ) : s.isADDPending ? (
+                          <Pill color="amber">avance de démarrage</Pill>
+                        ) : s.isRgPending ? (
+                          <Pill color="purple">RG à réclamer</Pill>
+                        ) : !s.validBet ? (
+                          <Pill>validation BET en attente</Pill>
+                        ) : retard > 0 ? (
+                          <Pill color="red">{retard} j de retard</Pill>
+                        ) : retard > -7 ? (
+                          <Pill color="amber">échéance dans {Math.abs(retard)} j</Pill>
+                        ) : (
+                          <Pill color="green">à jour</Pill>
+                        )}
+                      </td>
+                      {unlocked && (
+                        <td className="px-4 py-2">
+                          <div className="flex gap-1 justify-end items-center">
+                            {(s.isADDPending || s.isRgPending) ? (
+                              <Btn size="sm" variant="accent" onClick={() => setPayingSituation(s)}>
+                                <Check size={12} /> Marquer réglée
+                              </Btn>
+                            ) : confirmDeleteSitId === s.id ? (
+                              <>
+                                <span className="text-xs" style={{ color: COLORS.red }}>Confirmer ?</span>
+                                <button title="Oui, supprimer" onClick={() => { onDeleteSituation(s.chantierId, s.id); setConfirmDeleteSitId(null); }} className="p-1.5 rounded" style={{ background: COLORS.red }}>
+                                  <Check size={12} color="#fff" />
+                                </button>
+                                <button title="Annuler" onClick={() => setConfirmDeleteSitId(null)} className="p-1.5 rounded" style={{ background: "#F0EEE6" }}>
+                                  <X size={12} color={COLORS.inkSoft} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <Btn size="sm" variant="accent" onClick={() => setPayingSituation(s)}>
+                                  <Check size={12} /> Marquer réglé
+                                </Btn>
+                                <button title="Supprimer cette facture/situation" onClick={() => setConfirmDeleteSitId(s.id)} className="p-1.5 rounded" style={{ background: COLORS.redSoft }}>
+                                  <X size={12} color={COLORS.red} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {payingSituation && (
+        <MarkPaidModal
+          defaultDate={new Date().toISOString().slice(0, 10)}
+          defaultMontant={payingSituation.totalARecevoir}
+          alreadyPaid={false}
+          onClose={() => setPayingSituation(null)}
+          onConfirm={(date, montant) => {
+            if (payingSituation.isADDPending) {
+              onMarkAddPaid(payingSituation.chantierId, payingSituation.marcheId, date);
+            } else if (payingSituation.isRgPending) {
+              onMarkRgReceived(payingSituation.rgEchueId);
+            } else {
+              onMarkPaid(payingSituation.chantierId, payingSituation.id, date, montant);
+            }
+            setPayingSituation(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- Chantiers list ----------
+function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier }) {
+  const [q, setQ] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [newTitre, setNewTitre] = useState("");
+  const [newClient, setNewClient] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const facturesLibres = chantiers.find((c) => c.isFacturesLibres);
+  const base = chantiers.filter((c) => !c.isFacturesLibres && !!c.archived === showArchived);
+  const archivedCount = chantiers.filter((c) => !c.isFacturesLibres && c.archived).length;
+  const filtered = base.filter((c) =>
+    (c.titre || "").toLowerCase().includes(q.toLowerCase()) ||
+    (c.client || "").toLowerCase().includes(q.toLowerCase()) ||
+    (c.nChantier || "").toLowerCase().includes(q.toLowerCase())
+  ).sort((a, b) => (a.titre || "").localeCompare(b.titre || ""));
+
+  function submitNew() {
+    if (!newTitre.trim()) return;
+    onCreateChantier({ titre: newTitre.trim(), client: newClient.trim() });
+    setNewTitre(""); setNewClient(""); setShowNew(false);
+  }
+
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>{showArchived ? "Archives" : "Chantiers"}</h1>
+        {unlocked && !showArchived && (
+          <div className="flex gap-2">
+            <Btn variant="primary" onClick={() => setShowNew(true)}><Plus size={14} /> Nouveau chantier</Btn>
+          </div>
+        )}
+      </div>
+      <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
+        {showArchived ? (
+          <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => setShowArchived(false)}>← retour aux chantiers actifs</button>
+        ) : (
+          <>
+            {filtered.length} chantiers suivis
+            {facturesLibres && (
+              <> · <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier("factures-libres"); setTab("chantierDetail"); }}>voir les {facturesLibres.marches.length} facture(s) ponctuelle(s)</button></>
+            )}
+            {archivedCount > 0 && (
+              <> · <button className="hover:underline" style={{ color: COLORS.inkSoft }} onClick={() => setShowArchived(true)}>Archives ({archivedCount})</button></>
+            )}
+          </>
+        )}
+      </p>
+
+      <div className="relative mb-4 max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
+        <TextInput placeholder="Rechercher un client, chantier..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      </div>
+
+      {showNew && (
+        <Card className="p-4 mb-4 flex flex-wrap items-end gap-3" style={{ background: COLORS.accentSoft }}>
+          <Field label="Nom du chantier"><TextInput value={newTitre} onChange={(e) => setNewTitre(e.target.value)} placeholder="Ex. RESIDENCE LES PALMES" /></Field>
+          <Field label="Client"><TextInput value={newClient} onChange={(e) => setNewClient(e.target.value)} placeholder="Ex. SCI DUPONT" /></Field>
+          <Btn variant="primary" onClick={submitNew}>Créer</Btn>
+          <Btn variant="ghost" onClick={() => setShowNew(false)}>Annuler</Btn>
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        <div style={{ overflowX: "auto" }}>
+        <table className="text-xs" style={{ width: "100%", minWidth: 780 }}>
+          <thead>
+            <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
+              <th className="text-left font-medium px-4 py-2.5">Chantier</th>
+              <th className="text-left font-medium px-2 py-2.5">Client</th>
+              <th className="text-left font-medium px-2 py-2.5">N° chantier</th>
+              <th className="text-right font-medium px-2 py-2.5">Marché HT</th>
+              <th className="text-right font-medium px-2 py-2.5">Facturé</th>
+              <th className="text-right font-medium px-2 py-2.5">En attente</th>
+              <th className="text-left font-medium px-4 py-2.5">Situations</th>
+              {unlocked && <th className="px-3 py-2.5"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-6 text-center" style={{ color: COLORS.inkSoft }}>{showArchived ? "Aucun chantier archivé" : "Aucun chantier"}</td></tr>
+            )}
+            {filtered.map((c) => {
+              const facture = c.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
+              const attente = c.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+              return (
+                <tr key={c.id} style={{ borderTop: `1px solid ${COLORS.line}`, cursor: "pointer" }} onClick={() => { setSelectedChantier(c.id); setTab("chantierDetail"); }}>
+                  <td className="px-4 py-2.5 font-medium" style={{ color: COLORS.accent }}>{c.titre}</td>
+                  <td className="px-2 py-2.5" style={{ color: COLORS.ink }}>{c.client || "—"}</td>
+                  <td className="px-2 py-2.5" style={{ color: COLORS.inkSoft }}>{c.nChantier || "—"}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR((c.marches || []).reduce((a, m) => a + (m.montantHt || 0), 0))}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(facture)}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums font-medium" style={{ color: attente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(attente)}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLORS.inkSoft }}>{c.situations.length}</td>
+                  {unlocked && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex gap-1 justify-end items-center" onClick={(e) => e.stopPropagation()}>
+                        <button title={showArchived ? "Désarchiver" : "Archiver"} onClick={() => onArchiveChantier(c.id, !showArchived)} className="p-1 rounded" style={{ background: COLORS.accentSoft }}>
+                          {showArchived ? <Unlock size={12} color={COLORS.accent} /> : <Lock size={12} color={COLORS.accent} />}
+                        </button>
+                        {confirmDeleteId === c.id ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs" style={{ color: COLORS.red }}>Confirmer ?</span>
+                            <button title="Oui, supprimer" onClick={() => { onDeleteChantier(c.id); setConfirmDeleteId(null); }} className="p-1 rounded" style={{ background: COLORS.red }}>
+                              <Check size={12} color="#fff" />
+                            </button>
+                            <button title="Annuler" onClick={() => setConfirmDeleteId(null)} className="p-1 rounded" style={{ background: "#F0EEE6" }}>
+                              <X size={12} color={COLORS.inkSoft} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button title="Supprimer" onClick={() => setConfirmDeleteId(c.id)} className="p-1 rounded" style={{ background: COLORS.redSoft }}>
+                            <X size={12} color={COLORS.red} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+            </div>
+      </Card>
+    </div>
+  );
+}
+// ---------- Chantier detail ----------
+const TVA_REGIMES = {
+  "085": { label: "8,5 %", rate: 0.085 },
+  "021": { label: "2,1 %", rate: 0.021 },
+  "autoliq": { label: "Autoliquidée (0 %)", rate: 0 },
+};
+
+const emptySituation = () => ({
+  id: uid("sit"), nSituation: "", nFact: "", dateFacture: "", pctAvancement: "",
+  montantHt: "", tva: "", montantTtc: "", rg: "", avanceDeduite: "", prorata: "", rembAdd: "",
+  fournisseurs: [], totalARecevoir: "", dateEnvoi: "", validBet: "", validAmo: "", validAutre: "", datePaiement: "", montantRegle: "", dateDepotChorus: "", paye: false, note: "",
+});
+
+function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptySituation());
+  const [headerEdit, setHeaderEdit] = useState(false);
+  const [payingSituation, setPayingSituation] = useState(null);
+
+  function updateHeaderField(patch) {
+    updateChantier({ ...chantier, ...patch });
+  }
+
+  function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+  function getMarche(marcheId) {
+    return chantier.marches.find((m) => m.id === marcheId) || chantier.marches[0] || null;
+  }
+
+  function autoCalc(f) {
+    const marche = getMarche(f.marcheId) || {};
+    const ht = num(f.montantHt);
+    const regime = TVA_REGIMES[marche.tvaRegime] ? marche.tvaRegime : "085";
+    const tva = Math.round(ht * TVA_REGIMES[regime].rate * 100) / 100;
+    const ttc = Math.round((ht + tva) * 100) / 100;
+    const rgBanque = marche.rgMode === "banque";
+    const rgPct = typeof marche.rgPct === "number" ? marche.rgPct : 0.05;
+    const rg = rgBanque ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    const prorata = num(f.prorata);
+    const remb = num(f.rembAdd);
+    const fournisseurs = (f.fournisseurs || []).map((x) => ({ nom: x.nom || "", montant: num(x.montant) })).filter((x) => x.nom || x.montant);
+    const fournisseurTotal = fournisseurs.reduce((a, x) => a + x.montant, 0);
+    const total = f.totalARecevoir !== "" ? num(f.totalARecevoir) : Math.round((ttc - rg - prorata - remb - fournisseurTotal) * 100) / 100;
+    const paye = f.datePaiement ? true : !!f.paye;
+    const montantRegle = f.montantRegle !== "" && f.montantRegle != null ? num(f.montantRegle) : (f.montantRegle === "" ? null : f.montantRegle);
+    return { ...f, marcheId: marche.id || f.marcheId, tva, montantTtc: ttc, rg, fournisseurs, totalARecevoir: total, paye, montantRegle };
+  }
+
+  function openNew(marcheId) {
+    const nextNum = chantier.situations.length ? Math.max(...chantier.situations.map((s) => (typeof s.nSituation === "number" ? s.nSituation : 0))) + 1 : 1;
+    setForm({ ...emptySituation(), nSituation: nextNum, marcheId: marcheId || chantier.marches[0]?.id || "" });
+    setEditingId(null);
+    setShowForm(true);
+  }
+  function openEdit(s) {
+    const merged = { ...emptySituation(), ...s, fournisseurs: (s.fournisseurs && s.fournisseurs.length ? s.fournisseurs : []) };
+    setForm(Object.fromEntries(Object.entries(merged).map(([k, v]) => [k, v === null ? "" : v])));
+    setEditingId(s.id);
+    setShowForm(true);
+  }
+
+  function addFournisseurRow() {
+    setFormAuto({ fournisseurs: [...(form.fournisseurs || []), { nom: "", montant: "" }] });
+  }
+  function updateFournisseurRow(idx, field, value) {
+    const next = [...form.fournisseurs];
+    next[idx] = { ...next[idx], [field]: value };
+    setFormAuto({ fournisseurs: next });
+  }
+  function removeFournisseurRow(idx) {
+    setFormAuto({ fournisseurs: form.fournisseurs.filter((_, i) => i !== idx) });
+  }
+
+  // Le montant à recevoir se recalcule automatiquement (TTC − RG − Prorata − Cession
+  // fournisseur − Avance/Remb ADD) dès qu'un de ces éléments change sur la situation.
+  function computeAutoTotal(f) {
+    const selMarcheCalc = getMarche(f.marcheId || chantier.marches[0]?.id) || {};
+    const rate = TVA_REGIMES[selMarcheCalc.tvaRegime]?.rate ?? 0.085;
+    const ht = num(f.montantHt);
+    const ttc = Math.round((ht + ht * rate) * 100) / 100;
+    const rgBanque = selMarcheCalc.rgMode === "banque";
+    const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
+    const rg = rgBanque ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    const prorata = num(f.prorata);
+    const fournisseurTotal = (f.fournisseurs || []).reduce((a, x) => a + (num(x.montant) || 0), 0);
+    const remb = num(f.rembAdd);
+    return Math.round((ttc - rg - prorata - fournisseurTotal - remb) * 100) / 100;
+  }
+  function setFormAuto(patch) {
+    const next = { ...form, ...patch };
+    next.totalARecevoir = computeAutoTotal(next);
+    setForm(next);
+  }
+
+  function submitForm() {
+    const calced = autoCalc(form);
+    let situations;
+    if (editingId) {
+      situations = chantier.situations.map((s) => (s.id === editingId ? { ...calced, id: editingId } : s));
+    } else {
+      situations = [...chantier.situations, { ...calced, id: uid("sit") }];
+    }
+    updateChantier({ ...chantier, situations });
+    setShowForm(false);
+    setEditingId(null);
+  }
+
+  function deleteSituation(id) {
+    updateChantier({ ...chantier, situations: chantier.situations.filter((s) => s.id !== id) });
+  }
+
+  function confirmPaid(situationId, date, montant) {
+    const situations = chantier.situations.map((x) => {
+      if (x.id !== situationId) return x;
+      if (x.paye) {
+        // Correction d'un règlement déjà soldé : le montant saisi remplace le total reçu.
+        const total = montant != null ? montant : x.totalARecevoir;
+        const solde = Math.round(((x.totalARecevoir || 0) - total) * 100) / 100;
+        return { ...x, datePaiement: date, montantRegle: total, paye: solde <= 0.01 };
+      }
+      // Nouveau règlement (total ou partiel) : le montant saisi s'ajoute à ce qui a déjà été reçu.
+      const dejaRecu = x.montantRegle || 0;
+      const montantCePaiement = montant != null ? montant : Math.max(0, (x.totalARecevoir || 0) - dejaRecu);
+      const totalRecu = Math.round((dejaRecu + montantCePaiement) * 100) / 100;
+      const solde = Math.round(((x.totalARecevoir || 0) - totalRecu) * 100) / 100;
+      return { ...x, datePaiement: date, montantRegle: totalRecu, paye: solde <= 0.01 };
+    });
+    updateChantier({ ...chantier, situations });
+    setPayingSituation(null);
+  }
+
+  function unmarkPaid(situationId) {
+    const situations = chantier.situations.map((x) => x.id === situationId ? { ...x, datePaiement: null, montantRegle: null, paye: false } : x);
+    updateChantier({ ...chantier, situations });
+    setPayingSituation(null);
+  }
+
+
+  const emptyMarche = () => ({
+    id: uid("marche"), nom: "TS " + (chantier.marches.length + 1), montantHt: "", tauxTva: 0.085,
+    rgMode: "5pct", rgPct: 0.05, prorataPct: "", addMontant: "", addDate: "", tvaRegime: "085",
+    type: "ts",
+  });
+
+  function addMarche() {
+    updateChantier({ ...chantier, marches: [...chantier.marches, emptyMarche()] });
+  }
+  function addProrataBloc() {
+    const n = chantier.marches.filter((m) => m.type === "prorata").length + 1;
+    updateChantier({ ...chantier, marches: [...chantier.marches, { ...emptyMarche(), nom: "PRORATA" + (n > 1 ? " " + n : ""), type: "prorata" }] });
+  }
+  function updateMarche(id, patch) {
+    updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  }
+  function removeMarche(id) {
+    if (chantier.marches.length <= 1) return;
+    const stillUsed = chantier.situations.some((s) => s.marcheId === id);
+    if (stillUsed && !window.confirm("Des situations sont rattachées à ce marché/TS. Le supprimer quand même ?")) return;
+    updateChantier({ ...chantier, marches: chantier.marches.filter((m) => m.id !== id) });
+  }
+  function addChantierFournisseur() {
+    updateChantier({ ...chantier, fournisseurs: [...(chantier.fournisseurs || []), { nom: "", enveloppe: "" }], cessionPaiement: "OUI" });
+  }
+  function updateChantierFournisseur(idx, field, value) {
+    const next = [...(chantier.fournisseurs || [])];
+    next[idx] = { ...next[idx], [field]: value };
+    updateChantier({ ...chantier, fournisseurs: next });
+  }
+  function removeChantierFournisseur(idx) {
+    updateChantier({ ...chantier, fournisseurs: (chantier.fournisseurs || []).filter((_, i) => i !== idx) });
+  }
+  function montantUtiliseFournisseur(nom) {
+    const key = (nom || "").trim().toLowerCase();
+    if (!key) return 0;
+    return chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + ((f.nom || "").trim().toLowerCase() === key ? (f.montant || 0) : 0), 0), 0);
+  }
+  function addResteARembourser(marcheId) {
+    const m = chantier.marches.find((x) => x.id === marcheId);
+    if (!m || !m.addMontant) return null;
+    const rembourse = chantier.situations.filter((s) => s.marcheId === marcheId).reduce((a, s) => a + (s.rembAdd || 0), 0);
+    return Math.round((m.addMontant - rembourse) * 100) / 100;
+  }
+
+  function exportChantierPdf() {
+    const totalMarcheHtX = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
+    const totalFactureX = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
+    const totalAttenteX = chantier.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const blocks = chantier.marches.map((m) => {
+      const sits = chantier.situations.filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
+      const rows = sits.map((s) => `<tr>
+          <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
+          <td style="text-align:right">${fmtPct(s.pctAvancement)}</td>
+          <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
+          <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
+          <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") : "En attente"}</td>
+        </tr>`).join("");
+      return `
+        <h3>${m.nom}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
+        <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>À recevoir</th><th>Paiement</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
+    }).join("");
+    win.document.write(`
+      <html><head><title>Suivi — ${chantier.titre}</title>
+      <style>
+        body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
+        h1{font-size:19px;margin-bottom:2px;} h2{font-size:13px;font-weight:500;color:#5B6779;margin-top:0;margin-bottom:16px;}
+        h3{font-size:13px;margin-top:24px;margin-bottom:6px;}
+        .summary{display:flex;gap:24px;margin-bottom:8px;font-size:12px;}
+        .summary div{background:#F7F5EF;padding:8px 12px;border-radius:6px;}
+        table{width:100%;border-collapse:collapse;font-size:11px;}
+        th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
+        th{background:#F7F5EF;}
+        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;}
+        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        @media print { .close-bar{display:none;} }
+      </style></head><body>
+      <div class="close-bar"><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <h1>Suivi de chantier</h1>
+      <h2>${chantier.titre}${chantier.client ? " — " + chantier.client : ""}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""} · BET/Archi : ${chantier.betArchi || "—"} · Démarrage : ${chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "—"}</h2>
+      <div class="summary">
+        <div>Marché HT total : <b>${fmtEUR(totalMarcheHtX)}</b></div>
+        <div>Facturé HT : <b>${fmtEUR(totalFactureX)}</b></div>
+        <div>En attente de règlement : <b>${fmtEUR(totalAttenteX)}</b></div>
+      </div>
+      ${blocks}
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  }
+
+  function toggleDoc(key) {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    updateChantier({ ...chantier, documents: { ...docs, [key]: !docs[key] } });
+  }
+  function setDc4Statut(statut) {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    updateChantier({ ...chantier, documents: { ...docs, dc4Statut: statut } });
+  }
+  function addAvenant() {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    const n = (docs.avenants || []).length + 1;
+    updateChantier({ ...chantier, documents: { ...docs, avenants: [...(docs.avenants || []), { id: uid("avn"), nom: "Avenant " + n, present: false }] } });
+  }
+  function toggleAvenant(id) {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, present: !a.present } : a)) } });
+  }
+  function renameAvenant(id, nom) {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, nom } : a)) } });
+  }
+  function removeAvenant(id) {
+    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+    updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.filter((a) => a.id !== id) } });
+  }
+
+  const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
+  const reqDocs = requiredDocuments(chantier);
+  const missingDocs = reqDocs.filter((d) => !d.present);
+
+  const totalMarcheHt = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
+  const totalFacture = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
+  const totalAttente = chantier.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+  const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
+  const resteAFacturer = totalMarcheHt - totalFacture;
+  const allSupplierNames = Array.from(new Set((chantier.fournisseurs || []).map((f) => f.nom).filter(Boolean)));
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <button onClick={() => setTab("chantiers")} className="flex items-center gap-1 text-xs font-medium mb-3" style={{ color: COLORS.inkSoft }}>
+        <ChevronLeft size={14} /> Retour aux chantiers
+      </button>
+
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>{chantier.titre}</h1>
+          <p className="text-sm" style={{ color: COLORS.inkSoft }}>{chantier.client || "Client non renseigné"} {chantier.nChantier ? `— ${chantier.nChantier}` : ""}</p>
+        </div>
+        <div className="flex gap-2">
+          <Btn variant="ghost" size="sm" onClick={exportChantierPdf}>Exporter en PDF</Btn>
+          {unlocked && <Btn variant="ghost" size="sm" onClick={() => setHeaderEdit(!headerEdit)}>{headerEdit ? "Fermer" : "Modifier les infos"}</Btn>}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs" style={{ color: COLORS.inkSoft }}>
+        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>BET/Archi :</span> {chantier.betArchi || "non renseigné"}</span>
+        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>Démarrage :</span> {chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "non renseigné"}</span>
+        <span><span style={{ color: COLORS.ink, fontWeight: 500 }}>Durée prévue :</span> {chantier.dureePrevue || "non renseignée"}</span>
+      </div>
+
+      <Card className="p-3 mb-4" style={{ background: missingDocs.length ? COLORS.redSoft : COLORS.greenSoft, border: `1px solid ${missingDocs.length ? "#E8C4BE" : "#BFE0CD"}` }}>
+        <div className="flex items-center gap-2 mb-2">
+          <FileWarning size={15} color={missingDocs.length ? COLORS.red : COLORS.green} />
+          <span className="text-xs font-semibold" style={{ color: missingDocs.length ? COLORS.red : COLORS.green }}>
+            {missingDocs.length ? `${missingDocs.length} document(s) manquant(s)` : "Tous les documents essentiels sont réunis"}
+          </span>
+          {!hasBetArchi(chantier) && <span className="text-xs" style={{ color: COLORS.inkSoft }}>(petit chantier sans BET/archi — devis signé suffit)</span>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {["acteEngagement", "ccap", "devisSigne"].filter((k) => reqDocs.some((d) => d.key === k)).map((k) => {
+            const d = reqDocs.find((x) => x.key === k);
+            return (
+              <button
+                key={k}
+                onClick={() => unlocked && toggleDoc(k)}
+                disabled={!unlocked}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs"
+                style={{ background: d.present ? COLORS.greenSoft : "#fff", border: `1px solid ${d.present ? "#BFE0CD" : COLORS.line}`, color: d.present ? COLORS.green : COLORS.ink, cursor: unlocked ? "pointer" : "default" }}
+              >
+                {d.present ? <Check size={12} /> : <X size={12} color={COLORS.red} />}
+                {d.label}
+              </button>
+            );
+          })}
+          {(() => {
+            const dc4 = docs.dc4Statut || "manquant";
+            const style = dc4 === "present"
+              ? { background: COLORS.greenSoft, border: "1px solid #BFE0CD", color: COLORS.green }
+              : dc4 === "non_concerne"
+              ? { background: "#EDEAE0", border: `1px solid ${COLORS.line}`, color: COLORS.inkSoft }
+              : { background: "#fff", border: `1px solid ${COLORS.line}`, color: COLORS.ink };
+            return unlocked ? (
+              <select
+                value={dc4}
+                onChange={(e) => setDc4Statut(e.target.value)}
+                className="px-2.5 py-1 rounded-md text-xs outline-none"
+                style={{ ...style, cursor: "pointer" }}
+              >
+                <option value="manquant">DC4 / sous-traitance : manquant</option>
+                <option value="present">DC4 / sous-traitance : réuni</option>
+                <option value="non_concerne">DC4 / sous-traitance : non concerné</option>
+              </select>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={style}>
+                {dc4 === "present" ? <Check size={12} /> : dc4 === "non_concerne" ? null : <X size={12} color={COLORS.red} />}
+                DC4 / sous-traitance : {dc4 === "present" ? "réuni" : dc4 === "non_concerne" ? "non concerné" : "manquant"}
+              </span>
+            );
+          })()}
+          {(docs.avenants || []).map((a) => (
+            <div key={a.id} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs" style={{ background: a.present ? COLORS.greenSoft : "#fff", border: `1px solid ${a.present ? "#BFE0CD" : COLORS.line}` }}>
+              <button onClick={() => unlocked && toggleAvenant(a.id)} disabled={!unlocked} className="flex items-center gap-1" style={{ color: a.present ? COLORS.green : COLORS.ink }}>
+                {a.present ? <Check size={12} /> : <X size={12} color={COLORS.red} />}
+              </button>
+              {unlocked ? (
+                <input value={a.nom} onChange={(e) => renameAvenant(a.id, e.target.value)} style={{ border: "none", background: "transparent", fontSize: 12, width: Math.max(60, a.nom.length * 7) }} />
+              ) : (
+                <span>{a.nom}</span>
+              )}
+              {unlocked && <button onClick={() => removeAvenant(a.id)} title="Supprimer"><X size={11} color={COLORS.red} /></button>}
+            </div>
+          ))}
+          {unlocked && (
+            <button onClick={addAvenant} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium" style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>
+              <Plus size={12} /> Avenant
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {headerEdit ? (
+        <>
+          <Card className="p-4 mb-4" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+            <Field label="Nom du chantier"><TextInput value={chantier.titre || ""} onChange={(e) => updateHeaderField({ titre: e.target.value })} /></Field>
+            <Field label="Client"><TextInput value={chantier.client || ""} onChange={(e) => updateHeaderField({ client: e.target.value })} /></Field>
+            <Field label="N° chantier"><TextInput value={chantier.nChantier || ""} onChange={(e) => updateHeaderField({ nChantier: e.target.value })} /></Field>
+            <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
+            <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
+            <Field label="Durée prévue"><TextInput value={chantier.dureePrevue || ""} onChange={(e) => updateHeaderField({ dureePrevue: e.target.value })} /></Field>
+            <div className="flex items-end gap-2">
+              <Btn variant="primary" onClick={() => setHeaderEdit(false)}>Terminé</Btn>
+            </div>
+          </Card>
+          <p className="text-xs mb-3" style={{ color: COLORS.inkSoft, marginTop: -8 }}>Chaque champ est enregistré automatiquement dès que tu le modifies.</p>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Marché principal &amp; TS</span>
+            <Btn size="sm" variant="ghost" onClick={addMarche}><Plus size={13} /> Ajouter un marché / TS</Btn>
+            <Btn size="sm" variant="ghost" onClick={addProrataBloc}><Plus size={13} /> Ajouter un bloc PRORATA</Btn>
+          </div>
+          <div className="flex flex-col gap-3 mb-5">
+            {chantier.marches.map((m) => (
+              <Card key={m.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <TextInput value={m.nom} onChange={(e) => updateMarche(m.id, { nom: e.target.value })} style={{ fontWeight: 600, fontSize: 14, border: "none", padding: "2px 0" }} />
+                  {chantier.marches.length > 1 && (
+                    <button onClick={() => removeMarche(m.id)} title="Supprimer ce marché/TS"><X size={14} color={COLORS.red} /></button>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+                  <Field label="Type de bloc">
+                    <select value={m.type || "ts"} onChange={(e) => updateMarche(m.id, { type: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                      <option value="principal">Marché principal</option>
+                      <option value="ts">TS / avenant</option>
+                      <option value="prorata">PRORATA</option>
+                    </select>
+                  </Field>
+                  <Field label="Montant HT"><TextInput type="number" value={m.montantHt ?? ""} onChange={(e) => updateMarche(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                  <Field label="Retenue de garantie (RG)">
+                    <select value={m.rgMode || "5pct"} onChange={(e) => updateMarche(m.id, { rgMode: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                      <option value="5pct">5 %</option>
+                      <option value="banque">Caution banque</option>
+                    </select>
+                  </Field>
+                  <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                  <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => updateMarche(m.id, { addMontant: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                  <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
+                  <Field label="Régime de TVA (s'applique à toutes les situations de ce marché/TS)">
+                    <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                      {Object.entries(TVA_REGIMES).map(([key, r]) => (
+                        <option key={key} value={key}>{r.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cession de paiement fournisseur</span>
+            <span className="text-xs" style={{ color: COLORS.inkSoft }}>commune à tout le chantier — pas de répétition par marché/TS</span>
+          </div>
+          <Card className="p-4 mb-5">
+            <Field label="Cession de paiement fournisseur ?">
+              <select value={chantier.cessionPaiement || "NON"} onChange={(e) => updateChantier({ ...chantier, cessionPaiement: e.target.value })} style={{ ...inputStyle, maxWidth: 200 }} className="outline-none focus:ring-2">
+                <option value="NON">Non</option>
+                <option value="OUI">Oui</option>
+              </select>
+            </Field>
+            {chantier.cessionPaiement === "OUI" && (
+              <div className="mt-3">
+                <span className="text-xs font-medium" style={{ color: COLORS.inkSoft }}>Fournisseur(s) cessionnaire(s) — enveloppe globale par fournisseur</span>
+                {(chantier.fournisseurs || []).map((f, idx) => {
+                  const utilise = montantUtiliseFournisseur(f.nom);
+                  const restant = f.enveloppe !== "" && f.enveloppe != null ? Math.round((f.enveloppe - utilise) * 100) / 100 : null;
+                  return (
+                    <div key={idx} className="mt-1.5">
+                      <div className="flex items-center gap-2">
+                        <TextInput value={f.nom} onChange={(e) => updateChantierFournisseur(idx, "nom", e.target.value)} placeholder="Nom du fournisseur" style={{ flex: 2 }} />
+                        <TextInput type="number" step="0.01" value={f.enveloppe ?? ""} onChange={(e) => updateChantierFournisseur(idx, "enveloppe", e.target.value === "" ? "" : parseFloat(e.target.value))} placeholder="Enveloppe totale" style={{ flex: 1 }} />
+                        <button onClick={() => removeChantierFournisseur(idx)} title="Supprimer"><X size={13} color={COLORS.red} /></button>
+                      </div>
+                      {restant !== null && (
+                        <p className="text-xs mt-0.5" style={{ color: restant < 0 ? COLORS.red : COLORS.inkSoft }}>
+                          {fmtEUR(utilise)} déjà cédés sur les situations — reste {fmtEUR(restant)} disponible
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                <button onClick={addChantierFournisseur} className="text-xs font-medium mt-1.5" style={{ color: COLORS.accent }}>+ Ajouter un fournisseur</button>
+              </div>
+            )}
+          </Card>
+        </>
+      ) : (
+        <>
+          <ResponsiveGrid min={130} className="mb-3">
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Marché HT (total)</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalMarcheHt)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Facturé HT</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalFacture)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Reste à facturer</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(resteAFacturer)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>En attente règlement</div><div className="text-sm font-semibold tabular-nums" style={{ color: totalAttente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(totalAttente)}</div></Card>
+          </ResponsiveGrid>
+
+          {allSupplierNames.length > 0 && (
+            <Card className="p-3 mb-3">
+              <div className="text-xs font-medium mb-2" style={{ color: COLORS.inkSoft }}>Cessions fournisseurs — montant restant disponible</div>
+              <div className="flex flex-col gap-1.5">
+                {(chantier.fournisseurs || []).filter((f) => f.nom).map((f, idx) => {
+                  const utilise = montantUtiliseFournisseur(f.nom);
+                  const hasEnveloppe = f.enveloppe !== "" && f.enveloppe != null;
+                  const restant = hasEnveloppe ? Math.round((f.enveloppe - utilise) * 100) / 100 : null;
+                  return (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span style={{ color: COLORS.ink }}>
+                        <span className="font-medium">{f.nom}</span>
+                      </span>
+                      {hasEnveloppe ? (
+                        <span className="tabular-nums" style={{ color: restant < 0 ? COLORS.red : COLORS.ink }}>
+                          {fmtEUR(restant)} <span style={{ color: COLORS.inkSoft }}>restant sur {fmtEUR(f.enveloppe)}</span>
+                        </span>
+                      ) : (
+                        <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>{fmtEUR(utilise)} cédés (pas d'enveloppe définie)</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          <div className="flex flex-col gap-1.5 mb-5">
+            {chantier.marches.map((m) => (
+              <div key={m.id} className="flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={{ background: "#F0EEE6", color: COLORS.inkSoft }}>
+                <span className="font-medium" style={{ color: COLORS.ink }}>{m.nom}</span>
+                <span>· {fmtEUR(m.montantHt)}</span>
+                <span>· RG {m.rgMode === "banque" ? "caution banque" : fmtPct(m.rgPct)}</span>
+                {m.addMontant ? <span>· ADD {fmtEUR(m.addMontant)}{m.addDate ? ` le ${fmtDate(m.addDate)}` : ""} · reste à rembourser {fmtEUR(addResteARembourser(m.id))}</span> : null}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Situations ({chantier.situations.length})</h2>
+      </div>
+
+      {(() => {
+        const renderMarcheBlock = (m) => {
+        const sits = [...chantier.situations].filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
+        const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
+        const isProrata = m.type === "prorata";
+        return (
+          <div key={m.id} className="mb-5">
+            <div className="flex items-center justify-between mb-1.5 px-0.5 flex-wrap gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold" style={{ color: isProrata ? "#8B5CF6" : COLORS.ink }}>{m.nom}</span>
+                <Pill color={isProrata ? "purple" : "accent"}>{fmtEUR(m.montantHt)} HT marché</Pill>
+                <span className="text-xs" style={{ color: COLORS.inkSoft }}>facturé {fmtEUR(totalHt)} · RG {m.rgMode === "banque" ? "caution banque" : fmtPct(m.rgPct)}{m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}</span>
+              </div>
+              {unlocked && <Btn size="sm" variant="ghost" onClick={() => openNew(m.id)}><Plus size={13} /> Situation sur ce marché</Btn>}
+            </div>
+            <Card className="overflow-x-auto" style={isProrata ? { border: "1px solid #DDD6FE" } : undefined}>
+              <div style={{ overflowX: "auto" }}>
+                <table className="text-xs" style={{ width: "100%", minWidth: 980 }}>
+                  <thead>
+                    <tr style={{ color: COLORS.inkSoft, background: isProrata ? "#F5F3FF" : "#F7F5EF" }}>
+                      <th className="text-left font-medium px-3 py-2">N°</th>
+                      <th className="text-left font-medium px-2 py-2">Facture</th>
+                      <th className="text-left font-medium px-2 py-2">Date</th>
+                      <th className="text-right font-medium px-2 py-2">% Av.</th>
+                      <th className="text-right font-medium px-2 py-2">Mt HT</th>
+                      <th className="text-right font-medium px-2 py-2">TTC</th>
+                      <th className="text-right font-medium px-2 py-2">RG</th>
+                      <th className="text-right font-medium px-2 py-2">Fournisseur</th>
+                      <th className="text-right font-medium px-2 py-2">À recevoir</th>
+                      <th className="text-left font-medium px-2 py-2">Envoi</th>
+                      <th className="text-left font-medium px-2 py-2">Val. BET</th>
+                      <th className="text-left font-medium px-2 py-2">Paiement</th>
+                      {unlocked && <th className="px-3 py-2"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sits.length === 0 && (
+                      <tr><td colSpan={12} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
+                    )}
+                    {sits.map((s) => (
+                      <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                        <td className="px-3 py-2">
+                          <span className="inline-flex items-center gap-1">
+                            {s.nSituation ?? "—"}
+                            {s.note && (
+                              <span title={s.note}>
+                                <StickyNote size={11} color={COLORS.accent} style={{ opacity: 0.8 }} />
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">{s.nFact || "—"}</td>
+                        <td className="px-2 py-2">{fmtDate(s.dateFacture)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{fmtPct(s.pctAvancement)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantHt)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantTtc)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums" title={(s.fournisseurs || []).map((f) => `${f.nom}: ${fmtEUR(f.montant)}`).join(" · ") || undefined}>
+                          {(s.fournisseurs && s.fournisseurs.length)
+                            ? (s.fournisseurs.length === 1
+                                ? `${s.fournisseurs[0].nom} ${fmtEUR(s.fournisseurs[0].montant)}`
+                                : `${s.fournisseurs.length} fourn. ${fmtEUR(s.fournisseurs.reduce((a, f) => a + (f.montant || 0), 0))}`)
+                            : "—"}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtEUR(s.totalARecevoir)}</td>
+                        <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{s.dateEnvoi ? fmtDate(s.dateEnvoi) : "—"}</td>
+                        <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{s.validBet ? fmtDate(s.validBet) : "—"}</td>
+                        <td className="px-2 py-2">
+                          {s.paye ? (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <Pill color="green">{s.datePaiement ? fmtDate(s.datePaiement) : "réglé"}</Pill>
+                                {s.montantRegle != null && Math.abs((s.montantRegle || 0) - (s.totalARecevoir || 0)) > 0.01 && (
+                                  <span title={`Réglé ${fmtEUR(s.montantRegle)} au lieu de ${fmtEUR(s.totalARecevoir)} attendu`}>
+                                    <AlertTriangle size={12} color={COLORS.red} />
+                                  </span>
+                                )}
+                              </div>
+                              {s.montantRegle != null && (
+                                <span className="tabular-nums" style={{ color: Math.abs((s.montantRegle || 0) - (s.totalARecevoir || 0)) > 0.01 ? COLORS.red : COLORS.inkSoft }}>
+                                  {fmtEUR(s.montantRegle)} reçu
+                                </span>
+                              )}
+                            </div>
+                          ) : s.montantRegle ? (
+                            <div className="flex flex-col gap-0.5">
+                              <Pill color="amber">partiel</Pill>
+                              <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>
+                                {fmtEUR(s.montantRegle)} reçu · reste {fmtEUR(soldeRestant(s))}
+                              </span>
+                            </div>
+                          ) : <Pill color="amber">en attente</Pill>}
+                        </td>
+                        {unlocked && (
+                          <td className="px-3 py-2">
+                            <div className="flex gap-1 justify-end">
+                              <button title={s.paye ? "Modifier le règlement" : "Marquer réglé"} onClick={() => setPayingSituation(s)} className="p-1 rounded" style={{ background: s.paye ? COLORS.amberSoft : COLORS.greenSoft }}>
+                                <Check size={12} color={s.paye ? COLORS.amber : COLORS.green} />
+                              </button>
+                              <button title="Modifier" onClick={() => openEdit(s)} className="p-1 rounded" style={{ background: COLORS.accentSoft }}>
+                                <Settings size={12} color={COLORS.accent} />
+                              </button>
+                              <button title="Supprimer" onClick={() => deleteSituation(s.id)} className="p-1 rounded" style={{ background: COLORS.redSoft }}>
+                                <X size={12} color={COLORS.red} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        );
+        };
+
+        const regular = chantier.marches.filter((m) => m.type !== "prorata");
+        const prorata = chantier.marches.filter((m) => m.type === "prorata");
+        return (
+          <>
+            {regular.map(renderMarcheBlock)}
+            {prorata.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 mb-2 mt-1">
+                  <div className="h-px flex-1" style={{ background: "#DDD6FE" }} />
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#6D28D9" }}>Prorata</span>
+                  <div className="h-px flex-1" style={{ background: "#DDD6FE" }} />
+                </div>
+                {prorata.map(renderMarcheBlock)}
+              </>
+            )}
+          </>
+        );
+      })()}
+
+      {(() => {
+        const marcheIds = new Set(chantier.marches.map((m) => m.id));
+        const orphans = chantier.situations.filter((s) => !marcheIds.has(s.marcheId));
+        if (orphans.length === 0) return null;
+        return (
+          <div className="mb-5">
+            <div className="text-sm font-semibold mb-1.5" style={{ color: COLORS.red }}>Situations non rattachées à un marché ({orphans.length})</div>
+            <Card className="overflow-x-auto p-2">
+              {orphans.map((s) => (
+                <div key={s.id} className="flex items-center justify-between text-xs px-2 py-1.5" style={{ borderBottom: `1px solid ${COLORS.line}` }}>
+                  <span>{s.nFact || s.nSituation} — {fmtDate(s.dateFacture)} — {fmtEUR(s.totalARecevoir)}</span>
+                  {unlocked && <button onClick={() => openEdit(s)} className="text-xs font-medium" style={{ color: COLORS.accent }}>Rattacher un marché</button>}
+                </div>
+              ))}
+            </Card>
+          </div>
+        );
+      })()}
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+          <Card className="w-full max-w-2xl p-5 overflow-y-auto" style={{ maxHeight: "85vh" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-base" style={{ color: COLORS.ink }}>{editingId ? "Modifier la situation" : "Nouvelle situation"}</h3>
+              <button onClick={() => setShowForm(false)}><X size={18} color={COLORS.inkSoft} /></button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <Field label="Marché / TS">
+                <select
+                  value={form.marcheId || chantier.marches[0]?.id || ""}
+                  onChange={(e) => setForm({ ...form, marcheId: e.target.value })}
+                  style={inputStyle}
+                  className="outline-none focus:ring-2"
+                >
+                  {chantier.marches.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nom}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="N° situation"><TextInput value={form.nSituation} onChange={(e) => setForm({ ...form, nSituation: e.target.value })} /></Field>
+              <Field label="N° facture"><TextInput value={form.nFact} onChange={(e) => setForm({ ...form, nFact: e.target.value })} /></Field>
+              <Field label="Date facture"><TextInput type="date" value={form.dateFacture} onChange={(e) => setForm({ ...form, dateFacture: e.target.value })} /></Field>
+              <Field label="% Avancement (0.25 = 25%)"><TextInput type="number" step="0.001" value={form.pctAvancement} onChange={(e) => setForm({ ...form, pctAvancement: e.target.value })} /></Field>
+              <Field label="Montant HT"><TextInput type="number" step="0.01" value={form.montantHt} onChange={(e) => setFormAuto({ montantHt: e.target.value })} /></Field>
+              {(() => {
+                const selMarcheTva = getMarche(form.marcheId || chantier.marches[0]?.id);
+                const rate = TVA_REGIMES[selMarcheTva?.tvaRegime]?.rate ?? 0.085;
+                return (
+                  <>
+                    <Field label={`TVA calculée (${TVA_REGIMES[selMarcheTva?.tvaRegime]?.label || "085"}, réglée sur le marché)`}>
+                      <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
+                        {fmtEUR(Math.round(num(form.montantHt) * rate * 100) / 100)}
+                      </div>
+                    </Field>
+                    <Field label="Montant TTC (calculé)">
+                      <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
+                        {fmtEUR(Math.round((num(form.montantHt) + num(form.montantHt) * rate) * 100) / 100)}
+                      </div>
+                    </Field>
+                  </>
+                );
+              })()}
+              {(() => {
+                const selMarche = getMarche(form.marcheId || chantier.marches[0]?.id);
+                const rgOff = selMarche && selMarche.rgMode === "banque";
+                return (
+                  <Field label={rgOff ? "RG (couverte par caution banque)" : "RG (auto si vide, 5 %)"}>
+                    {rgOff ? (
+                      <div style={{ ...inputStyle, background: "#F0EEE6", color: COLORS.inkSoft }}>0,00 €</div>
+                    ) : (
+                      <TextInput type="number" step="0.01" value={form.rg} onChange={(e) => setFormAuto({ rg: e.target.value })} />
+                    )}
+                  </Field>
+                );
+              })()}
+              <Field label="Prorata"><TextInput type="number" step="0.01" value={form.prorata} onChange={(e) => setFormAuto({ prorata: e.target.value })} /></Field>
+              <Field label="Remb. ADD"><TextInput type="number" step="0.01" value={form.rembAdd} onChange={(e) => setFormAuto({ rembAdd: e.target.value })} /></Field>
+              {(() => {
+                const selMarcheCalc = getMarche(form.marcheId || chantier.marches[0]?.id) || {};
+                const rate = TVA_REGIMES[selMarcheCalc.tvaRegime]?.rate ?? 0.085;
+                const ht = num(form.montantHt);
+                const ttc = Math.round((ht + ht * rate) * 100) / 100;
+                const rgBanque = selMarcheCalc.rgMode === "banque";
+                const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
+                const rg = rgBanque ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
+                const prorata = num(form.prorata);
+                const fournisseurTotal = (form.fournisseurs || []).reduce((a, f) => a + (num(f.montant) || 0), 0);
+                const remb = num(form.rembAdd);
+                const autoTotal = Math.round((ttc - rg - prorata - fournisseurTotal - remb) * 100) / 100;
+                const isManual = form.totalARecevoir !== "";
+                return (
+                  <Field label="Total à recevoir">
+                    <TextInput type="number" step="0.01" value={form.totalARecevoir} placeholder={fmtEUR(autoTotal)} onChange={(e) => setForm({ ...form, totalARecevoir: e.target.value })} />
+                    <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
+                      Calcul auto (TTC − RG − Prorata − Cession fournisseur{remb ? " − Remb. ADD" : ""}) : <span className="font-medium">{fmtEUR(autoTotal)}</span>
+                      {isManual && <> · <button type="button" onClick={() => setForm({ ...form, totalARecevoir: "" })} style={{ color: COLORS.accent, textDecoration: "underline" }}>revenir à l'auto</button></>}
+                    </p>
+                  </Field>
+                );
+              })()}
+              <Field label="Date envoi"><TextInput type="date" value={form.dateEnvoi} onChange={(e) => setForm({ ...form, dateEnvoi: e.target.value })} /></Field>
+              <Field label="Date dépôt Chorus"><TextInput type="date" value={form.dateDepotChorus || ""} onChange={(e) => setForm({ ...form, dateDepotChorus: e.target.value })} /></Field>
+              <Field label="Validation BET"><TextInput type="date" value={form.validBet} onChange={(e) => setForm({ ...form, validBet: e.target.value })} /></Field>
+              <Field label="Validation AMO"><TextInput type="date" value={form.validAmo} onChange={(e) => setForm({ ...form, validAmo: e.target.value })} /></Field>
+              <Field label="Date paiement (laisser vide si non réglé)"><TextInput type="date" value={form.datePaiement} onChange={(e) => setForm({ ...form, datePaiement: e.target.value })} /></Field>
+              <Field label="Montant réglé (si différent du montant à recevoir)"><TextInput type="number" step="0.01" value={form.montantRegle ?? ""} onChange={(e) => setForm({ ...form, montantRegle: e.target.value })} /></Field>
+              <Field label="Note"><TextInput value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Remarque, contexte..." /></Field>
+            </div>
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium" style={{ color: COLORS.inkSoft }}>Cessions fournisseur (une ligne par fournisseur)</span>
+                <Btn size="sm" variant="ghost" onClick={addFournisseurRow}><Plus size={12} /> Ajouter un fournisseur</Btn>
+              </div>
+              {(!form.fournisseurs || form.fournisseurs.length === 0) && (
+                <p className="text-xs" style={{ color: COLORS.inkSoft }}>Aucun fournisseur cédé sur cette situation.</p>
+              )}
+              {(form.fournisseurs || []).map((f, idx) => (
+                <div key={idx} className="flex items-center gap-2 mb-2">
+                  <TextInput placeholder="Nom du fournisseur" value={f.nom} onChange={(e) => updateFournisseurRow(idx, "nom", e.target.value)} style={{ flex: 2 }} />
+                  <TextInput type="number" step="0.01" placeholder="Montant" value={f.montant} onChange={(e) => updateFournisseurRow(idx, "montant", e.target.value)} style={{ flex: 1 }} />
+                  <button onClick={() => removeFournisseurRow(idx)} title="Supprimer"><X size={14} color={COLORS.red} /></button>
+                </div>
+              ))}
+              {form.fournisseurs && form.fournisseurs.length > 0 && (
+                <p className="text-xs" style={{ color: COLORS.inkSoft }}>
+                  Total cédé : {fmtEUR(form.fournisseurs.reduce((a, f) => a + (num(f.montant) || 0), 0))}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <Btn variant="ghost" onClick={() => setShowForm(false)}>Annuler</Btn>
+              <Btn variant="primary" onClick={submitForm}>{editingId ? "Enregistrer" : "Ajouter"}</Btn>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {payingSituation && (
+        <MarkPaidModal
+          defaultDate={payingSituation.datePaiement || new Date().toISOString().slice(0, 10)}
+          defaultMontant={payingSituation.paye ? payingSituation.montantRegle : soldeRestant(payingSituation)}
+          alreadyPaid={!!payingSituation.paye}
+          onClose={() => setPayingSituation(null)}
+          onConfirm={(date, montant) => confirmPaid(payingSituation.id, date, montant)}
+          onUnmark={() => unmarkPaid(payingSituation.id)}
+        />
+      )}
+    </div>
+  );
+}
+// ---------- RG view ----------
+const emptyRgEchue = () => ({ id: uid("rg-e"), nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEnvoi: "", notes: "", validBet: false });
+const emptyRgVenir = () => ({ id: uid("rg-v"), nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEcheance: "" });
+
+function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChantier, onExtractMarcheRg }) {
+  const [showEchue, setShowEchue] = useState(false);
+  const [showVenir, setShowVenir] = useState(false);
+  const [formE, setFormE] = useState(emptyRgEchue());
+  const [formV, setFormV] = useState(emptyRgVenir());
+
+  const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
+
+  function extractAutoRgPdf(item) {
+    const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
+    const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const findMarcheNom = (marcheId) => (item.marches.find((m) => m.id === marcheId) || {}).nom || "—";
+    const rows = item.sits.map((s) => `<tr><td>${findMarcheNom(s.marcheId)}</td><td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td><td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.rg)}</td></tr>`).join("");
+    win.document.write(`
+      <html><head><title>RG à réclamer — ${item.chantierTitre}</title>
+      <style>
+        body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
+        h1{font-size:18px;margin-bottom:4px;} h2{font-size:13px;font-weight:500;color:#5B6779;margin-top:0;}
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:12px;}
+        th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
+        th{background:#F7F5EF;}
+        .total{margin-top:16px;font-size:14px;font-weight:600;}
+        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;}
+        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        @media print { .close-bar{display:none;} }
+      </style></head><body>
+      <div class="close-bar"><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <h1>Retenue de garantie à réclamer</h1>
+      <h2>${item.chantierTitre}${item.client ? " — " + item.client : ""}${item.nChantier ? " (" + item.nChantier + ")" : ""}</h2>
+      <p>Chantier soldé à 100 % (marché principal et TS confondus), entièrement facturé et réglé. Retenue de garantie cumulée :</p>
+      <table><thead><tr><th>Marché/TS</th><th>N° sit.</th><th>N° facture</th><th>Date</th><th>Montant HT</th><th>RG</th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="total">Total RG à réclamer (TTC) : ${fmtEUR(item.totalRg)} — soit ${fmtEUR(montantHtRg)} HT</p>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+    onExtractMarcheRg(item.chantierId);
+  }
+
+  function addEchue() {
+    updateRg({ ...rgDues, echues: [...rgDues.echues, { ...formE, id: uid("rg-e") }] });
+    setFormE(emptyRgEchue()); setShowEchue(false);
+  }
+  function addVenir() {
+    updateRg({ ...rgDues, aVenir: [...rgDues.aVenir, { ...formV, id: uid("rg-v") }] });
+    setFormV(emptyRgVenir()); setShowVenir(false);
+  }
+  function moveToEchue(item) {
+    updateRg({
+      aVenir: rgDues.aVenir.filter((r) => r.id !== item.id),
+      echues: [...rgDues.echues, { ...item, dateEnvoi: new Date().toISOString().slice(0, 10), notes: "" }],
+    });
+  }
+  function removeEchue(id) { updateRg({ ...rgDues, echues: rgDues.echues.filter((r) => r.id !== id) }); }
+  function updateEchue(id, patch) { updateRg({ ...rgDues, echues: rgDues.echues.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
+  function removeVenir(id) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.filter((r) => r.id !== id) }); }
+  function updateVenir(id, patch) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
+
+  const totalEchues = rgDues.echues.reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0);
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Retenues de garantie</h1>
+      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
+
+      {autoRg.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold mb-2" style={{ color: COLORS.green }}>Chantiers soldés (marché principal + TS confondus) — RG cumulée à réclamer ({autoRg.length})</h2>
+          <div className="flex flex-col gap-2">
+            {autoRg.map((item) => (
+              <Card key={item.chantierId} className="p-3" style={{ background: COLORS.greenSoft, border: "1px solid #BFE0CD" }}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <button
+                      className="text-sm font-medium hover:underline text-left"
+                      style={{ color: COLORS.ink }}
+                      onClick={() => { setSelectedChantier(item.chantierId); setTab("chantierDetail"); }}
+                    >
+                      {item.chantierTitre}
+                    </button>
+                    <p className="text-xs" style={{ color: COLORS.inkSoft }}>{item.client || ""} {item.nChantier ? `· ${item.nChantier}` : ""} · détecté automatiquement (chantier soldé à 100 %, réglé)</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold tabular-nums" style={{ color: COLORS.green }}>{fmtEUR(item.totalRg)}</span>
+                    {unlocked && <Btn size="sm" variant="primary" onClick={() => extractAutoRgPdf(item)}>Extraire en PDF</Btn>}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
+        {unlocked && <Btn size="sm" variant="primary" onClick={() => setShowEchue(true)}><Plus size={13} /> Ajouter</Btn>}
+      </div>
+      <Card className="overflow-x-auto mb-6">
+        <div style={{ overflowX: "auto" }}>
+        <table className="text-xs" style={{ width: "100%", minWidth: 820 }}>
+          <thead>
+            <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
+              <th className="text-left font-medium px-3 py-2">N° chantier</th>
+              <th className="text-left font-medium px-2 py-2">Nom</th>
+              <th className="text-right font-medium px-2 py-2">Montant HT</th>
+              <th className="text-right font-medium px-2 py-2">Montant TTC</th>
+              <th className="text-left font-medium px-2 py-2">BET / MO</th>
+              <th className="text-left font-medium px-2 py-2">Date envoi</th>
+              <th className="text-center font-medium px-2 py-2">Validation BET</th>
+              <th className="text-left font-medium px-2 py-2">Notes</th>
+              {unlocked && <th className="px-3 py-2"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rgDues.echues.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
+            {rgDues.echues.map((r) => (
+              <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                {unlocked ? (
+                  <>
+                    <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateEchue(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
+                    <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateEchue(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
+                    <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantHt ?? ""} onChange={(e) => updateEchue(r.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
+                    <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantTtc ?? ""} onChange={(e) => updateEchue(r.id, { montantTtc: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
+                    <td className="px-1 py-1"><TextInput value={r.betMo || ""} onChange={(e) => updateEchue(r.id, { betMo: e.target.value })} style={{ minWidth: 90 }} /></td>
+                    <td className="px-1 py-1"><TextInput type="date" value={r.dateEnvoi || ""} onChange={(e) => updateEchue(r.id, { dateEnvoi: e.target.value })} style={{ minWidth: 130 }} /></td>
+                    <td className="px-2 py-2 text-center">
+                      <input type="checkbox" checked={!!r.validBet} onChange={(e) => updateEchue(r.id, { validBet: e.target.checked })} style={{ width: 15, height: 15 }} />
+                    </td>
+                    <td className="px-1 py-1"><TextInput value={r.notes || ""} onChange={(e) => updateEchue(r.id, { notes: e.target.value })} placeholder="Remarque..." style={{ minWidth: 130 }} /></td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-2">{r.nChantier || "—"}</td>
+                    <td className="px-2 py-2 font-medium">{r.nom}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
+                    <td className="px-2 py-2">{r.betMo || "—"}</td>
+                    <td className="px-2 py-2">{fmtDate(r.dateEnvoi)}</td>
+                    <td className="px-2 py-2 text-center">{r.validBet ? <Check size={13} color={COLORS.green} /> : "—"}</td>
+                    <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{r.notes || "—"}</td>
+                  </>
+                )}
+                {unlocked && <td className="px-3 py-2 text-right"><button onClick={() => removeEchue(r.id)}><X size={13} color={COLORS.red} /></button></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+            </div>
+      </Card>
+
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG à venir</h2>
+        {unlocked && <Btn size="sm" variant="primary" onClick={() => setShowVenir(true)}><Plus size={13} /> Ajouter</Btn>}
+      </div>
+      <Card className="overflow-x-auto">
+        <div style={{ overflowX: "auto" }}>
+        <table className="text-xs" style={{ width: "100%", minWidth: 700 }}>
+          <thead>
+            <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
+              <th className="text-left font-medium px-3 py-2">N° chantier</th>
+              <th className="text-left font-medium px-2 py-2">Nom</th>
+              <th className="text-right font-medium px-2 py-2">Montant HT</th>
+              <th className="text-right font-medium px-2 py-2">Montant TTC</th>
+              <th className="text-left font-medium px-2 py-2">BET / MO</th>
+              <th className="text-left font-medium px-2 py-2">Échéance</th>
+              <th className="text-left font-medium px-2 py-2">À réclamer ?</th>
+              {unlocked && <th className="px-3 py-2"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rgDues.aVenir.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
+            {[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
+              const d = daysUntil(r.dateEcheance);
+              const soon = d !== null && d <= 30;
+              return (
+                <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                  {unlocked ? (
+                    <>
+                      <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateVenir(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
+                      <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateVenir(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
+                      <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantHt ?? ""} onChange={(e) => updateVenir(r.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
+                      <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantTtc ?? ""} onChange={(e) => updateVenir(r.id, { montantTtc: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
+                      <td className="px-1 py-1"><TextInput value={r.betMo || ""} onChange={(e) => updateVenir(r.id, { betMo: e.target.value })} style={{ minWidth: 90 }} /></td>
+                      <td className="px-1 py-1"><TextInput type="date" value={r.dateEcheance || ""} onChange={(e) => updateVenir(r.id, { dateEcheance: e.target.value })} style={{ minWidth: 130 }} /></td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2">{r.nChantier || "—"}</td>
+                      <td className="px-2 py-2 font-medium">{r.nom}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
+                      <td className="px-2 py-2">{r.betMo || "—"}</td>
+                      <td className="px-2 py-2">{fmtDate(r.dateEcheance)}</td>
+                    </>
+                  )}
+                  <td className="px-2 py-2">{soon ? <Pill color="amber">oui — {d}j</Pill> : <Pill>non</Pill>}</td>
+                  {unlocked && (
+                    <td className="px-3 py-2">
+                      <div className="flex gap-2 justify-end">
+                        <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
+                        <button title="Supprimer" onClick={() => removeVenir(r.id)}><X size={13} color={COLORS.red} /></button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+            </div>
+      </Card>
+
+      {showEchue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+          <Card className="w-full max-w-lg p-5">
+            <div className="flex items-center justify-between mb-4"><h3 className="font-semibold" style={{ color: COLORS.ink }}>Nouvelle RG échue</h3><button onClick={() => setShowEchue(false)}><X size={18} color={COLORS.inkSoft} /></button></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              <Field label="N° chantier"><TextInput value={formE.nChantier} onChange={(e) => setFormE({ ...formE, nChantier: e.target.value })} /></Field>
+              <Field label="Nom"><TextInput value={formE.nom} onChange={(e) => setFormE({ ...formE, nom: e.target.value })} /></Field>
+              <Field label="Montant HT"><TextInput type="number" value={formE.montantHt} onChange={(e) => setFormE({ ...formE, montantHt: e.target.value })} /></Field>
+              <Field label="Montant TTC"><TextInput type="number" value={formE.montantTtc} onChange={(e) => setFormE({ ...formE, montantTtc: e.target.value })} /></Field>
+              <Field label="BET / MO"><TextInput value={formE.betMo} onChange={(e) => setFormE({ ...formE, betMo: e.target.value })} /></Field>
+              <Field label="Date envoi"><TextInput type="date" value={formE.dateEnvoi} onChange={(e) => setFormE({ ...formE, dateEnvoi: e.target.value })} /></Field>
+              <Field label="Notes"><TextInput value={formE.notes} onChange={(e) => setFormE({ ...formE, notes: e.target.value })} /></Field>
+            </div>
+            <div className="flex justify-end gap-2 mt-4"><Btn variant="ghost" onClick={() => setShowEchue(false)}>Annuler</Btn><Btn variant="primary" onClick={addEchue}>Ajouter</Btn></div>
+          </Card>
+        </div>
+      )}
+      {showVenir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+          <Card className="w-full max-w-lg p-5">
+            <div className="flex items-center justify-between mb-4"><h3 className="font-semibold" style={{ color: COLORS.ink }}>Nouvelle RG à venir</h3><button onClick={() => setShowVenir(false)}><X size={18} color={COLORS.inkSoft} /></button></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              <Field label="N° chantier"><TextInput value={formV.nChantier} onChange={(e) => setFormV({ ...formV, nChantier: e.target.value })} /></Field>
+              <Field label="Nom"><TextInput value={formV.nom} onChange={(e) => setFormV({ ...formV, nom: e.target.value })} /></Field>
+              <Field label="Montant HT"><TextInput type="number" value={formV.montantHt} onChange={(e) => setFormV({ ...formV, montantHt: e.target.value })} /></Field>
+              <Field label="Montant TTC"><TextInput type="number" value={formV.montantTtc} onChange={(e) => setFormV({ ...formV, montantTtc: e.target.value })} /></Field>
+              <Field label="BET / MO"><TextInput value={formV.betMo} onChange={(e) => setFormV({ ...formV, betMo: e.target.value })} /></Field>
+              <Field label="Date échéance"><TextInput type="date" value={formV.dateEcheance} onChange={(e) => setFormV({ ...formV, dateEcheance: e.target.value })} /></Field>
+            </div>
+            <div className="flex justify-end gap-2 mt-4"><Btn variant="ghost" onClick={() => setShowVenir(false)}>Annuler</Btn><Btn variant="primary" onClick={addVenir}>Ajouter</Btn></div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Settings panel ----------
+// ---------- Documents manquants ----------
+function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
+  const rows = chantiers
+    .map((c) => ({ chantier: c, missing: missingDocuments(c) }))
+    .filter((r) => r.missing.length > 0)
+    .sort((a, b) => b.missing.length - a.missing.length);
+
+  const totalMissing = rows.reduce((a, r) => a + r.missing.length, 0);
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Documents manquants</h1>
+      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
+        Acte d'engagement, CCAP et avenants signés pour chaque chantier — devis signé suffit pour les petits chantiers sans BET/architecte.
+      </p>
+
+      {rows.length === 0 ? (
+        <Card className="p-8 text-center text-sm" style={{ color: COLORS.inkSoft }}>Tous les chantiers ont leurs documents essentiels 🎉</Card>
+      ) : (
+        <>
+          <div className="text-sm font-semibold mb-3" style={{ color: COLORS.red }}>{rows.length} chantier(s) — {totalMissing} document(s) manquant(s)</div>
+          <div className="flex flex-col gap-2">
+            {rows.map(({ chantier, missing }) => (
+              <Card key={chantier.id} className="p-3" style={{ background: COLORS.redSoft, border: "1px solid #E8C4BE" }}>
+                <div className="flex items-center justify-between">
+                  <button
+                    className="font-medium text-sm hover:underline text-left"
+                    style={{ color: COLORS.ink }}
+                    onClick={() => { setSelectedChantier(chantier.id); setTab("chantierDetail"); }}
+                  >
+                    {chantier.titre}
+                  </button>
+                  <span className="text-xs" style={{ color: COLORS.inkSoft }}>{chantier.client || ""}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {missing.map((d) => (
+                    <span key={d.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style={{ background: "#fff", color: COLORS.red, border: "1px solid #E8C4BE" }}>
+                      <X size={10} /> {d.label}
+                    </span>
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SettingsPanel({ onClose, editCode, onChangeCode, onReloadFromSource }) {
+  const [code, setCode] = useState(editCode);
+  const [confirmReload, setConfirmReload] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+      <Card className="w-full max-w-sm p-5">
+        <div className="flex items-center justify-between mb-3"><h3 className="font-semibold" style={{ color: COLORS.ink }}>Réglages</h3><button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button></div>
+        <Field label="Code d'édition (donné uniquement à Morgane)">
+          <TextInput value={code} onChange={(e) => setCode(e.target.value)} />
+        </Field>
+        <p className="text-xs mt-2" style={{ color: COLORS.inkSoft }}>
+          Ce code n'est pas un mot de passe sécurisé — c'est un simple verrou pour éviter les modifications accidentelles par l'équipe en consultation.
+        </p>
+        <div className="flex justify-end gap-2 mt-4">
+          <Btn variant="ghost" onClick={onClose}>Annuler</Btn>
+          <Btn variant="primary" onClick={() => { onChangeCode(code); onClose(); }}>Enregistrer</Btn>
+        </div>
+        <div className="mt-5 pt-4" style={{ borderTop: `1px solid ${COLORS.line}` }}>
+          <p className="text-xs font-medium mb-1" style={{ color: COLORS.ink }}>Recharger les données d'origine</p>
+          <p className="text-xs mb-2" style={{ color: COLORS.inkSoft }}>
+            Tes saisies sont désormais toujours conservées, même après une mise à jour de l'outil. Utilise ceci uniquement si tu veux tout écraser avec les dernières données corrigées — <span style={{ color: COLORS.red, fontWeight: 500 }}>ça efface toutes tes saisies en cours</span>.
+          </p>
+          {!confirmReload ? (
+            <Btn variant="ghost" size="sm" onClick={() => setConfirmReload(true)}>Recharger depuis les données source…</Btn>
+          ) : (
+            <div className="flex gap-2">
+              <Btn variant="ghost" size="sm" onClick={() => setConfirmReload(false)}>Annuler</Btn>
+              <Btn variant="primary" size="sm" onClick={() => { onReloadFromSource(); setConfirmReload(false); onClose(); }} style={{ background: COLORS.red }}>Oui, tout écraser</Btn>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+// ---------- Main App ----------
+const DEFAULT_EDIT_CODE = "MK2026";
+const DATA_VERSION = "2026-08-05-21";
+
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [chantiers, setChantiers] = useState([]);
+  const [rgDues, setRgDues] = useState({ echues: [], aVenir: [] });
+  const [editCode, setEditCode] = useState(DEFAULT_EDIT_CODE);
+  const [unlocked, setUnlocked] = useState(false);
+  const [showGate, setShowGate] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [tab, setTab] = useState("dashboard");
+  const [selectedChantierId, setSelectedChantierId] = useState(null);
+  const [saveError, setSaveError] = useState(false);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        let ch, rg, settings;
+        try { ch = await storage.get("chantiers", true); } catch { ch = null; }
+        try { rg = await storage.get("rg-dues", true); } catch { rg = null; }
+        try { settings = await storage.get("settings", true); } catch { settings = null; }
+
+        const parsedSettings = settings && settings.value ? JSON.parse(settings.value) : {};
+        // Once real data exists in storage, it always wins — never auto-overwrite it again.
+        // (Earlier builds force-reseeded on every version bump, which silently wiped out
+        // anything the person had already entered. Seeding now only ever happens once,
+        // on a genuine first-ever load when nothing is stored yet.)
+        if (ch && ch.value) {
+          setChantiers(JSON.parse(ch.value));
+        } else {
+          setChantiers(SEED_CHANTIERS);
+          await storage.set("chantiers", JSON.stringify(SEED_CHANTIERS), true);
+        }
+        if (rg && rg.value) {
+          setRgDues(JSON.parse(rg.value));
+        } else {
+          setRgDues(SEED_RG);
+          await storage.set("rg-dues", JSON.stringify(SEED_RG), true);
+        }
+        if (settings && settings.value) {
+          setEditCode(parsedSettings.editCode || DEFAULT_EDIT_CODE);
+        } else {
+          await storage.set("settings", JSON.stringify({ editCode: parsedSettings.editCode || DEFAULT_EDIT_CODE }), true);
+        }
+      } catch (e) {
+        console.error("Erreur de chargement", e);
+        setChantiers(SEED_CHANTIERS);
+        setRgDues(SEED_RG);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const persistChantiers = useCallback(async (next) => {
+    setChantiers(next);
+    try {
+      await storage.set("chantiers", JSON.stringify(next), true);
+      setSaveError(false);
+    } catch (e) {
+      console.error("Erreur de sauvegarde", e);
+      setSaveError(true);
+    }
+  }, []);
+
+  const persistRg = useCallback(async (next) => {
+    setRgDues(next);
+    try {
+      await storage.set("rg-dues", JSON.stringify(next), true);
+      setSaveError(false);
+    } catch (e) {
+      console.error("Erreur de sauvegarde", e);
+      setSaveError(true);
+    }
+  }, []);
+
+  function updateChantier(updated) {
+    persistChantiers(chantiers.map((c) => (c.id === updated.id ? updated : c)));
+  }
+
+  function markMarcheRgExtracted(chantierId) {
+    persistChantiers(chantiers.map((c) => c.id !== chantierId ? c : { ...c, rgExtracted: true }));
+  }
+
+  function createChantier({ titre, client }) {
+    const newC = {
+      id: uid("ch"), sheet: titre, titre, client, nChantier: "", dateDemarrage: null,
+      betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [],
+      marches: [{
+        id: "marche-principal", nom: "Marché principal", montantHt: 0, tauxTva: 0.085,
+        rgMode: "5pct", rgPct: 0.05, prorataPct: null,
+        addMontant: null, addDate: null, tvaRegime: "085", type: "principal",
+      }],
+      situations: [],
+      documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "manquant" },
+    };
+    persistChantiers([...chantiers, newC]);
+    setSelectedChantierId(newC.id);
+    setTab("chantierDetail");
+  }
+
+  // Quick add for one-off small jobs billed in a single invoice — creates the chantier,
+  // its (only) marché, and the situation itself in one step, without going through the
+  // usual "set up the marché first" flow.
+  const FACTURES_LIBRES_ID = "factures-libres";
+
+  function archiveChantier(id, archived) {
+    persistChantiers(chantiers.map((c) => (c.id === id ? { ...c, archived } : c)));
+  }
+
+  function deleteChantier(id) {
+    persistChantiers(chantiers.filter((c) => c.id !== id));
+    if (selectedChantierId === id) {
+      setSelectedChantierId(null);
+      setTab("chantiers");
+    }
+  }
+
+  // Quick add for one-off small jobs billed in a single invoice — these are NOT chantiers.
+  // They all live inside one shared, hidden container so they never clutter the Chantiers
+  // list, but they still show up normally in "Règlements en attente" like any situation.
+  function createFactureSeule({ titre, client, nFact, dateFacture, montantHt, tvaRegime }) {
+    const rate = TVA_REGIMES[tvaRegime]?.rate ?? 0.085;
+    const ht = montantHt || 0;
+    const tva = Math.round(ht * rate * 100) / 100;
+    const ttc = Math.round((ht + tva) * 100) / 100;
+    const marcheId = uid("marche");
+    const newMarche = {
+      id: marcheId, nom: titre, montantHt: ht, tauxTva: rate,
+      rgMode: "banque", rgPct: 0.05, prorataPct: null,
+      addMontant: null, addDate: null, tvaRegime: tvaRegime || "085", type: "principal",
+      factureClient: client || "",
+    };
+    const newSit = {
+      id: uid("sit"), nSituation: 1, nFact: nFact || "", dateFacture: dateFacture || "",
+      pctAvancement: 1, montantHt: ht, tva, montantTtc: ttc, rg: 0, avanceDeduite: 0, prorata: 0, rembAdd: 0,
+      fournisseurs: [], totalARecevoir: ttc, dateEnvoi: dateFacture || "", validBet: "", validAmo: "", validAutre: "",
+      datePaiement: "", montantRegle: null, dateDepotChorus: "", paye: false, note: "", marcheId,
+    };
+    const existing = chantiers.find((c) => c.id === FACTURES_LIBRES_ID);
+    if (existing) {
+      const updated = { ...existing, marches: [...existing.marches, newMarche], situations: [...existing.situations, newSit] };
+      persistChantiers(chantiers.map((c) => (c.id === FACTURES_LIBRES_ID ? updated : c)));
+    } else {
+      const newC = {
+        id: FACTURES_LIBRES_ID, sheet: "Factures ponctuelles", titre: "Factures ponctuelles", client: null,
+        nChantier: "", dateDemarrage: null, betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [],
+        marches: [newMarche], situations: [newSit],
+        documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "non_concerne" },
+        isFacturesLibres: true,
+      };
+      persistChantiers([...chantiers, newC]);
+    }
+    setSelectedChantierId(FACTURES_LIBRES_ID);
+    setTab("chantierDetail");
+  }
+
+  function markPaid(chantierId, situationId, dateStr, montant) {
+    const next = chantiers.map((c) => {
+      if (c.id !== chantierId) return c;
+      return { ...c, situations: c.situations.map((s) => {
+        if (s.id !== situationId) return s;
+        const dejaRecu = s.montantRegle || 0;
+        const montantCePaiement = montant != null ? montant : Math.max(0, (s.totalARecevoir || 0) - dejaRecu);
+        const totalRecu = Math.round((dejaRecu + montantCePaiement) * 100) / 100;
+        const solde = Math.round(((s.totalARecevoir || 0) - totalRecu) * 100) / 100;
+        return { ...s, datePaiement: dateStr, montantRegle: totalRecu, paye: solde <= 0.01 };
+      }) };
+    });
+    persistChantiers(next);
+  }
+
+  function markAddPaid(chantierId, marcheId, dateStr) {
+    const next = chantiers.map((c) => c.id !== chantierId ? c : {
+      ...c, marches: c.marches.map((m) => (m.id === marcheId ? { ...m, addDate: dateStr } : m)),
+    });
+    persistChantiers(next);
+  }
+
+  function markRgReceived(rgEchueId) {
+    persistRg({ ...rgDues, echues: rgDues.echues.filter((r) => r.id !== rgEchueId) });
+  }
+
+  function deleteSituationGlobal(chantierId, situationId) {
+    const next = chantiers.map((c) => c.id !== chantierId ? c : { ...c, situations: c.situations.filter((s) => s.id !== situationId) });
+    persistChantiers(next);
+  }
+
+  function changeEditCode(newCode) {
+    setEditCode(newCode);
+    storage.set("settings", JSON.stringify({ editCode: newCode }), true).catch(() => {});
+  }
+
+  function reloadFromSource() {
+    persistChantiers(SEED_CHANTIERS);
+    persistRg(SEED_RG);
+  }
+
+  const computed = useComputed(chantiers, rgDues);
+  const selectedChantier = chantiers.find((c) => c.id === selectedChantierId);
+
+  if (loading) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center" style={{ background: COLORS.bg }}>
+        <div className="flex items-center gap-2" style={{ color: COLORS.inkSoft }}>
+          <Loader2 size={18} className="animate-spin" /> Chargement des données...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-screen flex flex-col" style={{ background: COLORS.bg, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      {isMobile && (
+        <div className="flex items-center justify-between px-3 py-2.5 shrink-0" style={{ background: COLORS.navy }}>
+          <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-md" aria-label="Menu">
+            <Menu size={20} color="#fff" />
+          </button>
+          <img src={LOGO_SYNERGIE} alt="SYNERGIE BTP" style={{ height: 24 }} />
+          <button onClick={() => (unlocked ? setUnlocked(false) : setShowGate(true))} className="p-1.5 rounded-md" aria-label="Édition">
+            {unlocked ? <Unlock size={18} color={COLORS.green} /> : <Lock size={18} color="#B7C3D6" />}
+          </button>
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
+        <Sidebar
+          tab={tab === "chantierDetail" ? "chantiers" : tab}
+          setTab={(t) => { setTab(t); setSelectedChantierId(null); }}
+          unlocked={unlocked}
+          onLockClick={() => (unlocked ? setUnlocked(false) : setShowGate(true))}
+          onSettingsClick={() => setShowSettings(true)}
+          isMobile={isMobile}
+          mobileOpen={sidebarOpen}
+          onCloseMobile={() => setSidebarOpen(false)}
+        />
+      <div className="flex-1 overflow-y-auto">
+        {saveError && (
+          <div className="px-4 py-2 text-xs font-medium" style={{ background: COLORS.redSoft, color: COLORS.red }}>
+            La dernière modification n'a pas pu être sauvegardée. Vérifiez la connexion et réessayez.
+          </div>
+        )}
+        {tab === "dashboard" && <Dashboard chantiers={chantiers} rgDues={rgDues} computed={computed} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
+        {tab === "reglements" && (
+          <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
+        )}
+        {tab === "chantiers" && (
+          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} />
+        )}
+        {tab === "chantierDetail" && selectedChantier && (
+          <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} />
+        )}
+        {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRg={markMarcheRgExtracted} />}
+        {tab === "documents" && <DocumentsView chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
+      </div>
+      </div>
+
+      {showGate && (
+        <EditGateModal
+          currentCode={editCode}
+          onClose={() => setShowGate(false)}
+          onUnlock={() => { setUnlocked(true); setShowGate(false); }}
+        />
+      )}
+      {showSettings && (
+        <SettingsPanel editCode={editCode} onChangeCode={changeEditCode} onClose={() => setShowSettings(false)} onReloadFromSource={reloadFromSource} />
+      )}
+    </div>
+  );
+}
