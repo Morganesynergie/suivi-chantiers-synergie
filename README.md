@@ -17,6 +17,9 @@ stockage propre aux artefacts Claude.
   qui parle à nos routes API (`fetch`)
 - `app/api/kv/[key]/route.js` — route serveur qui lit/écrit dans Supabase
   avec la clé `service_role` (jamais exposée au navigateur)
+- `app/api/documents/route.js` — route serveur qui gère l'upload/téléchargement/
+  suppression des documents de chantier dans le bucket Supabase Storage
+  `chantier-documents` (glisser-déposer dans les "bulles" documents)
 - `lib/supabaseServer.js` — client Supabase serveur
 - `supabase/schema_and_seed.sql` — création de la table `kv_store` +
   import des données réelles (44 chantiers, RG, code d'édition)
@@ -45,6 +48,11 @@ juste un verrou d'édition côté UI, comme dans la version d'origine.
    - l'**URL du projet** (`SUPABASE_URL`)
    - la clé **`service_role`** (`SUPABASE_SERVICE_ROLE_KEY`) — à garder
      secrète, ne jamais la mettre dans une variable `NEXT_PUBLIC_*`
+4. Aller dans **Storage**, créer un bucket nommé `chantier-documents`,
+   **non public** (privé). Il sert à stocker les documents de chantier
+   (CCAP, actes d'engagement, DC4...) glissés-déposés dans l'appli. Aucune
+   policy RLS à configurer : la route serveur y accède uniquement avec la
+   clé `service_role`, qui contourne RLS.
 
 ### 2. Développement local
 
