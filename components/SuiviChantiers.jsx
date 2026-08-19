@@ -733,9 +733,11 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
       <html><head><title>Règlements en attente — SYNERGIE BTP</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
-        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;gap:8px;}
-        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
-        .print-btn{background:#DCE9F7;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
+        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
+        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
         @media print { .close-bar{display:none;} .month-block{page-break-inside:avoid;} }
         .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:20px;}
         .header img{height:34px;}
@@ -750,7 +752,13 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
         th{background:#F7F5EF;}
         footer{margin-top:28px;font-size:10px;color:#9AA3B1;text-align:center;}
       </style></head><body>
-      <div class="close-bar"><button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <div class="close-bar">
+        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-actions">
+          <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+          <button class="close-btn" onclick="window.close()">✕ Fermer</button>
+        </div>
+      </div>
       <div class="header">
         <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
         <div class="meta">Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
@@ -1165,6 +1173,16 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     return chantier.marches.find((m) => m.id === marcheId) || chantier.marches[0] || null;
   }
 
+  // % d'avancement cumulé d'un marché/TS : somme du montant HT de toutes les
+  // situations de ce bloc (de la 1 à la dernière, celle en cours incluse)
+  // rapportée au montant HT total du marché — pas juste le poids de cette
+  // seule situation.
+  function cumulativeMontantHt(marcheId, ownHt, excludeId) {
+    const others = chantier.situations.filter((s) => s.marcheId === marcheId && s.id !== excludeId);
+    const sum = others.reduce((a, s) => a + (num(s.montantHt) || 0), 0);
+    return sum + ownHt;
+  }
+
   function autoCalc(f) {
     const marche = getMarche(f.marcheId) || {};
     const ht = num(f.montantHt);
@@ -1182,7 +1200,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const paye = f.datePaiement ? true : !!f.paye;
     const montantRegle = f.montantRegle !== "" && f.montantRegle != null ? num(f.montantRegle) : (f.montantRegle === "" ? null : f.montantRegle);
     const marcheHt = num(marche.montantHt);
-    const pctAvancement = marcheHt ? Math.round((ht / marcheHt) * 1000) / 1000 : 0;
+    const cumulHt = cumulativeMontantHt(marche.id || f.marcheId, ht, f.id);
+    const pctAvancement = marcheHt ? Math.round((cumulHt / marcheHt) * 1000) / 1000 : 0;
     const nSituation = f.nSituation === "" || f.nSituation === null || f.nSituation === undefined ? f.nSituation : num(f.nSituation);
     // Les champs numériques doivent impérativement être castés en Number ici (et
     // non simplement propagés via ...f) : ils arrivent en string depuis les
@@ -1373,12 +1392,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         table{width:100%;border-collapse:collapse;font-size:11px;}
         th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
         th{background:#F7F5EF;}
-        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;gap:8px;}
-        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
-        .print-btn{background:#DCE9F7;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
+        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
+        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
         @media print { .close-bar{display:none;} }
       </style></head><body>
-      <div class="close-bar"><button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <div class="close-bar">
+        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-actions">
+          <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+          <button class="close-btn" onclick="window.close()">✕ Fermer</button>
+        </div>
+      </div>
       <h1>Suivi de chantier</h1>
       <h2>${chantier.titre}${chantier.client ? " — " + chantier.client : ""}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""} · BET/Archi : ${chantier.betArchi || "—"} · Démarrage : ${chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "—"}</h2>
       <div class="summary">
@@ -1988,10 +2015,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                 const selMarcheTva = getMarche(form.marcheId || chantier.marches[0]?.id);
                 const rate = TVA_REGIMES[selMarcheTva?.tvaRegime]?.rate ?? 0.085;
                 const marcheHt = num(selMarcheTva?.montantHt);
-                const pct = marcheHt ? (num(form.montantHt) / marcheHt) * 100 : 0;
+                const cumulHt = cumulativeMontantHt(selMarcheTva?.id || form.marcheId, num(form.montantHt), form.id);
+                const pct = marcheHt ? (cumulHt / marcheHt) * 100 : 0;
                 return (
                   <>
-                    <Field label="% Avancement (calculé : montant HT / montant HT marché)">
+                    <Field label="% Avancement (cumulé : total facturé sur ce marché / montant HT marché)">
                       <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
                         {pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
                       </div>
@@ -2128,12 +2156,20 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
         th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
         th{background:#F7F5EF;}
         .total{margin-top:16px;font-size:14px;font-weight:600;}
-        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;gap:8px;}
-        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
-        .print-btn{background:#DCE9F7;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
+        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
+        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
         @media print { .close-bar{display:none;} }
       </style></head><body>
-      <div class="close-bar"><button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <div class="close-bar">
+        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-actions">
+          <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+          <button class="close-btn" onclick="window.close()">✕ Fermer</button>
+        </div>
+      </div>
       <h1>Retenue de garantie à réclamer</h1>
       <h2>${item.chantierTitre}${item.client ? " — " + item.client : ""}${item.nChantier ? " (" + item.nChantier + ")" : ""}</h2>
       <p>Chantier soldé à 100 % (marché principal et TS confondus), entièrement facturé et réglé. Retenue de garantie cumulée :</p>
