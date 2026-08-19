@@ -1154,7 +1154,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         table{width:100%;border-collapse:collapse;font-size:11px;}
         th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
         th{background:#F7F5EF;}
+        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;}
+        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        @media print { .close-bar{display:none;} }
       </style></head><body>
+      <div class="close-bar"><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
       <h1>Suivi de chantier</h1>
       <h2>${chantier.titre}${chantier.client ? " — " + chantier.client : ""}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""} · BET/Archi : ${chantier.betArchi || "—"} · Démarrage : ${chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "—"}</h2>
       <div class="summary">
@@ -1764,7 +1768,11 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
         th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
         th{background:#F7F5EF;}
         .total{margin-top:16px;font-size:14px;font-weight:600;}
+        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;}
+        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        @media print { .close-bar{display:none;} }
       </style></head><body>
+      <div class="close-bar"><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
       <h1>Retenue de garantie à réclamer</h1>
       <h2>${item.chantierTitre}${item.client ? " — " + item.client : ""}${item.nChantier ? " (" + item.nChantier + ")" : ""}</h2>
       <p>Chantier soldé à 100 % (marché principal et TS confondus), entièrement facturé et réglé. Retenue de garantie cumulée :</p>
