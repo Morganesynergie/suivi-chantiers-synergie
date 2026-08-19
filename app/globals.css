@@ -10,12 +10,12 @@
   --color-foreground: var(--foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Pas de thème sombre : l'application gère elle-même ses propres couleurs
+   (constante COLORS) sur un fond clair fixe. Honorer prefers-color-scheme
+   ici changeait juste --foreground en gris clair sur les téléphones en mode
+   sombre, ce qui rendait le texte des tableaux presque illisible sur le
+   fond clair des cartes (texte hérité de body, jamais recouvert par les
+   styles de chaque cellule). */
 
 body {
   background: var(--background);
