@@ -341,6 +341,35 @@ function computeAutoRgCumulees(chantiers) {
   return out;
 }
 
+// Répare silencieusement les situations dont des champs numériques ont été
+// enregistrés comme chaînes de caractères (ancien bug de saisie : ces champs
+// n'étaient pas explicitement convertis en Number avant sauvegarde). Une
+// string mélangée à une somme numérique se transforme en concaténation
+// silencieuse (ex. 0 + "29745.44" = "029745.44"), ce qui fausse tous les
+// totaux du chantier et casse l'affichage "€" dans les exports PDF.
+const NUMERIC_SITUATION_FIELDS = ["nSituation", "pctAvancement", "montantHt", "tva", "montantTtc", "rg", "avanceDeduite", "prorata", "rembAdd", "totalARecevoir", "montantRegle"];
+function normalizeChantiersData(list) {
+  let changed = false;
+  const next = list.map((c) => {
+    let chantierChanged = false;
+    const situations = (c.situations || []).map((s) => {
+      let sChanged = false;
+      const patched = { ...s };
+      for (const k of NUMERIC_SITUATION_FIELDS) {
+        if (typeof s[k] === "string" && s[k].trim() !== "" && !isNaN(Number(s[k]))) {
+          patched[k] = Number(s[k]);
+          sChanged = true;
+        }
+      }
+      if (sChanged) { chantierChanged = true; return patched; }
+      return s;
+    });
+    if (chantierChanged) { changed = true; return { ...c, situations }; }
+    return c;
+  });
+  return { changed, chantiers: next };
+}
+
 function allSituationsFlat(chantiers) {
   const out = [];
   for (const ch of chantiers) {
@@ -1152,7 +1181,30 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const total = f.totalARecevoir !== "" ? num(f.totalARecevoir) : Math.round((ttc - rg - prorata - remb - fournisseurTotal) * 100) / 100;
     const paye = f.datePaiement ? true : !!f.paye;
     const montantRegle = f.montantRegle !== "" && f.montantRegle != null ? num(f.montantRegle) : (f.montantRegle === "" ? null : f.montantRegle);
-    return { ...f, marcheId: marche.id || f.marcheId, tva, montantTtc: ttc, rg, fournisseurs, totalARecevoir: total, paye, montantRegle };
+    const marcheHt = num(marche.montantHt);
+    const pctAvancement = marcheHt ? Math.round((ht / marcheHt) * 1000) / 1000 : 0;
+    const nSituation = f.nSituation === "" || f.nSituation === null || f.nSituation === undefined ? f.nSituation : num(f.nSituation);
+    // Les champs numériques doivent impérativement être castés en Number ici (et
+    // non simplement propagés via ...f) : ils arrivent en string depuis les
+    // <input type="number">, et une string "additionnée" à un total numérique
+    // fait une concaténation silencieuse (ex. 0 + "29745.44" = "029745.44"),
+    // ce qui casse tous les totaux du chantier en aval et l'affichage en €.
+    return {
+      ...f,
+      marcheId: marche.id || f.marcheId,
+      nSituation,
+      montantHt: ht,
+      pctAvancement,
+      tva,
+      montantTtc: ttc,
+      rg,
+      prorata,
+      rembAdd: remb,
+      fournisseurs,
+      totalARecevoir: total,
+      paye,
+      montantRegle,
+    };
   }
 
   function openNew(marcheId) {
@@ -1432,6 +1484,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
   const reqDocs = requiredDocuments(chantier);
   const missingDocs = reqDocs.filter((d) => !d.present);
+  const coreDocs = reqDocs.filter((d) => !d.isAvenant);
+  const docsPresentCount = coreDocs.filter((d) => d.present).length;
+  const docsTotalCount = coreDocs.length;
+  const docsPresentPct = docsTotalCount ? Math.round((docsPresentCount / docsTotalCount) * 100) : 100;
 
   const totalMarcheHt = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
   const totalFacture = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
@@ -1480,13 +1536,31 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         </div>
       </Card>
 
-      <Card className="p-3 mb-4" style={{ background: missingDocs.length ? COLORS.redSoft : COLORS.greenSoft, border: `1px solid ${missingDocs.length ? "#E8C4BE" : "#BFE0CD"}` }}>
-        <div className="flex items-center gap-2 mb-3">
-          <FileWarning size={15} color={missingDocs.length ? COLORS.red : COLORS.green} />
-          <span className="text-xs font-semibold" style={{ color: missingDocs.length ? COLORS.red : COLORS.green }}>
-            {missingDocs.length ? `${missingDocs.length} document(s) manquant(s)` : "Tous les documents essentiels sont réunis"}
-          </span>
-          {!hasBetArchi(chantier) && <span className="text-xs" style={{ color: COLORS.inkSoft }}>(petit chantier sans BET/archi)</span>}
+      <Card className="p-4 mb-4" style={{ border: `1px solid ${missingDocs.length ? "#E8C4BE" : "#BFE0CD"}` }}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center justify-center rounded-full shrink-0" style={{ width: 36, height: 36, background: missingDocs.length ? COLORS.redSoft : COLORS.greenSoft }}>
+            <FileWarning size={17} color={missingDocs.length ? COLORS.red : COLORS.green} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>
+                {missingDocs.length ? `${missingDocs.length} document${missingDocs.length > 1 ? "s" : ""} manquant${missingDocs.length > 1 ? "s" : ""}` : "Dossier documentaire complet"}
+              </span>
+              {!hasBetArchi(chantier) && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: "#F0EEE6", color: COLORS.inkSoft }}>
+                  petit chantier sans BET/archi
+                </span>
+              )}
+            </div>
+            {docsTotalCount > 0 && (
+              <div className="flex items-center gap-2 mt-1.5">
+                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 5, background: "#EDEAE0", maxWidth: 240 }}>
+                  <div style={{ height: "100%", width: `${docsPresentPct}%`, background: missingDocs.length ? COLORS.amber : COLORS.green, borderRadius: 999, transition: "width 0.2s" }} />
+                </div>
+                <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: COLORS.inkSoft }}>{docsPresentCount}/{docsTotalCount} réunis</span>
+              </div>
+            )}
+          </div>
         </div>
         {docError && <p className="text-xs mb-2" style={{ color: COLORS.red }}>{docError}</p>}
         <input
@@ -1909,13 +1983,19 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               <Field label="N° situation"><TextInput value={form.nSituation} onChange={(e) => setForm({ ...form, nSituation: e.target.value })} /></Field>
               <Field label="N° facture"><TextInput value={form.nFact} onChange={(e) => setForm({ ...form, nFact: e.target.value })} /></Field>
               <Field label="Date facture"><TextInput type="date" value={form.dateFacture} onChange={(e) => setForm({ ...form, dateFacture: e.target.value })} /></Field>
-              <Field label="% Avancement (0.25 = 25%)"><TextInput type="number" step="0.001" value={form.pctAvancement} onChange={(e) => setForm({ ...form, pctAvancement: e.target.value })} /></Field>
               <Field label="Montant HT"><TextInput type="number" step="0.01" value={form.montantHt} onChange={(e) => setFormAuto({ montantHt: e.target.value })} /></Field>
               {(() => {
                 const selMarcheTva = getMarche(form.marcheId || chantier.marches[0]?.id);
                 const rate = TVA_REGIMES[selMarcheTva?.tvaRegime]?.rate ?? 0.085;
+                const marcheHt = num(selMarcheTva?.montantHt);
+                const pct = marcheHt ? (num(form.montantHt) / marcheHt) * 100 : 0;
                 return (
                   <>
+                    <Field label="% Avancement (calculé : montant HT / montant HT marché)">
+                      <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
+                        {pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
+                      </div>
+                    </Field>
                     <Field label={`TVA calculée (${TVA_REGIMES[selMarcheTva?.tvaRegime]?.label || "085"}, réglée sur le marché)`}>
                       <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
                         {fmtEUR(Math.round(num(form.montantHt) * rate * 100) / 100)}
@@ -2395,7 +2475,14 @@ export default function App() {
         // anything the person had already entered. Seeding now only ever happens once,
         // on a genuine first-ever load when nothing is stored yet.)
         if (ch && ch.value) {
-          setChantiers(JSON.parse(ch.value));
+          const parsedChantiers = JSON.parse(ch.value);
+          const { changed, chantiers: fixedChantiers } = normalizeChantiersData(parsedChantiers);
+          setChantiers(fixedChantiers);
+          if (changed) {
+            // Auto-réparation silencieuse de données déjà enregistrées avec
+            // des champs numériques en string (voir normalizeChantiersData).
+            storage.set("chantiers", JSON.stringify(fixedChantiers), true).catch(() => {});
+          }
         } else {
           setChantiers(SEED_CHANTIERS);
           await storage.set("chantiers", JSON.stringify(SEED_CHANTIERS), true);
