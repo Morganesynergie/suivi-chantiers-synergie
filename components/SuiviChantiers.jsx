@@ -733,11 +733,19 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
       <html><head><title>Règlements en attente — SYNERGIE BTP</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
-        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
-        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
-        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
-        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
-        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
+        .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
+        .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
+        .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
+        .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        @media (max-width:480px){
+          .close-bar{padding:8px 12px;}
+          .close-bar-label{display:none;}
+          .close-bar-brand img{height:20px;}
+          .print-btn,.close-btn{padding:7px 11px;font-size:12px;}
+        }
         @media print { .close-bar{display:none;} .month-block{page-break-inside:avoid;} }
         .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:20px;}
         .header img{height:34px;}
@@ -753,7 +761,10 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
         footer{margin-top:28px;font-size:10px;color:#9AA3B1;text-align:center;}
       </style></head><body>
       <div class="close-bar">
-        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-brand">
+          <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+          <span class="close-bar-label">Aperçu avant impression</span>
+        </div>
         <div class="close-bar-actions">
           <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
           <button class="close-btn" onclick="window.close()">✕ Fermer</button>
@@ -1392,15 +1403,26 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         table{width:100%;border-collapse:collapse;font-size:11px;}
         th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
         th{background:#F7F5EF;}
-        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
-        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
-        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
-        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
-        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
+        .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
+        .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
+        .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
+        .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        @media (max-width:480px){
+          .close-bar{padding:8px 12px;}
+          .close-bar-label{display:none;}
+          .close-bar-brand img{height:20px;}
+          .print-btn,.close-btn{padding:7px 11px;font-size:12px;}
+        }
         @media print { .close-bar{display:none;} }
       </style></head><body>
       <div class="close-bar">
-        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-brand">
+          <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+          <span class="close-bar-label">Aperçu avant impression</span>
+        </div>
         <div class="close-bar-actions">
           <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
           <button class="close-btn" onclick="window.close()">✕ Fermer</button>
@@ -2156,15 +2178,26 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
         th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
         th{background:#F7F5EF;}
         .total{margin-top:16px;font-size:14px;font-weight:600;}
-        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:12px 20px;margin:-32px -32px 24px -32px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
-        .close-bar-label{color:rgba(255,255,255,0.65);font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
-        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;}
-        .print-btn{background:#fff;color:#16233B;border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.18);white-space:nowrap;}
-        .close-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.32);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+        .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
+        .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
+        .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
+        .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
+        .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        @media (max-width:480px){
+          .close-bar{padding:8px 12px;}
+          .close-bar-label{display:none;}
+          .close-bar-brand img{height:20px;}
+          .print-btn,.close-btn{padding:7px 11px;font-size:12px;}
+        }
         @media print { .close-bar{display:none;} }
       </style></head><body>
       <div class="close-bar">
-        <span class="close-bar-label">Aperçu avant impression</span>
+        <div class="close-bar-brand">
+          <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+          <span class="close-bar-label">Aperçu avant impression</span>
+        </div>
         <div class="close-bar-actions">
           <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
           <button class="close-btn" onclick="window.close()">✕ Fermer</button>
