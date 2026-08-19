@@ -657,27 +657,16 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
     const grandTotal = monthsToExport.reduce((a, g) => a + g.total, 0);
     const isGlobal = selectedKeys.length === exportGroups.length;
     const periodLabel = isGlobal ? "Toutes échéances" : monthsToExport.map((g) => g.label).join(", ");
-    const statutLabel = (s) => {
-      if (s.montantRegle) return `Partiel — reste sur ${fmtEUR(s.totalARecevoirOriginal)}`;
-      if (s.isADDPending) return "Avance de démarrage";
-      if (s.isRgPending) return "RG à réclamer";
-      if (!s.validBet) return "Validation BET en attente";
-      const retard = joursRetardReglement(s);
-      if (retard > 0) return `${retard} j de retard`;
-      if (retard > -7) return `Échéance dans ${Math.abs(retard)} j`;
-      return "À jour";
-    };
     const blocks = monthsToExport.map((g) => {
       const rows = g.items.map((s) => `<tr>
           <td>${s.chantierTitre || "—"}${s.chantierClient ? " — " + s.chantierClient : ""}</td>
           <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
           <td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
-          <td>${statutLabel(s)}</td>
         </tr>`).join("");
       return `
         <div class="month-block">
           <div class="month-header"><span>${g.label}</span><span>${fmtEUR(g.total)}</span></div>
-          <table><thead><tr><th>Client / Chantier</th><th>N° Sit.</th><th>N° Fact.</th><th>Date</th><th>À recevoir</th><th>Statut</th></tr></thead>
+          <table><thead><tr><th>Client / Chantier</th><th>N° Sit.</th><th>N° Fact.</th><th>Date</th><th>À recevoir</th></tr></thead>
           <tbody>${rows}</tbody></table>
         </div>`;
     }).join("");
