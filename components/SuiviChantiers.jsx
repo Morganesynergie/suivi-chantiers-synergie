@@ -620,6 +620,104 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
     }));
   }, [computed.impayees, q]);
 
+  // Regroupement par mois pour l'export PDF — indépendant de la recherche à l'écran (q),
+  // pour que l'export "global" couvre bien tout, même si une recherche est active.
+  const exportGroups = useMemo(() => {
+    const byMonth = {};
+    for (const s of computed.impayees) {
+      const k = monthKey(s.dateFacture);
+      if (!byMonth[k]) byMonth[k] = [];
+      byMonth[k].push(s);
+    }
+    return Object.keys(byMonth).sort().map((k) => ({
+      key: k,
+      label: monthLabel(k),
+      items: byMonth[k].sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || "")),
+      total: byMonth[k].reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+    }));
+  }, [computed.impayees]);
+
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportSelectedMonths, setExportSelectedMonths] = useState([]);
+
+  function openExportPanel() {
+    setExportSelectedMonths(exportGroups.map((g) => g.key));
+    setShowExportPanel(true);
+  }
+
+  function toggleExportMonth(key) {
+    setExportSelectedMonths((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  function exportReglementsPdf(selectedKeys) {
+    const monthsToExport = exportGroups.filter((g) => selectedKeys.includes(g.key));
+    if (!monthsToExport.length) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const grandTotal = monthsToExport.reduce((a, g) => a + g.total, 0);
+    const isGlobal = selectedKeys.length === exportGroups.length;
+    const periodLabel = isGlobal ? "Toutes échéances" : monthsToExport.map((g) => g.label).join(", ");
+    const statutLabel = (s) => {
+      if (s.montantRegle) return `Partiel — reste sur ${fmtEUR(s.totalARecevoirOriginal)}`;
+      if (s.isADDPending) return "Avance de démarrage";
+      if (s.isRgPending) return "RG à réclamer";
+      if (!s.validBet) return "Validation BET en attente";
+      const retard = joursRetardReglement(s);
+      if (retard > 0) return `${retard} j de retard`;
+      if (retard > -7) return `Échéance dans ${Math.abs(retard)} j`;
+      return "À jour";
+    };
+    const blocks = monthsToExport.map((g) => {
+      const rows = g.items.map((s) => `<tr>
+          <td>${s.chantierTitre || "—"}${s.chantierClient ? " — " + s.chantierClient : ""}</td>
+          <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
+          <td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
+          <td>${statutLabel(s)}</td>
+        </tr>`).join("");
+      return `
+        <div class="month-block">
+          <div class="month-header"><span>${g.label}</span><span>${fmtEUR(g.total)}</span></div>
+          <table><thead><tr><th>Client / Chantier</th><th>N° Sit.</th><th>N° Fact.</th><th>Date</th><th>À recevoir</th><th>Statut</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        </div>`;
+    }).join("");
+    win.document.write(`
+      <html><head><title>Règlements en attente — SYNERGIE BTP</title>
+      <style>
+        body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
+        .close-bar{position:sticky;top:0;background:#16233B;padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;justify-content:flex-end;}
+        .close-btn{background:#fff;color:#16233B;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+        @media print { .close-bar{display:none;} .month-block{page-break-inside:avoid;} }
+        .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:20px;}
+        .header img{height:34px;}
+        .header .meta{text-align:right;font-size:11px;color:#5B6472;}
+        h1{font-size:19px;margin:0 0 2px 0;}
+        h2{font-size:13px;font-weight:500;color:#5B6779;margin:0 0 20px 0;}
+        .grand-total{background:#DCE9F7;color:#16233B;border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;font-size:15px;font-weight:600;}
+        .month-block{margin-bottom:22px;}
+        .month-header{display:flex;justify-content:space-between;background:#F7F5EF;padding:8px 12px;font-size:12px;font-weight:600;border-radius:6px 6px 0 0;}
+        table{width:100%;border-collapse:collapse;font-size:11px;}
+        th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
+        th{background:#F7F5EF;}
+        footer{margin-top:28px;font-size:10px;color:#9AA3B1;text-align:center;}
+      </style></head><body>
+      <div class="close-bar"><button class="close-btn" onclick="window.close()">✕ Fermer et revenir à l'application</button></div>
+      <div class="header">
+        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+        <div class="meta">Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
+      </div>
+      <h1>Règlements clients à recevoir</h1>
+      <h2>${periodLabel}</h2>
+      <div class="grand-total"><span>Total à recevoir</span><span>${fmtEUR(grandTotal)}</span></div>
+      ${blocks}
+      <footer>SYNERGIE BTP — Suivi Chantiers</footer>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  }
+
   const [payingSituation, setPayingSituation] = useState(null);
   const [confirmDeleteSitId, setConfirmDeleteSitId] = useState(null);
   const [showFacture, setShowFacture] = useState(false);
@@ -644,6 +742,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
         <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Règlements clients à recevoir</h1>
         <div className="flex items-center gap-3">
           {unlocked && <Btn variant="ghost" size="sm" onClick={() => setShowFacture(true)}><Plus size={14} /> Facture seule</Btn>}
+          <Btn variant="ghost" size="sm" onClick={openExportPanel}>Exporter PDF</Btn>
           <div className="text-sm font-semibold tabular-nums" style={{ color: COLORS.accent }}>{fmtEUR(computed.totalEnAttente)}</div>
         </div>
       </div>
@@ -679,6 +778,49 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
             </Field>
             <Btn variant="primary" onClick={submitFacture}>Créer la facture</Btn>
             <Btn variant="ghost" onClick={() => setShowFacture(false)}>Annuler</Btn>
+          </div>
+        </Card>
+      )}
+
+      {showExportPanel && (
+        <Card className="p-4 mb-5" style={{ background: COLORS.accentSoft }}>
+          <p className="text-xs font-medium mb-3" style={{ color: COLORS.inkSoft }}>
+            Choisis les mois à inclure dans le PDF (tous cochés par défaut = export global).
+          </p>
+          {exportGroups.length === 0 ? (
+            <p className="text-xs mb-3" style={{ color: COLORS.inkSoft }}>Aucun règlement en attente à exporter.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {exportGroups.map((g) => {
+                const checked = exportSelectedMonths.includes(g.key);
+                return (
+                  <label
+                    key={g.key}
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md cursor-pointer capitalize"
+                    style={{ background: checked ? COLORS.paper : "#F0EEE6", border: `1px solid ${checked ? COLORS.accent : COLORS.line}` }}
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => toggleExportMonth(g.key)} />
+                    {g.label} <span style={{ color: COLORS.inkSoft }}>({fmtEUR(g.total)})</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Btn variant="primary" disabled={exportSelectedMonths.length === 0} onClick={() => { exportReglementsPdf(exportSelectedMonths); setShowExportPanel(false); }}>
+              Générer le PDF
+            </Btn>
+            <Btn variant="ghost" onClick={() => setShowExportPanel(false)}>Annuler</Btn>
+            {exportGroups.length > 0 && (
+              <button
+                type="button"
+                className="text-xs underline"
+                style={{ color: COLORS.inkSoft }}
+                onClick={() => setExportSelectedMonths(exportSelectedMonths.length === exportGroups.length ? [] : exportGroups.map((g) => g.key))}
+              >
+                {exportSelectedMonths.length === exportGroups.length ? "Tout désélectionner" : "Tout sélectionner"}
+              </button>
+            )}
           </div>
         </Card>
       )}
