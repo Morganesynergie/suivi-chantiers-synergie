@@ -68,6 +68,14 @@ function daysUntil(iso) {
   const now = new Date();
   return Math.floor((d - now) / 86400000);
 }
+// "Un montant reçu est connu" pour une situation : vraie valeur numérique — pas
+// null/undefined, mais pas non plus une chaîne vide "" (certaines anciennes situations ont
+// ce champ à "" plutôt qu'à null ; en JS, total - "" vaut total, ce qui ferait croire à
+// tort qu'aucun règlement n'a été reçu sur des situations pourtant bien payées).
+function hasMontantRegle(s) {
+  const recu = s.montantRegle;
+  return recu !== null && recu !== undefined && recu !== "" && !isNaN(Number(recu));
+}
 // Montant restant à percevoir sur une situation : plein montant si rien n'a encore été reçu,
 // solde après déduction des règlements partiels déjà encaissés si un montant reçu est connu
 // (même sur une situation marquée "payée" — un règlement peut être inférieur au montant
@@ -76,8 +84,8 @@ function daysUntil(iso) {
 // renseigné (on considère alors que le montant attendu a bien été perçu en totalité).
 function soldeRestant(s) {
   const total = s.totalARecevoir || 0;
-  if (s.montantRegle != null) {
-    return Math.round(Math.max(0, total - s.montantRegle) * 100) / 100;
+  if (hasMontantRegle(s)) {
+    return Math.round(Math.max(0, total - Number(s.montantRegle)) * 100) / 100;
   }
   return s.paye ? 0 : total;
 }
@@ -960,12 +968,12 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
                       <td className="px-2 py-2" style={{ color: COLORS.ink }}>{fmtDate(s.dateFacture)}</td>
                       <td className="px-2 py-2 text-right font-medium tabular-nums" style={{ color: COLORS.ink }}>
                         {fmtEUR(s.totalARecevoir)}
-                        {s.montantRegle != null ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
+                        {s.totalARecevoirOriginal != null ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
                       </td>
                       <td className="px-2 py-2" title={s.isShortfallPaye ? `Situation marquée réglée, mais ${fmtEUR(s.montantRegle)} seulement reçus sur ${fmtEUR(s.totalARecevoirOriginal)} attendus` : s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : "Échéance = date de validation BET + 30 jours"}>
                         {s.isShortfallPaye ? (
                           <Pill color="red">reliquat sur situation réglée</Pill>
-                        ) : s.montantRegle != null ? (
+                        ) : s.totalARecevoirOriginal != null ? (
                           <Pill color="amber">partiel</Pill>
                         ) : s.isADDPending ? (
                           <Pill color="amber">avance de démarrage</Pill>
@@ -1409,7 +1417,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <td style="text-align:right">${fmtPct(s.pctAvancement)}</td>
           <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
           <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
-          <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (s.montantRegle != null && Math.abs(s.montantRegle - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
+          <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
         </tr>`).join("");
       return `
         <h3>${m.nom}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
@@ -1971,19 +1979,19 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">
                                 <Pill color="green">{s.datePaiement ? fmtDate(s.datePaiement) : "réglé"}</Pill>
-                                {s.montantRegle != null && Math.abs((s.montantRegle || 0) - (s.totalARecevoir || 0)) > 0.01 && (
+                                {hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 && (
                                   <span title={`Réglé ${fmtEUR(s.montantRegle)} au lieu de ${fmtEUR(s.totalARecevoir)} attendu`}>
                                     <AlertTriangle size={12} color={COLORS.red} />
                                   </span>
                                 )}
                               </div>
-                              {s.montantRegle != null && (
-                                <span className="tabular-nums" style={{ color: Math.abs((s.montantRegle || 0) - (s.totalARecevoir || 0)) > 0.01 ? COLORS.red : COLORS.inkSoft }}>
+                              {hasMontantRegle(s) && (
+                                <span className="tabular-nums" style={{ color: Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? COLORS.red : COLORS.inkSoft }}>
                                   {fmtEUR(s.montantRegle)} reçu
                                 </span>
                               )}
                             </div>
-                          ) : s.montantRegle ? (
+                          ) : hasMontantRegle(s) ? (
                             <div className="flex flex-col gap-0.5">
                               <Pill color="amber">partiel</Pill>
                               <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>
