@@ -69,12 +69,17 @@ function daysUntil(iso) {
   return Math.floor((d - now) / 86400000);
 }
 // Montant restant à percevoir sur une situation : plein montant si rien n'a encore été reçu,
-// sinon le solde après déduction des règlements partiels déjà encaissés.
+// solde après déduction des règlements partiels déjà encaissés si un montant reçu est connu
+// (même sur une situation marquée "payée" — un règlement peut être inférieur au montant
+// attendu, ex. retenue du client, erreur de virement... auquel cas la différence reste due),
+// et 0 uniquement si la situation est payée sans qu'aucun montant reçu distinct n'ait été
+// renseigné (on considère alors que le montant attendu a bien été perçu en totalité).
 function soldeRestant(s) {
   const total = s.totalARecevoir || 0;
-  if (s.paye) return 0;
-  const recu = s.montantRegle || 0;
-  return Math.round(Math.max(0, total - recu) * 100) / 100;
+  if (s.montantRegle != null) {
+    return Math.round(Math.max(0, total - s.montantRegle) * 100) / 100;
+  }
+  return s.paye ? 0 : total;
 }
 function addDays(iso, days) {
   if (!iso) return null;
@@ -345,7 +350,7 @@ function computeAutoRgCumulees(chantiers) {
     const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
     const totalRg = sits.reduce((a, s) => a + (s.rg || 0), 0);
     const resteAFacturerNonBanque = Math.round((totalMarcheHtNonBanque - totalHt) * 100) / 100;
-    const enAttenteNonBanque = Math.round(sits.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0) * 100) / 100;
+    const enAttenteNonBanque = Math.round(sits.reduce((a, s) => a + soldeRestant(s), 0) * 100) / 100;
     if (resteAFacturerNonBanque !== 0 || enAttenteNonBanque !== 0 || totalRg <= 0) continue;
     out.push({ chantierId: c.id, chantierTitre: c.titre, client: c.client, nChantier: c.nChantier, tvaRegime: c.marches[0]?.tvaRegime, totalRg, totalHt, sits, marches: c.marches });
   }
@@ -428,9 +433,15 @@ function useComputed(chantiers, rgDues) {
     const addPending = computeAddPendingEntries(chantiers);
     const rgPending = computeRgEchuesPendingEntries(rgDues);
     const impayees = [
-      ...flat.filter((s) => !s.paye && (s.totalARecevoir || 0) >= 0).map((s) => {
+      // Une situation entre dans "en attente" si elle n'est pas marquée payée, OU si elle
+      // l'est mais qu'il reste un solde non perçu (règlement reçu inférieur au montant
+      // attendu — ça arrive, et ça ne doit pas disparaître des totaux sous prétexte que la
+      // situation a été refermée).
+      ...flat.filter((s) => (s.totalARecevoir || 0) >= 0 && (!s.paye || soldeRestant(s) > 0)).map((s) => {
         const restant = soldeRestant(s);
-        return s.montantRegle ? { ...s, totalARecevoirOriginal: s.totalARecevoir, totalARecevoir: restant } : s;
+        return Math.abs(restant - (s.totalARecevoir || 0)) > 0.01
+          ? { ...s, totalARecevoirOriginal: s.totalARecevoir, totalARecevoir: restant, isShortfallPaye: !!s.paye }
+          : s;
       }),
       ...addPending,
       ...rgPending,
@@ -949,10 +960,12 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
                       <td className="px-2 py-2" style={{ color: COLORS.ink }}>{fmtDate(s.dateFacture)}</td>
                       <td className="px-2 py-2 text-right font-medium tabular-nums" style={{ color: COLORS.ink }}>
                         {fmtEUR(s.totalARecevoir)}
-                        {s.montantRegle ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
+                        {s.montantRegle != null ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
                       </td>
-                      <td className="px-2 py-2" title={s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : "Échéance = date de validation BET + 30 jours"}>
-                        {s.montantRegle ? (
+                      <td className="px-2 py-2" title={s.isShortfallPaye ? `Situation marquée réglée, mais ${fmtEUR(s.montantRegle)} seulement reçus sur ${fmtEUR(s.totalARecevoirOriginal)} attendus` : s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : "Échéance = date de validation BET + 30 jours"}>
+                        {s.isShortfallPaye ? (
+                          <Pill color="red">reliquat sur situation réglée</Pill>
+                        ) : s.montantRegle != null ? (
                           <Pill color="amber">partiel</Pill>
                         ) : s.isADDPending ? (
                           <Pill color="amber">avance de démarrage</Pill>
@@ -1116,7 +1129,7 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
             )}
             {filtered.map((c) => {
               const facture = c.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
-              const attente = c.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+              const attente = c.situations.reduce((a, s) => a + soldeRestant(s), 0);
               return (
                 <tr key={c.id} style={{ borderTop: `1px solid ${COLORS.line}`, cursor: "pointer" }} onClick={() => { setSelectedChantier(c.id); setTab("chantierDetail"); }}>
                   <td className="px-4 py-2.5 font-medium" style={{ color: COLORS.accent }}>{c.titre}</td>
@@ -1387,7 +1400,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   function exportChantierPdf() {
     const totalMarcheHtX = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
     const totalFactureX = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
-    const totalAttenteX = chantier.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+    const totalAttenteX = chantier.situations.reduce((a, s) => a + soldeRestant(s), 0);
     setExportPdfError("");
     const blocks = chantier.marches.map((m) => {
       const sits = chantier.situations.filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
@@ -1550,7 +1563,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
 
   const totalMarcheHt = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
   const totalFacture = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
-  const totalAttente = chantier.situations.filter((s) => !s.paye).reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+  const totalAttente = chantier.situations.reduce((a, s) => a + soldeRestant(s), 0);
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
   const resteAFacturer = totalMarcheHt - totalFacture;
   const allSupplierNames = Array.from(new Set((chantier.fournisseurs || []).map((f) => f.nom).filter(Boolean)));
