@@ -1960,16 +1960,6 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
             </Card>
           )}
 
-          <div className="flex flex-col gap-1.5 mb-5">
-            {chantier.marches.map((m) => (
-              <div key={m.id} className="flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-md text-xs" style={{ background: "#F0EEE6", color: COLORS.inkSoft }}>
-                <span className="font-medium" style={{ color: COLORS.ink }}>{m.nom}</span>
-                <span>· {fmtEUR(m.montantHt)}</span>
-                <span>· RG {m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}</span>
-                {m.addMontant ? <span>· ADD {fmtEUR(m.addMontant)}{m.addDate ? ` le ${fmtDate(m.addDate)}` : ""} · reste à rembourser {fmtEUR(addResteARembourser(m.id))}</span> : null}
-              </div>
-            ))}
-          </div>
         </>
       )}
 
