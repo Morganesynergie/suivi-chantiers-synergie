@@ -1420,13 +1420,25 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
       <html><head><title>Suivi — ${chantier.titre}</title>
       <style>
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
-        h1{font-size:19px;margin-bottom:2px;} h2{font-size:13px;font-weight:500;color:#5B6779;margin-top:0;margin-bottom:16px;}
-        h3{font-size:13px;margin-top:24px;margin-bottom:6px;}
-        .summary{display:flex;gap:24px;margin-bottom:8px;font-size:12px;}
-        .summary div{background:#F7F5EF;padding:8px 12px;border-radius:6px;}
+        h1{font-size:22px;margin:0 0 2px 0;color:#16233B;}
+        .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
+        .subtitle{font-size:13px;color:#5B6779;margin:0 0 18px 0;}
+        h3{font-size:13.5px;font-weight:700;margin-top:26px;margin-bottom:8px;color:#16233B;border-bottom:1px solid #E5E1D8;padding-bottom:6px;}
+        .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:24px;}
+        .header img{height:34px;}
+        .header .meta{text-align:right;font-size:11px;color:#5B6472;}
+        .info-tiles{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;}
+        .info-tile{background:#F7F5EF;border-radius:8px;padding:9px 14px;flex:1;min-width:140px;}
+        .info-tile-label{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#9AA3B1;margin-bottom:3px;}
+        .info-tile-value{display:block;font-size:13px;font-weight:600;}
+        .stat-row{display:flex;gap:12px;margin-bottom:26px;}
+        .stat-card{flex:1;background:#F7F5EF;border-radius:10px;padding:14px 16px;}
+        .stat-label{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
+        .stat-value{display:block;font-size:18px;font-weight:700;color:#16233B;}
         table{width:100%;border-collapse:collapse;font-size:11px;}
         th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
         th{background:#F7F5EF;}
+        tbody tr:nth-child(even){background:#FBFAF7;}
         .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
         .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
         .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
@@ -1452,12 +1464,22 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <button class="close-btn" onclick="window.close()">✕ Fermer</button>
         </div>
       </div>
-      <h1>Suivi de chantier</h1>
-      <h2>${chantier.titre}${chantier.client ? " — " + chantier.client : ""}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""} · BET/Archi : ${chantier.betArchi || "—"} · Démarrage : ${chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "—"}</h2>
-      <div class="summary">
-        <div>Marché HT total : <b>${fmtEUR(totalMarcheHtX)}</b></div>
-        <div>Facturé HT : <b>${fmtEUR(totalFactureX)}</b></div>
-        <div>En attente de règlement : <b>${fmtEUR(totalAttenteX)}</b></div>
+      <div class="header">
+        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+        <div class="meta">Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
+      </div>
+      <div class="eyebrow">Suivi de chantier</div>
+      <h1>${chantier.titre}</h1>
+      <p class="subtitle">${chantier.client || "Client non renseigné"}${chantier.nChantier ? " · " + chantier.nChantier : ""}</p>
+      <div class="info-tiles">
+        <div class="info-tile"><span class="info-tile-label">BET / Architecte</span><span class="info-tile-value">${chantier.betArchi || "—"}</span></div>
+        <div class="info-tile"><span class="info-tile-label">Démarrage</span><span class="info-tile-value">${chantier.dateDemarrage ? fmtDate(chantier.dateDemarrage) : "—"}</span></div>
+        <div class="info-tile"><span class="info-tile-label">Durée prévue</span><span class="info-tile-value">${chantier.dureePrevue || "—"}</span></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-card"><span class="stat-label">Marché HT total</span><span class="stat-value">${fmtEUR(totalMarcheHtX)}</span></div>
+        <div class="stat-card"><span class="stat-label">Facturé HT</span><span class="stat-value">${fmtEUR(totalFactureX)}</span></div>
+        <div class="stat-card"><span class="stat-label">En attente de règlement</span><span class="stat-value" style="color:${totalAttenteX > 0.01 ? "#B45309" : "#15803D"}">${fmtEUR(totalAttenteX)}</span></div>
       </div>
       ${blocks}
       </body></html>
