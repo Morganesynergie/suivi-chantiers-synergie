@@ -355,6 +355,11 @@ function getDocMeta(docs, key) {
 function docPresent(docs, key) {
   return !!getDocMeta(docs, key).present;
 }
+// Documents dont le contenu contient en général le client, le montant du
+// marché, etc. — seuls ceux-là déclenchent une tentative de lecture
+// automatique après l'upload.
+const ANALYZABLE_DOC_KEYS = ["devisSigne", "acteEngagement", "contratSousTraitance"];
+
 function requiredDocuments(chantier) {
   if (chantier.isFacturesLibres) return [];
   const docs = chantier.documents || {};
@@ -418,7 +423,7 @@ function normalizeChantiersData(list) {
   let changed = false;
   const next = list.map((c) => {
     let chantierChanged = false;
-    const situations = (c.situations || []).map((s) => {
+    const casted = (c.situations || []).map((s) => {
       let sChanged = false;
       const patched = { ...s };
       for (const k of NUMERIC_SITUATION_FIELDS) {
@@ -430,6 +435,44 @@ function normalizeChantiersData(list) {
       if (sChanged) { chantierChanged = true; return patched; }
       return s;
     });
+
+    // Auto-réparation du % d'avancement cumulé : recalcule, pour chaque
+    // marché/TS, le cumul du montant HT de chaque situation + de toutes
+    // celles qui la PRÉCÈDENT (n° de situation, puis date de facture en
+    // repli), rapporté au montant HT du marché — jamais en comptant les
+    // situations qui la SUIVENT. Corrige silencieusement les valeurs déjà
+    // enregistrées avec l'ancien calcul buggé, qui sommait toutes les
+    // situations du marché sans distinguer avant/après (chaque situation
+    // affichait alors le même total cumulé sur tout le marché).
+    const byMarche = {};
+    casted.forEach((s, idx) => {
+      const key = s.marcheId || "_sans_marche";
+      (byMarche[key] = byMarche[key] || []).push(idx);
+    });
+    const rankOf = (s) => {
+      const n = Number(s.nSituation);
+      const hasN = s.nSituation !== "" && s.nSituation !== null && s.nSituation !== undefined && !isNaN(n);
+      return [hasN ? n : Infinity, s.dateFacture || "9999-99-99"];
+    };
+    const cmpRank = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
+    const situations = casted.slice();
+    for (const [marcheId, idxs] of Object.entries(byMarche)) {
+      const marche = (c.marches || []).find((m) => m.id === marcheId);
+      const marcheHt = marche ? Number(marche.montantHt) || 0 : 0;
+      if (!marcheHt) continue;
+      const ordered = idxs.slice().sort((ia, ib) => cmpRank(rankOf(casted[ia]), rankOf(casted[ib])));
+      let cumul = 0;
+      for (const idx of ordered) {
+        const s = casted[idx];
+        cumul += Number(s.montantHt) || 0;
+        const pct = Math.round((cumul / marcheHt) * 1000) / 1000;
+        if (s.pctAvancement !== pct) {
+          situations[idx] = { ...s, pctAvancement: pct };
+          chantierChanged = true;
+        }
+      }
+    }
+
     if (chantierChanged) { changed = true; return { ...c, situations }; }
     return c;
   });
@@ -1276,6 +1319,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const [pendingUploadKey, setPendingUploadKey] = useState(null);
   const docFileInputRef = useRef(null);
   const [exportPdfError, setExportPdfError] = useState("");
+  // Lecture automatique (IA) d'un devis signé / acte d'engagement / contrat
+  // de sous-traitance à l'upload, pour proposer un pré-remplissage de la
+  // fiche chantier. `docAnalysis` porte le résultat de la dernière lecture
+  // en attente de validation ; rien n'est appliqué sans clic explicite.
+  const [analyzingDoc, setAnalyzingDoc] = useState(false);
+  const [docAnalysisError, setDocAnalysisError] = useState("");
+  const [docAnalysis, setDocAnalysis] = useState(null); // { docKey, extracted, selected }
 
   function updateHeaderField(patch) {
     updateChantier({ ...chantier, ...patch });
@@ -1287,12 +1337,29 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     return chantier.marches.find((m) => m.id === marcheId) || chantier.marches[0] || null;
   }
 
-  // % d'avancement cumulé d'un marché/TS : somme du montant HT de toutes les
-  // situations de ce bloc (de la 1 à la dernière, celle en cours incluse)
-  // rapportée au montant HT total du marché — pas juste le poids de cette
-  // seule situation.
-  function cumulativeMontantHt(marcheId, ownHt, excludeId) {
-    const others = chantier.situations.filter((s) => s.marcheId === marcheId && s.id !== excludeId);
+  // % d'avancement cumulé d'un marché/TS : somme du montant HT de la
+  // situation en cours ET de toutes celles qui la PRÉCÈDENT dans ce marché
+  // (jamais celles qui viennent après), rapportée au montant HT total du
+  // marché. L'ordre est donné par le n° de situation (le champ "N°
+  // situation"), et par la date de facture en repli quand le n° est
+  // identique ou pas encore renseigné.
+  //
+  // Avant : la fonction sommait TOUTES les autres situations du marché sans
+  // distinguer avant/après, donc chaque situation affichait le même total
+  // (= facturé cumulé sur tout le marché), y compris en comptant des
+  // situations postérieures pas encore arrivées à ce stade — d'où le "ça se
+  // cumule à 100 % à chaque fois" remonté.
+  function cumulativeMontantHt(marcheId, ownHt, excludeId, ownSituation) {
+    const rank = (s) => {
+      const n = num(s?.nSituation);
+      const hasN = s?.nSituation !== "" && s?.nSituation !== null && s?.nSituation !== undefined && !isNaN(n);
+      return [hasN ? n : Infinity, s?.dateFacture || "9999-99-99"];
+    };
+    const cmp = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
+    const ownRank = rank(ownSituation);
+    const others = chantier.situations.filter(
+      (s) => s.marcheId === marcheId && s.id !== excludeId && cmp(rank(s), ownRank) <= 0
+    );
     const sum = others.reduce((a, s) => a + (num(s.montantHt) || 0), 0);
     return sum + ownHt;
   }
@@ -1314,7 +1381,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const paye = f.datePaiement ? true : !!f.paye;
     const montantRegle = f.montantRegle !== "" && f.montantRegle != null ? num(f.montantRegle) : (f.montantRegle === "" ? null : f.montantRegle);
     const marcheHt = num(marche.montantHt);
-    const cumulHt = cumulativeMontantHt(marche.id || f.marcheId, ht, f.id);
+    const cumulHt = cumulativeMontantHt(marche.id || f.marcheId, ht, f.id, f);
     const pctAvancement = marcheHt ? Math.round((cumulHt / marcheHt) * 1000) / 1000 : 0;
     const nSituation = f.nSituation === "" || f.nSituation === null || f.nSituation === undefined ? f.nSituation : num(f.nSituation);
     // Les champs numériques doivent impérativement être castés en Number ici (et
@@ -1598,11 +1665,77 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Échec de l'envoi du document.");
       setDocMeta(key, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+      // Ces documents contiennent en général le nom du client, le montant du
+      // marché... : on tente une lecture automatique pour proposer un
+      // pré-remplissage (jamais appliqué sans validation explicite).
+      if (ANALYZABLE_DOC_KEYS.includes(key)) {
+        analyzeDocument(key, file);
+      }
     } catch (err) {
       setDocError(err.message || "Échec de l'envoi du document.");
     } finally {
       setUploadingDocKey(null);
     }
+  }
+
+  function principalMarche() {
+    return chantier.marches.find((m) => m.type === "principal") || chantier.marches[0] || null;
+  }
+
+  async function analyzeDocument(docKey, file) {
+    setDocAnalysisError("");
+    setDocAnalysis(null);
+    setAnalyzingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/analyze-document", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de la lecture automatique du document.");
+      const extracted = data.extracted || {};
+      const marche = principalMarche();
+      // Coché par défaut uniquement pour les champs actuellement VIDES côté
+      // appli — on ne propose jamais d'écraser une information déjà saisie.
+      const currentlyEmpty = {
+        titre: !chantier.titre,
+        client: !chantier.client,
+        nChantier: !chantier.nChantier,
+        betArchi: !chantier.betArchi,
+        dateDemarrage: !chantier.dateDemarrage,
+        montantHt: !marche || !marche.montantHt,
+      };
+      const selected = {};
+      for (const k of Object.keys(currentlyEmpty)) {
+        selected[k] = currentlyEmpty[k] && extracted[k] !== null && extracted[k] !== undefined && extracted[k] !== "";
+      }
+      setDocAnalysis({ docKey, extracted, selected, currentlyEmpty });
+    } catch (err) {
+      setDocAnalysisError(err.message || "Échec de la lecture automatique du document.");
+    } finally {
+      setAnalyzingDoc(false);
+    }
+  }
+
+  function toggleDocAnalysisField(field) {
+    setDocAnalysis((prev) => (prev ? { ...prev, selected: { ...prev.selected, [field]: !prev.selected[field] } } : prev));
+  }
+
+  function applyDocAnalysis() {
+    if (!docAnalysis) return;
+    const { extracted, selected } = docAnalysis;
+    const headerPatch = {};
+    for (const k of ["titre", "client", "nChantier", "betArchi", "dateDemarrage"]) {
+      if (selected[k] && extracted[k]) headerPatch[k] = extracted[k];
+    }
+    let next = Object.keys(headerPatch).length ? { ...chantier, ...headerPatch } : chantier;
+    if (selected.montantHt && extracted.montantHt) {
+      const marche = principalMarche();
+      if (marche) {
+        next = { ...next, marches: next.marches.map((m) => (m.id === marche.id ? { ...m, montantHt: extracted.montantHt } : m)) };
+      }
+    }
+    if (next !== chantier) updateChantier(next);
+    setDocAnalysis(null);
   }
   async function removeDocument(key) {
     if (!unlocked) return;
@@ -1827,6 +1960,59 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         </div>
       </Card>
 
+      {analyzingDoc && (
+        <Card className="p-3 mb-4 flex items-center gap-2 text-xs" style={{ color: COLORS.inkSoft }}>
+          <Loader2 size={14} className="animate-spin" /> Lecture automatique du document en cours...
+        </Card>
+      )}
+      {docAnalysisError && (
+        <Card className="p-3 mb-4 text-xs" style={{ color: COLORS.red, border: "1px solid #E8C4BE" }}>
+          {docAnalysisError}
+        </Card>
+      )}
+      {docAnalysis && (
+        <Card className="p-4 mb-4" style={{ border: `1px solid ${COLORS.accent}` }}>
+          <div className="text-sm font-semibold mb-1" style={{ color: COLORS.ink }}>Informations trouvées dans le document</div>
+          <p className="text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+            Coche les informations à appliquer à la fiche chantier (déjà décochées si un champ est déjà rempli). Rien n'est modifié tant que tu ne cliques pas sur "Appliquer".
+          </p>
+          <div className="flex flex-col gap-1.5 mb-3">
+            {[
+              { key: "titre", label: "Nom du chantier" },
+              { key: "client", label: "Client" },
+              { key: "nChantier", label: "N° chantier" },
+              { key: "betArchi", label: "BET / Architecte" },
+              { key: "dateDemarrage", label: "Date démarrage" },
+              { key: "montantHt", label: "Montant HT du marché" },
+            ]
+              .filter((f) => docAnalysis.extracted[f.key] !== null && docAnalysis.extracted[f.key] !== undefined && docAnalysis.extracted[f.key] !== "")
+              .map((f) => {
+                const val = docAnalysis.extracted[f.key];
+                const display = f.key === "montantHt" ? fmtEUR(val) : f.key === "dateDemarrage" ? fmtDate(val) : val;
+                return (
+                  <label key={f.key} className="flex items-center gap-2 text-xs" style={{ color: COLORS.ink }}>
+                    <input type="checkbox" checked={!!docAnalysis.selected[f.key]} onChange={() => toggleDocAnalysisField(f.key)} />
+                    <span style={{ minWidth: 140 }}>{f.label}</span>
+                    <span className="font-medium">{display}</span>
+                    {!docAnalysis.currentlyEmpty[f.key] && (
+                      <span className="text-[10px]" style={{ color: COLORS.amber }}>déjà renseigné — cocher pour remplacer</span>
+                    )}
+                  </label>
+                );
+              })}
+          </div>
+          {docAnalysis.extracted.confiance && docAnalysis.extracted.confiance !== "haute" && (
+            <p className="text-[11px] mb-3" style={{ color: COLORS.amber }}>
+              Confiance {docAnalysis.extracted.confiance} sur ces informations — vérifie-les avant/après application.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Btn size="sm" variant="primary" onClick={applyDocAnalysis}>Appliquer la sélection</Btn>
+            <Btn size="sm" variant="ghost" onClick={() => setDocAnalysis(null)}>Ignorer</Btn>
+          </div>
+        </Card>
+      )}
+
       {headerEdit ? (
         <>
           <Card className="p-4 mb-4" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
@@ -2024,11 +2210,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantHt)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantTtc)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums" title={(s.fournisseurs || []).map((f) => `${f.nom}: ${fmtEUR(f.montant)}`).join(" · ") || undefined}>
+                        <td className="px-2 py-2 text-right tabular-nums">
                           {(s.fournisseurs && s.fournisseurs.length)
                             ? (s.fournisseurs.length === 1
                                 ? `${s.fournisseurs[0].nom} ${fmtEUR(s.fournisseurs[0].montant)}`
-                                : `${s.fournisseurs.length} fourn. ${fmtEUR(s.fournisseurs.reduce((a, f) => a + (f.montant || 0), 0))}`)
+                                : (
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    {s.fournisseurs.map((f, idx) => (
+                                      <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.inkSoft }}>{f.nom} {fmtEUR(f.montant)}</span>
+                                    ))}
+                                    <span className="font-medium whitespace-nowrap" style={{ color: COLORS.ink }}>
+                                      Total {fmtEUR(s.fournisseurs.reduce((a, f) => a + (f.montant || 0), 0))}
+                                    </span>
+                                  </div>
+                                ))
                             : "—"}
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtEUR(s.totalARecevoir)}</td>
@@ -2151,7 +2346,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                 const selMarcheTva = getMarche(form.marcheId || chantier.marches[0]?.id);
                 const rate = TVA_REGIMES[selMarcheTva?.tvaRegime]?.rate ?? 0.085;
                 const marcheHt = num(selMarcheTva?.montantHt);
-                const cumulHt = cumulativeMontantHt(selMarcheTva?.id || form.marcheId, num(form.montantHt), form.id);
+                const cumulHt = cumulativeMontantHt(selMarcheTva?.id || form.marcheId, num(form.montantHt), form.id, form);
                 const pct = marcheHt ? (cumulHt / marcheHt) * 100 : 0;
                 return (
                   <>
