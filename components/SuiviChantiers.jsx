@@ -2643,6 +2643,10 @@ export default function App() {
   const [saveError, setSaveError] = useState(false);
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Compteur d'écritures en cours : tant qu'une sauvegarde est en vol, on ne
+  // resynchronise pas depuis le serveur pour ne pas écraser localement ce
+  // qu'on vient tout juste de modifier (voir refreshFromServer plus bas).
+  const pendingWritesRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -2693,25 +2697,94 @@ export default function App() {
 
   const persistChantiers = useCallback(async (next) => {
     setChantiers(next);
+    pendingWritesRef.current++;
     try {
       await storage.set("chantiers", JSON.stringify(next), true);
       setSaveError(false);
     } catch (e) {
       console.error("Erreur de sauvegarde", e);
       setSaveError(true);
+    } finally {
+      pendingWritesRef.current--;
     }
   }, []);
 
   const persistRg = useCallback(async (next) => {
     setRgDues(next);
+    pendingWritesRef.current++;
     try {
       await storage.set("rg-dues", JSON.stringify(next), true);
       setSaveError(false);
     } catch (e) {
       console.error("Erreur de sauvegarde", e);
       setSaveError(true);
+    } finally {
+      pendingWritesRef.current--;
     }
   }, []);
+
+  // Recharge silencieusement les données les plus récentes depuis le
+  // serveur et remplace l'état local.
+  //
+  // Pourquoi c'est nécessaire : l'appli charge "chantiers"/"rg-dues" UNE
+  // SEULE FOIS à l'ouverture, garde tout en mémoire, puis à CHAQUE
+  // modification réécrit l'intégralité du tableau en base (pas seulement
+  // la ligne changée). Si un onglet ou l'appli sur iPhone reste ouvert
+  // plusieurs jours (iOS suspend l'appli en arrière-plan sans forcément la
+  // recharger quand on y revient), sa copie en mémoire devient périmée. La
+  // moindre saisie faite depuis cette session périmée réécrivait alors TOUT
+  // avec cette copie ancienne — effaçant silencieusement les ajouts/
+  // modifications faits entre-temps depuis une autre session (autre
+  // appareil, ou l'appli rouverte le lendemain). C'est le bug remonté :
+  // des données saisies "disparaissent" quelques jours plus tard.
+  //
+  // Le correctif : on resynchronise automatiquement depuis le serveur dès
+  // que l'appli revient au premier plan (retour d'arrière-plan, onglet
+  // réactivé) et périodiquement pendant qu'elle reste ouverte, pour que la
+  // copie locale ne soit (quasiment) jamais périmée au moment d'une
+  // sauvegarde. On saute la resynchro si une écriture est en cours
+  // (pendingWritesRef) pour ne pas courir après notre propre sauvegarde.
+  const refreshFromServer = useCallback(async () => {
+    if (pendingWritesRef.current > 0) return;
+    try {
+      const [ch, rg] = await Promise.all([
+        storage.get("chantiers", true).catch(() => null),
+        storage.get("rg-dues", true).catch(() => null),
+      ]);
+      if (ch && ch.value) {
+        const { chantiers: fixedChantiers } = normalizeChantiersData(JSON.parse(ch.value));
+        setChantiers(fixedChantiers);
+      }
+      if (rg && rg.value) {
+        setRgDues(JSON.parse(rg.value));
+      }
+    } catch (e) {
+      console.error("Erreur de resynchronisation", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshFromServer();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refreshFromServer);
+    // Resynchro immédiate dès que ces écouteurs sont posés (couvre le cas
+    // où l'appli était déjà restée ouverte/suspendue avant ce chargement).
+    // setTimeout(...,0) plutôt qu'un appel direct : on ne veut pas déclencher
+    // un setState de façon synchrone pendant l'exécution de l'effet lui-même.
+    const kickoffId = setTimeout(refreshFromServer, 0);
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") refreshFromServer();
+    }, 3 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refreshFromServer);
+      clearTimeout(kickoffId);
+      clearInterval(intervalId);
+    };
+  }, [loading, refreshFromServer]);
 
   function updateChantier(updated) {
     persistChantiers(chantiers.map((c) => (c.id === updated.id ? updated : c)));
