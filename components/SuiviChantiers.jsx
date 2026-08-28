@@ -2303,7 +2303,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   )}
                 </span>
               </div>
-              {unlocked && <Btn size="sm" variant="ghost" onClick={() => openNew(m.id)}><Plus size={13} /> Situation sur ce marché</Btn>}
+              {unlocked && (
+                <Btn size="sm" variant="ghost" onClick={() => openNew(m.id)}>
+                  <Plus size={13} />
+                  {!isProrata && " Situation sur ce marché"}
+                </Btn>
+              )}
             </div>
             <Card className="overflow-x-auto" style={isProrata ? { border: "1px solid #DDD6FE" } : undefined}>
               <div style={{ overflowX: "auto" }}>
@@ -2313,12 +2318,16 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                       {!isProrata && <th className="text-left font-medium px-3 py-2">N°</th>}
                       <th className="text-left font-medium px-2 py-2">Facture</th>
                       <th className="text-left font-medium px-2 py-2">Date</th>
-                      <th className="text-right font-medium px-2 py-2">% Av.</th>
+                      {!isProrata && <th className="text-right font-medium px-2 py-2">% Av.</th>}
                       <th className="text-right font-medium px-2 py-2">Mt HT</th>
                       <th className="text-right font-medium px-2 py-2">TTC</th>
-                      <th className="text-right font-medium px-2 py-2">RG</th>
-                      <th className="text-right font-medium px-2 py-2">Remb. ADD</th>
-                      <th className="text-right font-medium px-2 py-2">Fournisseur</th>
+                      {!isProrata && (
+                        <>
+                          <th className="text-right font-medium px-2 py-2">RG</th>
+                          <th className="text-right font-medium px-2 py-2">Remb. ADD</th>
+                          <th className="text-right font-medium px-2 py-2">Fournisseur</th>
+                        </>
+                      )}
                       <th className="text-right font-medium px-2 py-2">À recevoir</th>
                       <th className="text-left font-medium px-2 py-2">Envoi</th>
                       <th className="text-left font-medium px-2 py-2">Val. BET</th>
@@ -2355,27 +2364,31 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                           </span>
                         </td>
                         <td className="px-2 py-2">{fmtDate(s.dateFacture)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{fmtPct(s.pctAvancement)}</td>
+                        {!isProrata && <td className="px-2 py-2 text-right tabular-nums">{fmtPct(s.pctAvancement)}</td>}
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantHt)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantTtc)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{s.rembAdd ? fmtEUR(s.rembAdd) : "—"}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">
-                          {(s.fournisseurs && s.fournisseurs.length)
-                            ? (s.fournisseurs.length === 1
-                                ? `${s.fournisseurs[0].nom} ${fmtEUR(s.fournisseurs[0].montant)}`
-                                : (
-                                  <div className="flex flex-col items-end gap-0.5">
-                                    {s.fournisseurs.map((f, idx) => (
-                                      <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.inkSoft }}>{f.nom} {fmtEUR(f.montant)}</span>
-                                    ))}
-                                    <span className="font-medium whitespace-nowrap" style={{ color: COLORS.ink }}>
-                                      Total {fmtEUR(s.fournisseurs.reduce((a, f) => a + (f.montant || 0), 0))}
-                                    </span>
-                                  </div>
-                                ))
-                            : "—"}
-                        </td>
+                        {!isProrata && (
+                          <>
+                            <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{s.rembAdd ? fmtEUR(s.rembAdd) : "—"}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">
+                              {(s.fournisseurs && s.fournisseurs.length)
+                                ? (s.fournisseurs.length === 1
+                                    ? `${s.fournisseurs[0].nom} ${fmtEUR(s.fournisseurs[0].montant)}`
+                                    : (
+                                      <div className="flex flex-col items-end gap-0.5">
+                                        {s.fournisseurs.map((f, idx) => (
+                                          <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.inkSoft }}>{f.nom} {fmtEUR(f.montant)}</span>
+                                        ))}
+                                        <span className="font-medium whitespace-nowrap" style={{ color: COLORS.ink }}>
+                                          Total {fmtEUR(s.fournisseurs.reduce((a, f) => a + (f.montant || 0), 0))}
+                                        </span>
+                                      </div>
+                                    ))
+                                : "—"}
+                            </td>
+                          </>
+                        )}
                         <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtEUR(s.totalARecevoir)}</td>
                         <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{s.dateEnvoi ? fmtDate(s.dateEnvoi) : "—"}</td>
                         <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{s.validBet ? fmtDate(s.validBet) : "—"}</td>
@@ -2496,17 +2509,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               <Field label="Montant HT"><TextInput type="number" step="0.01" value={form.montantHt} onChange={(e) => setFormAuto({ montantHt: e.target.value })} /></Field>
               {(() => {
                 const selMarcheTva = getMarche(form.marcheId || chantier.marches[0]?.id);
+                const isProrataForm = selMarcheTva?.type === "prorata";
                 const rate = TVA_REGIMES[selMarcheTva?.tvaRegime]?.rate ?? 0.085;
                 const marcheHt = num(selMarcheTva?.montantHt);
                 const cumulHt = cumulativeMontantHt(selMarcheTva?.id || form.marcheId, num(form.montantHt), form.id, form);
                 const pct = marcheHt ? (cumulHt / marcheHt) * 100 : 0;
                 return (
                   <>
-                    <Field label="% Avancement (cumulé : total facturé sur ce marché / montant HT marché)">
-                      <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
-                        {pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
-                      </div>
-                    </Field>
+                    {!isProrataForm && (
+                      <Field label="% Avancement (cumulé : total facturé sur ce marché / montant HT marché)">
+                        <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
+                          {pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
+                        </div>
+                      </Field>
+                    )}
                     <Field label={`TVA calculée (${TVA_REGIMES[selMarcheTva?.tvaRegime]?.label || "085"}, réglée sur le marché)`}>
                       <div style={{ ...inputStyle, background: "#F4F2ED", color: COLORS.inkSoft }}>
                         {fmtEUR(Math.round(num(form.montantHt) * rate * 100) / 100)}
@@ -2520,7 +2536,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   </>
                 );
               })()}
-              {(() => {
+              {getMarche(form.marcheId || chantier.marches[0]?.id)?.type !== "prorata" && (() => {
                 const selMarche = getMarche(form.marcheId || chantier.marches[0]?.id);
                 const selRgMode = selMarche && selMarche.rgMode;
                 const rgOff = selRgMode === "banque" || selRgMode === "aucune";
@@ -2535,26 +2551,35 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   </Field>
                 );
               })()}
-              <Field label="Prorata"><TextInput type="number" step="0.01" value={form.prorata} onChange={(e) => setFormAuto({ prorata: e.target.value })} /></Field>
-              <Field label="Remb. ADD"><TextInput type="number" step="0.01" value={form.rembAdd} onChange={(e) => setFormAuto({ rembAdd: e.target.value })} /></Field>
+              {getMarche(form.marcheId || chantier.marches[0]?.id)?.type !== "prorata" && (
+                <>
+                  <Field label="Prorata"><TextInput type="number" step="0.01" value={form.prorata} onChange={(e) => setFormAuto({ prorata: e.target.value })} /></Field>
+                  <Field label="Remb. ADD"><TextInput type="number" step="0.01" value={form.rembAdd} onChange={(e) => setFormAuto({ rembAdd: e.target.value })} /></Field>
+                </>
+              )}
               {(() => {
                 const selMarcheCalc = getMarche(form.marcheId || chantier.marches[0]?.id) || {};
+                const isProrataForm = selMarcheCalc.type === "prorata";
                 const rate = TVA_REGIMES[selMarcheCalc.tvaRegime]?.rate ?? 0.085;
                 const ht = num(form.montantHt);
                 const ttc = Math.round((ht + ht * rate) * 100) / 100;
                 const rgOff = selMarcheCalc.rgMode === "banque" || selMarcheCalc.rgMode === "aucune";
                 const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
-                const rg = rgOff ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
-                const prorata = num(form.prorata);
-                const fournisseurTotal = (form.fournisseurs || []).reduce((a, f) => a + (num(f.montant) || 0), 0);
-                const remb = num(form.rembAdd);
+                const rg = isProrataForm ? 0 : rgOff ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
+                const prorata = isProrataForm ? 0 : num(form.prorata);
+                const fournisseurTotal = isProrataForm ? 0 : (form.fournisseurs || []).reduce((a, f) => a + (num(f.montant) || 0), 0);
+                const remb = isProrataForm ? 0 : num(form.rembAdd);
                 const autoTotal = Math.round((ttc - rg - prorata - fournisseurTotal - remb) * 100) / 100;
                 const isManual = form.totalARecevoir !== "";
                 return (
                   <Field label="Total à recevoir">
                     <TextInput type="number" step="0.01" value={form.totalARecevoir} placeholder={fmtEUR(autoTotal)} onChange={(e) => setForm({ ...form, totalARecevoir: e.target.value })} />
                     <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
-                      Calcul auto (TTC − RG − Prorata − Cession fournisseur{remb ? " − Remb. ADD" : ""}) : <span className="font-medium">{fmtEUR(autoTotal)}</span>
+                      {isProrataForm ? (
+                        <>Calcul auto (TTC) : <span className="font-medium">{fmtEUR(autoTotal)}</span></>
+                      ) : (
+                        <>Calcul auto (TTC − RG − Prorata − Cession fournisseur{remb ? " − Remb. ADD" : ""}) : <span className="font-medium">{fmtEUR(autoTotal)}</span></>
+                      )}
                       {isManual && <> · <button type="button" onClick={() => setForm({ ...form, totalARecevoir: "" })} style={{ color: COLORS.accent, textDecoration: "underline" }}>revenir à l'auto</button></>}
                     </p>
                   </Field>
@@ -2569,27 +2594,29 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
               <Field label="Note"><TextInput value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Remarque, contexte..." /></Field>
             </div>
 
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium" style={{ color: COLORS.inkSoft }}>Cessions fournisseur (une ligne par fournisseur)</span>
-                <Btn size="sm" variant="ghost" onClick={addFournisseurRow}><Plus size={12} /> Ajouter un fournisseur</Btn>
-              </div>
-              {(!form.fournisseurs || form.fournisseurs.length === 0) && (
-                <p className="text-xs" style={{ color: COLORS.inkSoft }}>Aucun fournisseur cédé sur cette situation.</p>
-              )}
-              {(form.fournisseurs || []).map((f, idx) => (
-                <div key={idx} className="flex items-center gap-2 mb-2">
-                  <TextInput placeholder="Nom du fournisseur" value={f.nom} onChange={(e) => updateFournisseurRow(idx, "nom", e.target.value)} style={{ flex: 2 }} />
-                  <TextInput type="number" step="0.01" placeholder="Montant" value={f.montant} onChange={(e) => updateFournisseurRow(idx, "montant", e.target.value)} style={{ flex: 1 }} />
-                  <button onClick={() => removeFournisseurRow(idx)} title="Supprimer"><X size={14} color={COLORS.red} /></button>
+            {getMarche(form.marcheId || chantier.marches[0]?.id)?.type !== "prorata" && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium" style={{ color: COLORS.inkSoft }}>Cessions fournisseur (une ligne par fournisseur)</span>
+                  <Btn size="sm" variant="ghost" onClick={addFournisseurRow}><Plus size={12} /> Ajouter un fournisseur</Btn>
                 </div>
-              ))}
-              {form.fournisseurs && form.fournisseurs.length > 0 && (
-                <p className="text-xs" style={{ color: COLORS.inkSoft }}>
-                  Total cédé : {fmtEUR(form.fournisseurs.reduce((a, f) => a + (num(f.montant) || 0), 0))}
-                </p>
-              )}
-            </div>
+                {(!form.fournisseurs || form.fournisseurs.length === 0) && (
+                  <p className="text-xs" style={{ color: COLORS.inkSoft }}>Aucun fournisseur cédé sur cette situation.</p>
+                )}
+                {(form.fournisseurs || []).map((f, idx) => (
+                  <div key={idx} className="flex items-center gap-2 mb-2">
+                    <TextInput placeholder="Nom du fournisseur" value={f.nom} onChange={(e) => updateFournisseurRow(idx, "nom", e.target.value)} style={{ flex: 2 }} />
+                    <TextInput type="number" step="0.01" placeholder="Montant" value={f.montant} onChange={(e) => updateFournisseurRow(idx, "montant", e.target.value)} style={{ flex: 1 }} />
+                    <button onClick={() => removeFournisseurRow(idx)} title="Supprimer"><X size={14} color={COLORS.red} /></button>
+                  </div>
+                ))}
+                {form.fournisseurs && form.fournisseurs.length > 0 && (
+                  <p className="text-xs" style={{ color: COLORS.inkSoft }}>
+                    Total cédé : {fmtEUR(form.fournisseurs.reduce((a, f) => a + (num(f.montant) || 0), 0))}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-5">
               <Btn variant="ghost" onClick={() => setShowForm(false)}>Annuler</Btn>
               <Btn variant="primary" onClick={submitForm}>{editingId ? "Enregistrer" : "Ajouter"}</Btn>
