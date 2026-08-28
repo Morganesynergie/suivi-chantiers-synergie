@@ -62,7 +62,7 @@ function LoginForm() {
       {success ? (
         <div
           className="w-full max-w-sm p-6 rounded-lg text-center"
-          style={{ background: COLORS.paper, border: `1px solid ${COLORS.line}`, boxShadow: "0 1px 3px rgba(22,35,59,0.08)" }}
+          style={{ background: COLORS.paper, border: "1px solid " + COLORS.line, boxShadow: "0 1px 3px rgba(22,35,59,0.08)" }}
         >
           <h1 className="text-lg font-semibold mb-1" style={{ color: COLORS.ink }}>
             Connexion réussie
@@ -70,7 +70,7 @@ function LoginForm() {
           <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
             Redirection en cours...
           </p>
-          
+          <a
             href={next}
             className="inline-block w-full py-2 rounded-md text-sm font-medium"
             style={{ background: COLORS.accent, color: "#fff", textDecoration: "none" }}
@@ -82,7 +82,7 @@ function LoginForm() {
         <form
           onSubmit={handleSubmit}
           className="w-full max-w-sm p-6 rounded-lg"
-          style={{ background: COLORS.paper, border: `1px solid ${COLORS.line}`, boxShadow: "0 1px 3px rgba(22,35,59,0.08)" }}
+          style={{ background: COLORS.paper, border: "1px solid " + COLORS.line, boxShadow: "0 1px 3px rgba(22,35,59,0.08)" }}
         >
           <h1 className="text-lg font-semibold mb-1" style={{ color: COLORS.ink }}>
             Suivi Chantiers
@@ -97,7 +97,7 @@ function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Mot de passe"
             className="w-full px-3 py-2 rounded-md text-sm mb-3"
-            style={{ border: `1px solid ${COLORS.line}`, color: COLORS.ink, outline: "none" }}
+            style={{ border: "1px solid " + COLORS.line, color: COLORS.ink, outline: "none" }}
           />
           {error && (
             <div className="text-xs px-3 py-2 rounded-md mb-3" style={{ background: COLORS.redSoft, color: COLORS.red }}>
