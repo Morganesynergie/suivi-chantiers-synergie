@@ -54,6 +54,25 @@ export default async function proxy(request) {
     return NextResponse.json({ error: "Non autorisé. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  // Diagnostic temporaire : au lieu de rediriger silencieusement vers
+  // /login quand "/" est bloqué, on affiche directement — pour CETTE
+  // requête précise, celle qui échoue vraiment — ce que proxy.js a reçu et
+  // décidé. Ça évite de devoir comparer avec un appel séparé à /__diag fait
+  // juste avant/après, qui pourrait ne pas refléter exactement le même
+  // instant. À retirer une fois le problème résolu.
+  if (pathname === "/") {
+    return NextResponse.json(
+      {
+        diagRootBlocked: true,
+        cookiePresent: !!cookie,
+        cookieLength: (cookie || "").length,
+        cookieValid: await isValidAuthCookie(cookie),
+        allCookieNames: request.cookies.getAll().map((c) => c.name),
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
+  }
+
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", pathname);
   // Diagnostic temporaire, visible directement dans l'URL de redirection :
