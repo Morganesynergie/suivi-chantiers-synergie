@@ -25,16 +25,26 @@ function LoginForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading) {
+      console.log("[login] soumission ignorée : déjà en cours");
+      return;
+    }
     setError("");
     setLoading(true);
+    console.log("[login] envoi de la requête...");
     try {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json().catch(() => ({}));
+      console.log("[login] réponse reçue, status =", res.status);
+      const data = await res.json().catch((jsonErr) => {
+        console.log("[login] échec du parsing JSON de la réponse", jsonErr);
+        return {};
+      });
       if (!res.ok) {
+        console.log("[login] échec (status non-ok), message =", data.error);
         setError(data.error || "Mot de passe incorrect.");
         setLoading(false);
         return;
@@ -46,9 +56,12 @@ function LoginForm() {
       // secours au cas où la redirection automatique ne se déclencherait
       // pas (certains environnements bloquent parfois la navigation
       // programmatique) — jamais bloquée sans issue.
+      console.log("[login] succès, affichage de l'écran de confirmation puis redirection vers", next);
       setSuccess(true);
       window.location.replace(next);
-    } catch {
+      console.log("[login] window.location.replace() a été appelé");
+    } catch (err) {
+      console.log("[login] exception attrapée :", err);
       setError("Erreur de connexion. Réessayez.");
       setLoading(false);
     }
