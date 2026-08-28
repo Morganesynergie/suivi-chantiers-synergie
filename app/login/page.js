@@ -138,8 +138,16 @@ function LoginForm() {
           <h1 className="text-lg font-semibold mb-1" style={{ color: COLORS.ink }}>
             Connexion réussie
           </h1>
-          <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
+          <p className="text-sm mb-1" style={{ color: COLORS.inkSoft }}>
             Redirection en cours...
+          </p>
+          {/* Diagnostic temporaire : affiche en clair, à l'écran, la valeur
+              exacte de "next" utilisée pour la redirection — pour savoir
+              avec certitude vers quelle adresse l'appli essaie d'aller,
+              sans dépendre de l'affichage de l'URL par le navigateur. À
+              retirer une fois le problème résolu. */}
+          <p className="text-xs mb-4" style={{ color: COLORS.inkSoft, fontFamily: "monospace", wordBreak: "break-all" }}>
+            cible : {next}
           </p>
           <a
             href={next}
