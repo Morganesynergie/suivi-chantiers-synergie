@@ -196,6 +196,15 @@ function joursRetardReglement(s) {
 function uid(prefix) {
   return prefix + "-" + Math.random().toString(36).slice(2, 10);
 }
+// Nom affiché d'un marché/TS/PRORATA : le libellé auto ("TS 1", "PRORATA"...)
+// suivi, s'il est renseigné, du nom/description libre ajouté à côté (ex.
+// "TS 1 — Terrassement"). Le libellé auto lui-même reste toujours modifiable
+// directement (champ titre du bloc), mais ce champ "description" permet
+// d'ajouter une précision SANS avoir à retaper/perdre le repère "TS N".
+function marcheDisplayName(m) {
+  if (!m) return "";
+  return m.description ? `${m.nom} — ${m.description}` : m.nom;
+}
 
 function useIsMobile(breakpoint = 760) {
   const [isMobile, setIsMobile] = useState(() => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false));
@@ -587,7 +596,7 @@ function computeMarcheSoldeEntries(chantiers) {
         dateFacture: lastDate || null, totalARecevoir: solde, montantHt: 0, paye: false,
         validBet: null, dateEnvoi: null,
         chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
-        marcheId, marcheNom: marche ? marche.nom : "—",
+        marcheId, marcheNom: marche ? marcheDisplayName(marche) : "—",
         isMarcheSoldePending: true,
       });
     }
@@ -1467,9 +1476,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   }
 
   function openNew(marcheId) {
-    // La numérotation repart à 1 pour chaque marché/TS/PRORATA : on ne
-    // regarde que les situations DÉJÀ rattachées à CE bloc, jamais tout le
-    // chantier (chaque marché a sa propre série de situations).
+    // Chaque bloc (marché principal, chaque TS, chaque PRORATA) a sa PROPRE
+    // numérotation indépendante repartant à 1 — un nouveau TS ne continue
+    // JAMAIS la numérotation du marché principal ni d'un TS précédent. Pour
+    // un bloc PRORATA le champ n'est de toute façon pas affiché (voir plus
+    // bas), donc peu importe ce qu'on calcule ici pour ce cas.
     const targetMarcheId = marcheId || chantier.marches[0]?.id || "";
     const sitsDuBloc = chantier.situations.filter((s) => s.marcheId === targetMarcheId);
     const nextNum = sitsDuBloc.length ? Math.max(...sitsDuBloc.map((s) => (typeof s.nSituation === "number" ? s.nSituation : 0))) + 1 : 1;
@@ -1564,7 +1575,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const emptyMarche = () => ({
     // Numéroté parmi les TS existants uniquement (le marché principal ne compte pas comme
     // "TS 1") : le tout premier TS ajouté doit s'appeler "TS 1", pas "TS 2".
-    id: uid("marche"), nom: "TS " + (chantier.marches.filter((m) => m.type === "ts").length + 1), montantHt: "", tauxTva: 0.085,
+    id: uid("marche"), nom: "TS " + (chantier.marches.filter((m) => m.type === "ts").length + 1), description: "", montantHt: "", tauxTva: 0.085,
     rgMode: "5pct", rgPct: 0.05, prorataPct: "", addMontant: "", addDate: "", tvaRegime: "085",
     type: "ts",
   });
@@ -1634,7 +1645,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
         </tr>`).join("");
       return `
-        <h3>${m.nom}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
+        <h3>${marcheDisplayName(m)}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
         <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>À recevoir</th><th>Paiement</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
     }).join("");
@@ -2114,12 +2125,21 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <div className="flex flex-col gap-3 mb-5">
             {chantier.marches.map((m) => (
               <Card key={m.id} className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <TextInput value={m.nom} onChange={(e) => updateMarche(m.id, { nom: e.target.value })} style={{ fontWeight: 600, fontSize: 14, border: "none", padding: "2px 0" }} />
+                <div className="flex items-center justify-between mb-1 gap-2">
+                  <TextInput value={m.nom} onChange={(e) => updateMarche(m.id, { nom: e.target.value })} style={{ fontWeight: 600, fontSize: 14, border: "none", padding: "2px 0", flex: "0 1 auto", width: 110 }} />
+                  <TextInput
+                    value={m.description || ""}
+                    onChange={(e) => updateMarche(m.id, { description: e.target.value })}
+                    placeholder="Nom / description (optionnel)"
+                    style={{ flex: 1, fontSize: 13 }}
+                  />
                   {chantier.marches.length > 1 && (
                     <button onClick={() => removeMarche(m.id)} title="Supprimer ce marché/TS"><X size={14} color={COLORS.red} /></button>
                   )}
                 </div>
+                <p className="text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+                  Affiché partout comme : <span className="font-medium">{marcheDisplayName(m)}</span>
+                </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
                   <Field label="Type de bloc">
                     <select value={m.type || "ts"} onChange={(e) => updateMarche(m.id, { type: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
@@ -2270,7 +2290,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <div key={m.id} className="mb-5">
             <div className="flex items-center justify-between mb-1.5 px-0.5 flex-wrap gap-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold" style={{ color: isProrata ? "#8B5CF6" : COLORS.ink }}>{m.nom}</span>
+                <span className="text-sm font-semibold" style={{ color: isProrata ? "#8B5CF6" : COLORS.ink }}>{marcheDisplayName(m)}</span>
                 {!isProrata && <Pill color="accent">{fmtEUR(m.montantHt)} HT marché</Pill>}
                 <span className="text-xs" style={{ color: COLORS.inkSoft }}>
                   facturé {fmtEUR(totalHt)}
@@ -2464,7 +2484,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   className="outline-none focus:ring-2"
                 >
                   {chantier.marches.map((m) => (
-                    <option key={m.id} value={m.id}>{m.nom}</option>
+                    <option key={m.id} value={m.id}>{marcheDisplayName(m)}</option>
                   ))}
                 </select>
               </Field>
