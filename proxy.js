@@ -13,6 +13,19 @@ import { AUTH_COOKIE_NAME, isValidAuthCookie } from "@/lib/siteAuth";
 export default async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  // Log temporaire (visible dans Vercel → Logs), pour voir ce que reçoit
+  // VRAIMENT une requête réelle de navigateur, sans dépendre de mes propres
+  // tests depuis l'extérieur. À retirer une fois le problème résolu.
+  console.log(
+    "[proxy]",
+    request.method,
+    pathname,
+    "cookiePresent=" + !!request.cookies.get(AUTH_COOKIE_NAME)?.value,
+    "secFetchMode=" + (request.headers.get("sec-fetch-mode") || "?"),
+    "secFetchDest=" + (request.headers.get("sec-fetch-dest") || "?"),
+    "ua=" + (request.headers.get("user-agent") || "?").slice(0, 60)
+  );
+
   const isPublic =
     pathname === "/login" ||
     pathname.startsWith("/api/login") ||
@@ -26,7 +39,9 @@ export default async function proxy(request) {
   if (isPublic) return NextResponse.next();
 
   const cookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (await isValidAuthCookie(cookie)) {
+  const valid = await isValidAuthCookie(cookie);
+  console.log("[proxy]", pathname, "cookieValid=" + valid, valid ? "-> NextResponse.next()" : "-> blocage");
+  if (valid) {
     // Important : on ne modifie JAMAIS les en-têtes d'une réponse
     // NextResponse.next() (voir next-response.md dans la doc de cette
     // version de Next.js) — cela peut perturber le routage interne et
@@ -41,6 +56,7 @@ export default async function proxy(request) {
 
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", pathname);
+  console.log("[proxy]", pathname, "-> redirect vers", loginUrl.toString());
   return NextResponse.redirect(loginUrl);
 }
 
