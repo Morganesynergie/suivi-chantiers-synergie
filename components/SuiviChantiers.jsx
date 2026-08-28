@@ -1601,11 +1601,22 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     if (!key) return 0;
     return chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + ((f.nom || "").trim().toLowerCase() === key ? (f.montant || 0) : 0), 0), 0);
   }
+  // Montant déjà remboursé sur l'ADD d'un marché : par défaut la somme de la colonne "Remb.
+  // ADD" des situations de ce marché, mais peut être saisi/corrigé directement (champ "Déjà
+  // remboursé (ADD)" dans "Modifier les infos") quand une situation a été perdue/mal
+  // renseignée et qu'il n'est plus possible de reconstituer le détail situation par situation.
+  function addRembourseTotal(marcheId) {
+    const m = chantier.marches.find((x) => x.id === marcheId);
+    if (!m) return 0;
+    if (m.addRembourseManuel !== "" && m.addRembourseManuel !== null && m.addRembourseManuel !== undefined) {
+      return Number(m.addRembourseManuel) || 0;
+    }
+    return chantier.situations.filter((s) => s.marcheId === marcheId).reduce((a, s) => a + (s.rembAdd || 0), 0);
+  }
   function addResteARembourser(marcheId) {
     const m = chantier.marches.find((x) => x.id === marcheId);
     if (!m || !m.addMontant) return null;
-    const rembourse = chantier.situations.filter((s) => s.marcheId === marcheId).reduce((a, s) => a + (s.rembAdd || 0), 0);
-    return Math.round((m.addMontant - rembourse) * 100) / 100;
+    return Math.round((m.addMontant - addRembourseTotal(marcheId)) * 100) / 100;
   }
 
   function exportChantierPdf() {
@@ -2130,6 +2141,26 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                       <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
                       <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => updateMarche(m.id, { addMontant: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
                       <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
+                      {m.addMontant ? (() => {
+                        const autoRembourse = chantier.situations.filter((s) => s.marcheId === m.id).reduce((a, s) => a + (s.rembAdd || 0), 0);
+                        const isManual = m.addRembourseManuel !== "" && m.addRembourseManuel !== null && m.addRembourseManuel !== undefined;
+                        return (
+                          <Field label="Déjà remboursé (ADD)">
+                            <TextInput
+                              type="number" step="0.01"
+                              value={m.addRembourseManuel ?? ""}
+                              placeholder={fmtEUR(autoRembourse)}
+                              onChange={(e) => updateMarche(m.id, { addRembourseManuel: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                            />
+                            <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
+                              Somme auto de la colonne "Remb. ADD" des situations : <span className="font-medium">{fmtEUR(autoRembourse)}</span>
+                              {isManual && (
+                                <> · <button type="button" onClick={() => updateMarche(m.id, { addRembourseManuel: "" })} style={{ color: COLORS.accent, textDecoration: "underline" }}>revenir à l'auto</button></>
+                              )}
+                            </p>
+                          </Field>
+                        );
+                      })() : null}
                       <Field label="Régime de TVA (s'applique à toutes les situations de ce marché/TS)">
                         <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
                           {Object.entries(TVA_REGIMES).map(([key, r]) => (
@@ -2247,7 +2278,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                     <>
                       {m.montantHt ? ` · reste à facturer ${fmtEUR(Math.round((m.montantHt - totalHt) * 100) / 100)}` : ""}
                       {" · RG "}{m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}
-                      {m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}
+                      {m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · déjà remboursé ${fmtEUR(addRembourseTotal(m.id))} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}
                     </>
                   )}
                 </span>
