@@ -18,6 +18,8 @@ const COLORS = {
 function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
+  const diagCookiePresent = searchParams.get("diagCookiePresent");
+  const diagCookieLen = searchParams.get("diagCookieLen");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,10 +58,16 @@ function LoginForm() {
       // secours au cas où la redirection automatique ne se déclencherait
       // pas (certains environnements bloquent parfois la navigation
       // programmatique) — jamais bloquée sans issue.
-      console.log("[login] succès, affichage de l'écran de confirmation puis redirection vers", next);
+      //
+      // Délai volontaire de 3 secondes avant la redirection : ça laisse le
+      // temps de lire les messages de diagnostic dans la Console avant que
+      // la page ne change, sans avoir besoin d'activer "Preserve log".
+      console.log("[login] succès ! Redirection vers", next, "dans 3 secondes (le temps de lire ce message)...");
       setSuccess(true);
-      window.location.replace(next);
-      console.log("[login] window.location.replace() a été appelé");
+      setTimeout(() => {
+        console.log("[login] redirection en cours maintenant, via window.location.replace()");
+        window.location.replace(next);
+      }, 3000);
     } catch (err) {
       console.log("[login] exception attrapée :", err);
       setError("Erreur de connexion. Réessayez.");
@@ -129,6 +137,11 @@ function LoginForm() {
           >
             {loading ? "Connexion..." : "Se connecter"}
           </button>
+          {diagCookiePresent !== null && (
+            <div className="text-xs mt-3 p-2 rounded-md" style={{ background: "#EFEAE0", color: COLORS.inkSoft }}>
+              Diagnostic (temporaire) — diagCookiePresent = {diagCookiePresent}, diagCookieLen = {diagCookieLen}
+            </div>
+          )}
         </form>
       )}
     </div>
