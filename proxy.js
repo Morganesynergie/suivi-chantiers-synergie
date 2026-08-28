@@ -17,9 +17,13 @@ export default async function proxy(request) {
   // ici (dans le Proxy / Edge), sans jamais révéler sa valeur. À supprimer
   // une fois le problème de connexion résolu.
   if (pathname === "/__diag") {
+    const diagCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
     return NextResponse.json({
       hasSecretInProxy: !!process.env.SITE_ACCESS_PASSWORD,
       secretLength: (process.env.SITE_ACCESS_PASSWORD || "").length,
+      cookiePresent: !!diagCookie,
+      cookieLength: (diagCookie || "").length,
+      cookieValid: await isValidAuthCookie(diagCookie),
     });
   }
 
