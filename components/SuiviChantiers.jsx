@@ -96,40 +96,88 @@ function montantEffectivementRecu(s) {
   if (hasMontantRegle(s)) return Number(s.montantRegle);
   return s.paye ? (s.totalARecevoir || 0) : 0;
 }
-// Sur les situations DÉJÀ MARQUÉES PAYÉES d'un même marché, un client règle parfois une
-// facture en plus et une autre en moins (mauvaise affectation de virement, retenue
-// ponctuelle...) : il ne faut pas compter chaque écart isolément (un trop-perçu de 75K€ sur
-// une situation ne doit pas laisser croire qu'un manque de 44K€ sur une autre situation du
-// même marché est intégralement dû), mais compenser les deux à l'intérieur du marché. On ne
-// compense en revanche JAMAIS entre deux marchés différents (chacun a son propre compte
-// avec le client), ni avec les situations pas encore payées (déjà comptées à part).
-// Renvoie un tableau d'entrées { marcheId, solde, sits } — une par marché avec un solde net
-// non nul après compensation.
-function soldeNetMarchesPayes(situations) {
+// Parcourt les situations d'UN SEUL marché/TS, dans l'ordre de la séquence
+// (n° de situation, puis date de facture en repli), et reporte les
+// trop-perçus / manques constatés sur les situations déjà PAYÉES vers les
+// situations SUIVANTES pas encore payées du même marché — jamais vers un
+// autre marché/TS, jamais vers une situation antérieure.
+//
+// Exemple (remonté par Morgane, chantier Redneck) : la situation N-1 est
+// payée avec 2 000 € de trop-perçu ; la situation N, encore en attente,
+// doit voir son montant à recevoir réduit de ces 2 000 € — l'ancienne
+// version ne compensait qu'ENTRE situations déjà payées entre elles, jamais
+// vers une situation encore en attente, donc ce trop-perçu disparaissait
+// purement et simplement au lieu de réduire ce qui restait dû.
+// Symétriquement, un manque constaté sur une situation payée s'ajoute au
+// montant dû sur la situation en attente suivante.
+//
+// Renvoie { dueBySituation: {id: montant}, leftoverSolde } : dueBySituation
+// donne le montant réellement dû pour chaque situation NON payée (à utiliser
+// à la place de son totalARecevoir brut) ; leftoverSolde est le reliquat non
+// absorbé quand TOUTES les situations du marché sont déjà payées mais
+// laissent malgré tout un écart net (c'est l'ancien cas "solde net du
+// marché", ex. CHU : cinq situations toutes payées avec des écarts qui ne
+// s'annulent pas complètement).
+function walkMarcheLedger(situations) {
+  const rank = (s) => {
+    const n = Number(s.nSituation);
+    const hasN = s.nSituation !== "" && s.nSituation !== null && s.nSituation !== undefined && !isNaN(n);
+    return [hasN ? n : Infinity, s.dateFacture || "9999-99-99"];
+  };
+  const cmp = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
+  const ordered = [...situations].sort((a, b) => cmp(rank(a), rank(b)));
+  let credit = 0; // > 0 : trop-perçu disponible à reporter ; < 0 : manque encore à couvrir
+  const dueBySituation = {};
+  for (const s of ordered) {
+    const due = s.totalARecevoir || 0;
+    if (s.paye) {
+      const recu = montantEffectivementRecu(s);
+      credit = Math.round((credit + (recu - due)) * 100) / 100;
+    } else {
+      const dejaRecu = hasMontantRegle(s) ? Number(s.montantRegle) : 0;
+      const effectiveDue = Math.round((due - dejaRecu - credit) * 100) / 100;
+      if (effectiveDue >= 0) {
+        dueBySituation[s.id] = effectiveDue;
+        credit = 0;
+      } else {
+        // le trop-perçu disponible dépasse ce qui était dû ici : rien à
+        // payer sur cette ligne, le reliquat continue vers la suivante.
+        dueBySituation[s.id] = 0;
+        credit = Math.round(-effectiveDue * 100) / 100;
+      }
+    }
+  }
+  const leftoverSolde = credit < -0.01 ? Math.round(-credit * 100) / 100 : 0;
+  return { dueBySituation, leftoverSolde };
+}
+// Applique walkMarcheLedger à toutes les situations d'un chantier, groupées
+// par marché/TS (jamais de compensation entre deux marchés différents).
+function chantierLedger(situations) {
   const byMarche = {};
   for (const s of situations) {
-    if (!s.paye) continue;
     const key = s.marcheId || `_sans_marche_${s.id}`;
     (byMarche[key] = byMarche[key] || []).push(s);
   }
-  const out = [];
+  const dueBySituation = {};
+  const leftoverByMarche = {};
   for (const [marcheId, sits] of Object.entries(byMarche)) {
-    const attendu = sits.reduce((a, s) => a + (s.totalARecevoir || 0), 0);
-    const recu = sits.reduce((a, s) => a + montantEffectivementRecu(s), 0);
-    const solde = Math.round(Math.max(0, attendu - recu) * 100) / 100;
-    if (solde > 0.01) out.push({ marcheId, solde, sits });
+    const res = walkMarcheLedger(sits);
+    Object.assign(dueBySituation, res.dueBySituation);
+    if (res.leftoverSolde > 0.01) leftoverByMarche[marcheId] = res.leftoverSolde;
   }
-  return out;
+  return { dueBySituation, leftoverByMarche };
 }
-// Total "en attente de règlement" sur un ensemble de situations (un chantier, ou un
-// sous-ensemble de marchés) : la somme des situations pas encore payées, plus le solde net
-// (compensé par marché) laissé par les situations déjà payées avec un écart. C'est la seule
-// fonction à utiliser pour un total agrégé — ne jamais sommer soldeRestant() directement sur
-// des situations payées, ça recompterait chaque écart isolément (voir soldeNetMarchesPayes).
+// Total "en attente de règlement" sur les situations d'un chantier : la
+// somme des montants dus (déjà nets des trop-perçus/manques reportés) sur
+// chaque situation pas encore payée, plus les reliquats de marchés
+// entièrement payés mais pas totalement soldés. C'est la seule fonction à
+// utiliser pour un total agrégé — ne jamais sommer soldeRestant() directement,
+// ça recompterait chaque écart isolément (voir walkMarcheLedger).
 function soldeAttenteChantier(situations) {
-  const nonPayees = situations.filter((s) => !s.paye).reduce((a, s) => a + soldeRestant(s), 0);
-  const payeesNet = soldeNetMarchesPayes(situations).reduce((a, e) => a + e.solde, 0);
-  return Math.round((nonPayees + payeesNet) * 100) / 100;
+  const { dueBySituation, leftoverByMarche } = chantierLedger(situations);
+  const sumDue = Object.values(dueBySituation).reduce((a, v) => a + v, 0);
+  const sumLeftover = Object.values(leftoverByMarche).reduce((a, v) => a + v, 0);
+  return Math.round((sumDue + sumLeftover) * 100) / 100;
 }
 function addDays(iso, days) {
   if (!iso) return null;
@@ -520,23 +568,26 @@ function computeRgEchuesPendingEntries(rgDues) {
     }));
 }
 
-// Une par marché où les situations déjà payées laissent un solde net non nul après
-// compensation des trop-perçus / manques (voir soldeNetMarchesPayes). Contrairement aux
+// Une par marché entièrement payé dont les situations laissent malgré tout un solde net non
+// nul après compensation des trop-perçus / manques (voir walkMarcheLedger) — cas d'un marché
+// où AUCUNE situation n'est encore en attente pour absorber le reliquat. Contrairement aux
 // situations impayées listées individuellement, ce solde n'est pas rattaché à une facture
 // précise — c'est un écart cumulé sur le marché — donc pas d'action "marquer réglé" dessus :
 // la correction se fait situation par situation, depuis la fiche du chantier.
 function computeMarcheSoldeEntries(chantiers) {
   const out = [];
   for (const c of chantiers) {
-    for (const entry of soldeNetMarchesPayes(c.situations)) {
-      const marche = c.marches.find((m) => m.id === entry.marcheId);
-      const lastDate = entry.sits.reduce((latest, s) => ((s.dateFacture || "") > latest ? s.dateFacture : latest), "");
+    const { leftoverByMarche } = chantierLedger(c.situations);
+    for (const [marcheId, solde] of Object.entries(leftoverByMarche)) {
+      const marche = c.marches.find((m) => m.id === marcheId);
+      const sits = c.situations.filter((s) => s.marcheId === marcheId);
+      const lastDate = sits.reduce((latest, s) => ((s.dateFacture || "") > latest ? s.dateFacture : latest), "");
       out.push({
-        id: `marche-solde-${c.id}-${entry.marcheId}`, nSituation: 0, nFact: "SOLDE",
-        dateFacture: lastDate || null, totalARecevoir: entry.solde, montantHt: 0, paye: false,
+        id: `marche-solde-${c.id}-${marcheId}`, nSituation: 0, nFact: "SOLDE",
+        dateFacture: lastDate || null, totalARecevoir: solde, montantHt: 0, paye: false,
         validBet: null, dateEnvoi: null,
         chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
-        marcheId: entry.marcheId, marcheNom: marche ? marche.nom : "—",
+        marcheId, marcheNom: marche ? marche.nom : "—",
         isMarcheSoldePending: true,
       });
     }
@@ -550,16 +601,24 @@ function useComputed(chantiers, rgDues) {
     const addPending = computeAddPendingEntries(chantiers);
     const rgPending = computeRgEchuesPendingEntries(rgDues);
     const marcheSoldePending = computeMarcheSoldeEntries(chantiers);
+    // Montant réellement dû par situation encore en attente, calculé pour chaque chantier via
+    // walkMarcheLedger : reporte déjà les trop-perçus/manques des situations payées du même
+    // marché sur les suivantes (voir walkMarcheLedger plus haut).
+    const ledgerBySituationId = {};
+    for (const c of chantiers) {
+      Object.assign(ledgerBySituationId, chantierLedger(c.situations).dueBySituation);
+    }
     const impayees = [
-      // Situation encore ouverte (non payée) : affichée avec son solde restant si un
-      // règlement partiel a déjà été reçu dessus (une seule situation, pas de compensation
-      // entre plusieurs factures ici — voir computeMarcheSoldeEntries pour les situations
-      // déjà payées, qui suivent une logique différente).
+      // Situation encore ouverte (non payée) : affichée avec son montant réellement dû, qui
+      // tient compte à la fois d'un règlement partiel déjà reçu sur ELLE-MÊME et des
+      // trop-perçus/manques reportés depuis les situations payées précédentes du même marché
+      // (voir computeMarcheSoldeEntries pour le reliquat quand plus aucune situation du marché
+      // n'est en attente pour l'absorber).
       ...flat.filter((s) => !s.paye && (s.totalARecevoir || 0) >= 0).map((s) => {
-        if (!hasMontantRegle(s)) return s;
-        const restant = soldeRestant(s);
-        return Math.abs(restant - (s.totalARecevoir || 0)) > 0.01
-          ? { ...s, totalARecevoirOriginal: s.totalARecevoir, totalARecevoir: restant }
+        const adjusted = ledgerBySituationId[s.id];
+        if (adjusted === undefined) return s;
+        return Math.abs(adjusted - (s.totalARecevoir || 0)) > 0.01
+          ? { ...s, totalARecevoirOriginal: s.totalARecevoir, totalARecevoir: adjusted }
           : s;
       }),
       ...marcheSoldePending,
@@ -1408,8 +1467,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   }
 
   function openNew(marcheId) {
-    const nextNum = chantier.situations.length ? Math.max(...chantier.situations.map((s) => (typeof s.nSituation === "number" ? s.nSituation : 0))) + 1 : 1;
-    setForm({ ...emptySituation(), nSituation: nextNum, marcheId: marcheId || chantier.marches[0]?.id || "" });
+    // La numérotation repart à 1 pour chaque marché/TS/PRORATA : on ne
+    // regarde que les situations DÉJÀ rattachées à CE bloc, jamais tout le
+    // chantier (chaque marché a sa propre série de situations).
+    const targetMarcheId = marcheId || chantier.marches[0]?.id || "";
+    const sitsDuBloc = chantier.situations.filter((s) => s.marcheId === targetMarcheId);
+    const nextNum = sitsDuBloc.length ? Math.max(...sitsDuBloc.map((s) => (typeof s.nSituation === "number" ? s.nSituation : 0))) + 1 : 1;
+    setForm({ ...emptySituation(), nSituation: nextNum, marcheId: targetMarcheId });
     setEditingId(null);
     setShowForm(true);
   }
@@ -1498,7 +1562,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
 
 
   const emptyMarche = () => ({
-    id: uid("marche"), nom: "TS " + (chantier.marches.length + 1), montantHt: "", tauxTva: 0.085,
+    // Numéroté parmi les TS existants uniquement (le marché principal ne compte pas comme
+    // "TS 1") : le tout premier TS ajouté doit s'appeler "TS 1", pas "TS 2".
+    id: uid("marche"), nom: "TS " + (chantier.marches.filter((m) => m.type === "ts").length + 1), montantHt: "", tauxTva: 0.085,
     rgMode: "5pct", rgPct: 0.05, prorataPct: "", addMontant: "", addDate: "", tvaRegime: "085",
     type: "ts",
   });
@@ -1795,10 +1861,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const docsPresentPct = docsTotalCount ? Math.round((docsPresentCount / docsTotalCount) * 100) : 100;
 
   const totalMarcheHt = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
-  const totalFacture = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
+  const totalMarcheTtc = chantier.marches.reduce((a, m) => a + (m.montantHt || 0) * (1 + (TVA_REGIMES[m.tvaRegime]?.rate ?? 0.085)), 0);
+  const totalFactureTtc = chantier.situations.reduce((a, s) => a + (s.montantTtc || 0), 0);
   const totalAttente = soldeAttenteChantier(chantier.situations);
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
-  const resteAFacturer = totalMarcheHt - totalFacture;
+  const resteAFacturer = Math.round((totalMarcheTtc - totalFactureTtc) * 100) / 100;
   const allSupplierNames = Array.from(new Set((chantier.fournisseurs || []).map((f) => f.nom).filter(Boolean)));
 
   return (
@@ -2050,24 +2117,33 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                       <option value="prorata">PRORATA</option>
                     </select>
                   </Field>
-                  <Field label="Montant HT"><TextInput type="number" value={m.montantHt ?? ""} onChange={(e) => updateMarche(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
-                  <Field label="Retenue de garantie (RG)">
-                    <select value={m.rgMode || "5pct"} onChange={(e) => updateMarche(m.id, { rgMode: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
-                      <option value="5pct">5 %</option>
-                      <option value="banque">Caution banque</option>
-                      <option value="aucune">Pas de RG</option>
-                    </select>
-                  </Field>
-                  <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
-                  <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => updateMarche(m.id, { addMontant: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
-                  <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
-                  <Field label="Régime de TVA (s'applique à toutes les situations de ce marché/TS)">
-                    <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
-                      {Object.entries(TVA_REGIMES).map(([key, r]) => (
-                        <option key={key} value={key}>{r.label}</option>
-                      ))}
-                    </select>
-                  </Field>
+                  {m.type !== "prorata" && (
+                    <>
+                      <Field label="Montant HT"><TextInput type="number" value={m.montantHt ?? ""} onChange={(e) => updateMarche(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                      <Field label="Retenue de garantie (RG)">
+                        <select value={m.rgMode || "5pct"} onChange={(e) => updateMarche(m.id, { rgMode: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                          <option value="5pct">5 %</option>
+                          <option value="banque">Caution banque</option>
+                          <option value="aucune">Pas de RG</option>
+                        </select>
+                      </Field>
+                      <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                      <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => updateMarche(m.id, { addMontant: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                      <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
+                      <Field label="Régime de TVA (s'applique à toutes les situations de ce marché/TS)">
+                        <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                          {Object.entries(TVA_REGIMES).map(([key, r]) => (
+                            <option key={key} value={key}>{r.label}</option>
+                          ))}
+                        </select>
+                      </Field>
+                    </>
+                  )}
+                  {m.type === "prorata" && (
+                    <p className="text-xs" style={{ color: COLORS.inkSoft, gridColumn: "1 / -1" }}>
+                      Montant HT, TVA, RG... se renseignent directement sur chaque situation enregistrée dans ce bloc.
+                    </p>
+                  )}
                 </div>
               </Card>
             ))}
@@ -2114,8 +2190,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         <>
           <ResponsiveGrid min={130} className="mb-3">
             <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Marché HT (total)</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalMarcheHt)}</div></Card>
-            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Facturé HT</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalFacture)}</div></Card>
-            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Reste à facturer</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(resteAFacturer)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Marché TTC (total)</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalMarcheTtc)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Facturé TTC</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalFactureTtc)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Reste à facturer TTC</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(resteAFacturer)}</div></Card>
             <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>En attente règlement</div><div className="text-sm font-semibold tabular-nums" style={{ color: totalAttente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(totalAttente)}</div></Card>
           </ResponsiveGrid>
 
@@ -2163,8 +2240,17 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
             <div className="flex items-center justify-between mb-1.5 px-0.5 flex-wrap gap-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold" style={{ color: isProrata ? "#8B5CF6" : COLORS.ink }}>{m.nom}</span>
-                <Pill color={isProrata ? "purple" : "accent"}>{fmtEUR(m.montantHt)} HT marché</Pill>
-                <span className="text-xs" style={{ color: COLORS.inkSoft }}>facturé {fmtEUR(totalHt)} · RG {m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}{m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}</span>
+                {!isProrata && <Pill color="accent">{fmtEUR(m.montantHt)} HT marché</Pill>}
+                <span className="text-xs" style={{ color: COLORS.inkSoft }}>
+                  facturé {fmtEUR(totalHt)}
+                  {!isProrata && (
+                    <>
+                      {m.montantHt ? ` · reste à facturer ${fmtEUR(Math.round((m.montantHt - totalHt) * 100) / 100)}` : ""}
+                      {" · RG "}{m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}
+                      {m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}
+                    </>
+                  )}
+                </span>
               </div>
               {unlocked && <Btn size="sm" variant="ghost" onClick={() => openNew(m.id)}><Plus size={13} /> Situation sur ce marché</Btn>}
             </div>
@@ -2173,13 +2259,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                 <table className="text-xs" style={{ width: "100%", minWidth: 980 }}>
                   <thead>
                     <tr style={{ color: COLORS.inkSoft, background: isProrata ? "#F5F3FF" : "#F7F5EF" }}>
-                      <th className="text-left font-medium px-3 py-2">N°</th>
+                      {!isProrata && <th className="text-left font-medium px-3 py-2">N°</th>}
                       <th className="text-left font-medium px-2 py-2">Facture</th>
                       <th className="text-left font-medium px-2 py-2">Date</th>
                       <th className="text-right font-medium px-2 py-2">% Av.</th>
                       <th className="text-right font-medium px-2 py-2">Mt HT</th>
                       <th className="text-right font-medium px-2 py-2">TTC</th>
                       <th className="text-right font-medium px-2 py-2">RG</th>
+                      <th className="text-right font-medium px-2 py-2">Remb. ADD</th>
                       <th className="text-right font-medium px-2 py-2">Fournisseur</th>
                       <th className="text-right font-medium px-2 py-2">À recevoir</th>
                       <th className="text-left font-medium px-2 py-2">Envoi</th>
@@ -2190,26 +2277,38 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   </thead>
                   <tbody>
                     {sits.length === 0 && (
-                      <tr><td colSpan={12} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
+                      <tr><td colSpan={13} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
                     )}
                     {sits.map((s) => (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                        <td className="px-3 py-2">
+                        {!isProrata && (
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center gap-1">
+                              {s.nSituation ?? "—"}
+                              {s.note && (
+                                <span title={s.note}>
+                                  <StickyNote size={11} color={COLORS.accent} style={{ opacity: 0.8 }} />
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                        )}
+                        <td className="px-2 py-2">
                           <span className="inline-flex items-center gap-1">
-                            {s.nSituation ?? "—"}
-                            {s.note && (
+                            {s.nFact || "—"}
+                            {isProrata && s.note && (
                               <span title={s.note}>
                                 <StickyNote size={11} color={COLORS.accent} style={{ opacity: 0.8 }} />
                               </span>
                             )}
                           </span>
                         </td>
-                        <td className="px-2 py-2">{s.nFact || "—"}</td>
                         <td className="px-2 py-2">{fmtDate(s.dateFacture)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtPct(s.pctAvancement)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantHt)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantTtc)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{s.rembAdd ? fmtEUR(s.rembAdd) : "—"}</td>
                         <td className="px-2 py-2 text-right tabular-nums">
                           {(s.fournisseurs && s.fournisseurs.length)
                             ? (s.fournisseurs.length === 1
@@ -2338,7 +2437,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   ))}
                 </select>
               </Field>
-              <Field label="N° situation"><TextInput value={form.nSituation} onChange={(e) => setForm({ ...form, nSituation: e.target.value })} /></Field>
+              {getMarche(form.marcheId || chantier.marches[0]?.id)?.type !== "prorata" && (
+                <Field label="N° situation"><TextInput value={form.nSituation} onChange={(e) => setForm({ ...form, nSituation: e.target.value })} /></Field>
+              )}
               <Field label="N° facture"><TextInput value={form.nFact} onChange={(e) => setForm({ ...form, nFact: e.target.value })} /></Field>
               <Field label="Date facture"><TextInput type="date" value={form.dateFacture} onChange={(e) => setForm({ ...form, dateFacture: e.target.value })} /></Field>
               <Field label="Montant HT"><TextInput type="number" step="0.01" value={form.montantHt} onChange={(e) => setFormAuto({ montantHt: e.target.value })} /></Field>
