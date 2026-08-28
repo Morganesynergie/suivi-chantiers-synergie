@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 const COLORS = {
   bg: "#F3F1EA",
@@ -16,7 +16,6 @@ const COLORS = {
 };
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -38,9 +37,12 @@ function LoginForm() {
         setLoading(false);
         return;
       }
+      // Navigation "dure" (pas de router.replace/refresh) : on veut un vrai
+      // rechargement de page pour être certaines que le cookie tout juste
+      // posé est bien pris en compte dès la première requête, sans dépendre
+      // du cache de navigation côté client.
       const next = searchParams.get("next") || "/";
-      router.replace(next);
-      router.refresh();
+      window.location.href = next;
     } catch {
       setError("Erreur de connexion. Réessayez.");
       setLoading(false);
