@@ -1,7 +1,31 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+
+// Diagnostic temporaire : garde une trace des derniers passages sur cette
+// page (même quand l'URL ne porte plus de paramètres, par ex. après un
+// rebond), pour comprendre le trajet complet d'une connexion qui échoue.
+// À retirer une fois le problème résolu.
+const DIAG_LOG_KEY = "sc_diag_log";
+function pushDiagLog(entry) {
+  try {
+    const raw = sessionStorage.getItem(DIAG_LOG_KEY);
+    const log = raw ? JSON.parse(raw) : [];
+    log.push({ t: new Date().toISOString().slice(11, 19), ...entry });
+    sessionStorage.setItem(DIAG_LOG_KEY, JSON.stringify(log.slice(-12)));
+  } catch {
+    // sessionStorage indisponible (mode privé strict, etc.) : on ignore.
+  }
+}
+function readDiagLog() {
+  try {
+    const raw = sessionStorage.getItem(DIAG_LOG_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 const COLORS = {
   bg: "#F3F1EA",
@@ -24,6 +48,18 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [diagLog, setDiagLog] = useState([]);
+
+  useEffect(() => {
+    pushDiagLog({
+      url: window.location.pathname + window.location.search,
+      diagCookiePresent,
+      diagCookieLen,
+    });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- panneau de diagnostic temporaire, lu une seule fois au montage
+    setDiagLog(readDiagLog());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -63,9 +99,11 @@ function LoginForm() {
       // temps de lire les messages de diagnostic dans la Console avant que
       // la page ne change, sans avoir besoin d'activer "Preserve log".
       console.log("[login] succès ! Redirection vers", next, "dans 3 secondes (le temps de lire ce message)...");
+      pushDiagLog({ event: "login OK, prochaine redirection vers", url: next });
       setSuccess(true);
       setTimeout(() => {
         console.log("[login] redirection en cours maintenant, via window.location.replace()");
+        pushDiagLog({ event: "redirection déclenchée vers", url: next });
         window.location.replace(next);
       }, 3000);
     } catch (err) {
@@ -137,9 +175,21 @@ function LoginForm() {
           >
             {loading ? "Connexion..." : "Se connecter"}
           </button>
-          {diagCookiePresent !== null && (
-            <div className="text-xs mt-3 p-2 rounded-md" style={{ background: "#EFEAE0", color: COLORS.inkSoft }}>
-              Diagnostic (temporaire) — diagCookiePresent = {diagCookiePresent}, diagCookieLen = {diagCookieLen}
+          {diagLog.length > 0 && (
+            <div className="text-xs mt-3 p-2 rounded-md" style={{ background: "#EFEAE0", color: COLORS.inkSoft, fontFamily: "monospace" }}>
+              <div className="font-semibold mb-1">Diagnostic (temporaire) :</div>
+              {diagLog.map((entry, i) => (
+                <div key={i}>
+                  {entry.event
+                    ? entry.t + " — " + entry.event + " : " + entry.url
+                    : entry.t +
+                      " — visite " +
+                      entry.url +
+                      (entry.diagCookiePresent !== undefined
+                        ? " (cookie=" + entry.diagCookiePresent + " len=" + entry.diagCookieLen + ")"
+                        : "")}
+                </div>
+              ))}
             </div>
           )}
         </form>
