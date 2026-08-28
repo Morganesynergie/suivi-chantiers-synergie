@@ -1,8 +1,3 @@
-"use client";
-
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-
 const COLORS = {
   bg: "#F3F1EA",
   paper: "#FFFFFF",
@@ -15,40 +10,22 @@ const COLORS = {
   redSoft: "#F7E1DD",
 };
 
-function LoginForm() {
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+// Volontairement un composant serveur (pas "use client") avec un vrai
+// formulaire HTML classique (method="POST" vers /api/login) : la
+// navigation après connexion est alors entièrement gérée par le
+// navigateur lui-même (comme n'importe quel site depuis toujours), sans
+// passer par fetch()/JavaScript ni par le routage client de Next.js.
+export default async function LoginPage({ searchParams }) {
+  const params = await searchParams;
+  const next = typeof params?.next === "string" ? params.next : "/";
+  const error = params?.error;
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (loading) return;
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || "Mot de passe incorrect.");
-        setLoading(false);
-        return;
-      }
-      // Navigation "dure" (pas de router.replace/refresh) : on veut un vrai
-      // rechargement de page pour être sûr que le cookie tout juste posé
-      // est bien pris en compte dès la première requête, sans dépendre du
-      // cache de navigation côté client.
-      window.location.href = next;
-    } catch {
-      setError("Erreur de connexion. Réessayez.");
-      setLoading(false);
-    }
-  }
+  const errorMessage =
+    error === "config"
+      ? "Accès au site non configuré. Contactez l'administrateur."
+      : error
+        ? "Mot de passe incorrect."
+        : null;
 
   return (
     <div
@@ -56,7 +33,8 @@ function LoginForm() {
       style={{ background: COLORS.bg, fontFamily: "system-ui, -apple-system, sans-serif" }}
     >
       <form
-        onSubmit={handleSubmit}
+        method="POST"
+        action="/api/login"
         className="w-full max-w-sm p-6 rounded-lg"
         style={{ background: COLORS.paper, border: "1px solid " + COLORS.line, boxShadow: "0 1px 3px rgba(22,35,59,0.08)" }}
       >
@@ -66,41 +44,28 @@ function LoginForm() {
         <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
           Accès réservé — merci de saisir le mot de passe.
         </p>
+        <input type="hidden" name="next" value={next} />
         <input
           type="password"
+          name="password"
           autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           placeholder="Mot de passe"
           className="w-full px-3 py-2 rounded-md text-sm mb-3"
           style={{ border: "1px solid " + COLORS.line, color: COLORS.ink, outline: "none" }}
         />
-        {error && (
+        {errorMessage && (
           <div className="text-xs px-3 py-2 rounded-md mb-3" style={{ background: COLORS.redSoft, color: COLORS.red }}>
-            {error}
+            {errorMessage}
           </div>
         )}
         <button
           type="submit"
-          disabled={loading || !password}
           className="w-full py-2 rounded-md text-sm font-medium"
-          style={{
-            background: loading || !password ? "#9AB2CE" : COLORS.accent,
-            color: "#fff",
-            cursor: loading || !password ? "default" : "pointer",
-          }}
+          style={{ background: COLORS.accent, color: "#fff", cursor: "pointer" }}
         >
-          {loading ? "Connexion..." : "Se connecter"}
+          Se connecter
         </button>
       </form>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
   );
 }
