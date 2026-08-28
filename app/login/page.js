@@ -51,6 +51,16 @@ function LoginForm() {
   const [diagLog, setDiagLog] = useState([]);
 
   useEffect(() => {
+    // Le titre d'onglet est le canal le plus fiable pour ce diagnostic : il
+    // ne dépend ni du sessionStorage (parfois bloqué en navigation privée)
+    // ni de l'affichage de l'URL (que certains navigateurs raccourcissent).
+    document.title =
+      "DIAG path=" +
+      window.location.pathname +
+      " cookie=" +
+      (diagCookiePresent ?? "?") +
+      " len=" +
+      (diagCookieLen ?? "?");
     pushDiagLog({
       url: window.location.pathname + window.location.search,
       diagCookiePresent,
@@ -99,10 +109,12 @@ function LoginForm() {
       // temps de lire les messages de diagnostic dans la Console avant que
       // la page ne change, sans avoir besoin d'activer "Preserve log".
       console.log("[login] succès ! Redirection vers", next, "dans 3 secondes (le temps de lire ce message)...");
+      document.title = "DIAG login OK, next=" + next;
       pushDiagLog({ event: "login OK, prochaine redirection vers", url: next });
       setSuccess(true);
       setTimeout(() => {
         console.log("[login] redirection en cours maintenant, via window.location.replace()");
+        document.title = "DIAG redirection vers " + next;
         pushDiagLog({ event: "redirection déclenchée vers", url: next });
         window.location.replace(next);
       }, 3000);
@@ -175,9 +187,12 @@ function LoginForm() {
           >
             {loading ? "Connexion..." : "Se connecter"}
           </button>
-          {diagLog.length > 0 && (
+          {(diagCookiePresent !== null || diagLog.length > 0) && (
             <div className="text-xs mt-3 p-2 rounded-md" style={{ background: "#EFEAE0", color: COLORS.inkSoft, fontFamily: "monospace" }}>
               <div className="font-semibold mb-1">Diagnostic (temporaire) :</div>
+              {diagCookiePresent !== null && (
+                <div>URL actuelle — cookie={diagCookiePresent} len={diagCookieLen}</div>
+              )}
               {diagLog.map((entry, i) => (
                 <div key={i}>
                   {entry.event
