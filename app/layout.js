@@ -1,4 +1,5 @@
 import "./globals.css";
+import KillServiceWorker from "@/components/KillServiceWorker";
 
 // Force le rendu dynamique (jamais de mise en cache statique / ISR) pour
 // TOUTE l'application, y compris la page "/" elle-même. Sans ça, Next.js
@@ -27,7 +28,10 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="fr" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <KillServiceWorker />
+        {children}
+      </body>
     </html>
   );
 }
