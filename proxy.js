@@ -42,12 +42,16 @@ export default async function proxy(request) {
 
   const cookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   if (await isValidAuthCookie(cookie)) {
-    const passRes = NextResponse.next();
-    // Empêche tout cache (CDN ou navigateur) de servir une ancienne réponse
-    // (par ex. une redirection vers /login capturée avant la connexion) à
-    // la place d'une vérification fraîche du cookie à chaque requête.
-    passRes.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-    return passRes;
+    // Important (voir node_modules/next/dist/docs/.../next-response.md) :
+    // on NE modifie PAS les en-têtes de la réponse renvoyée par
+    // NextResponse.next() ici. La doc de cette version de Next.js prévient
+    // explicitement que le faire "peut perturber les attentes du
+    // framework" et casser la négociation interne RSC/streaming — ce qui
+    // provoquait très probablement le bug observé : la page "/" affichait
+    // le contenu de /login au lieu du tableau de bord, alors même que le
+    // cookie était valide. On laisse donc passer la requête telle quelle,
+    // sans y toucher.
+    return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/")) {
