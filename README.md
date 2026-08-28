@@ -33,7 +33,10 @@ donnant une vraie base de données avec sauvegardes, accessible de partout.
 
 Le code PIN d'édition (`MK2026` par défaut, modifiable dans l'appli) est
 conservé tel quel — ce n'est pas un vrai système de comptes utilisateurs,
-juste un verrou d'édition côté UI, comme dans la version d'origine.
+juste un verrou d'édition côté UI, comme dans la version d'origine. Il ne
+protège PAS la consultation : c'est le rôle de `SITE_ACCESS_PASSWORD`
+ci-dessous (`middleware.js`), qui verrouille l'accès à tout le site (pages
+et API) derrière un mot de passe unique côté serveur.
 
 ## Mise en route
 
@@ -67,9 +70,11 @@ npm run dev
 
 1. Importer ce dépôt GitHub dans [vercel.com](https://vercel.com) (New
    Project > Import Git Repository).
-2. Dans **Environment Variables**, ajouter `SUPABASE_URL` et
-   `SUPABASE_SERVICE_ROLE_KEY` (les mêmes valeurs qu'en local).
-3. Déployer. Aucune autre configuration n'est nécessaire.
+2. Dans **Environment Variables**, ajouter `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY` et **`SITE_ACCESS_PASSWORD`** (les mêmes
+   valeurs qu'en local — voir `.env.local.example`). **`SITE_ACCESS_PASSWORD`
+   est indispensable : sans elle, le site reste entièrement public.**
+3. Déployer.
 
 ## Notes de migration
 
