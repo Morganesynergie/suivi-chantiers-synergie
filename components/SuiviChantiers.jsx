@@ -2984,6 +2984,17 @@ function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
 function SettingsPanel({ onClose, editCode, onChangeCode, onReloadFromSource }) {
   const [code, setCode] = useState(editCode);
   const [confirmReload, setConfirmReload] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      // même en cas d'erreur réseau, on tente la redirection : le
+      // middleware redemandera le mot de passe si le cookie est toujours là.
+    }
+    window.location.href = "/login";
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
       <Card className="w-full max-w-sm p-5">
@@ -2997,6 +3008,15 @@ function SettingsPanel({ onClose, editCode, onChangeCode, onReloadFromSource }) 
         <div className="flex justify-end gap-2 mt-4">
           <Btn variant="ghost" onClick={onClose}>Annuler</Btn>
           <Btn variant="primary" onClick={() => { onChangeCode(code); onClose(); }}>Enregistrer</Btn>
+        </div>
+        <div className="mt-5 pt-4" style={{ borderTop: `1px solid ${COLORS.line}` }}>
+          <p className="text-xs font-medium mb-1" style={{ color: COLORS.ink }}>Accès au site</p>
+          <p className="text-xs mb-2" style={{ color: COLORS.inkSoft }}>
+            Utile sur un ordinateur partagé ou celui d'un collègue : ferme l'accès au site sur cet appareil (le mot de passe sera redemandé).
+          </p>
+          <Btn variant="ghost" size="sm" onClick={handleLogout} disabled={loggingOut}>
+            {loggingOut ? "Déconnexion..." : "Se déconnecter de ce site"}
+          </Btn>
         </div>
         <div className="mt-5 pt-4" style={{ borderTop: `1px solid ${COLORS.line}` }}>
           <p className="text-xs font-medium mb-1" style={{ color: COLORS.ink }}>Recharger les données d'origine</p>
