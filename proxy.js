@@ -41,7 +41,14 @@ export default async function proxy(request) {
   if (isPublic) return NextResponse.next();
 
   const cookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (await isValidAuthCookie(cookie)) return NextResponse.next();
+  if (await isValidAuthCookie(cookie)) {
+    const passRes = NextResponse.next();
+    // Empêche tout cache (CDN ou navigateur) de servir une ancienne réponse
+    // (par ex. une redirection vers /login capturée avant la connexion) à
+    // la place d'une vérification fraîche du cookie à chaque requête.
+    passRes.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    return passRes;
+  }
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Non autorisé. Merci de vous reconnecter." }, { status: 401 });
@@ -49,7 +56,14 @@ export default async function proxy(request) {
 
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", pathname);
-  return NextResponse.redirect(loginUrl);
+  // Diagnostic temporaire, visible directement dans l'URL de redirection :
+  // permet de voir en un coup d'œil si un cookie est arrivé jusqu'ici et,
+  // si oui, sa longueur (jamais sa valeur). À retirer une fois résolu.
+  loginUrl.searchParams.set("diagCookiePresent", cookie ? "1" : "0");
+  loginUrl.searchParams.set("diagCookieLen", String((cookie || "").length));
+  const res = NextResponse.redirect(loginUrl);
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return res;
 }
 
 export const config = {
