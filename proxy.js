@@ -13,9 +13,20 @@ import { AUTH_COOKIE_NAME, isValidAuthCookie } from "@/lib/siteAuth";
 export default async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  // Diagnostic temporaire : indique juste si la variable d'env est visible
+  // ici (dans le Proxy / Edge), sans jamais révéler sa valeur. À supprimer
+  // une fois le problème de connexion résolu.
+  if (pathname === "/__diag") {
+    return NextResponse.json({
+      hasSecretInProxy: !!process.env.SITE_ACCESS_PASSWORD,
+      secretLength: (process.env.SITE_ACCESS_PASSWORD || "").length,
+    });
+  }
+
   const isPublic =
     pathname === "/login" ||
     pathname.startsWith("/api/login") ||
+    pathname === "/api/diag" ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.png" ||
     pathname === "/apple-icon.png" ||
