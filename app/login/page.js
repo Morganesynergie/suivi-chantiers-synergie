@@ -116,7 +116,12 @@ function LoginForm() {
         console.log("[login] redirection en cours maintenant, via window.location.replace()");
         document.title = "DIAG redirection vers " + next;
         pushDiagLog({ event: "redirection déclenchée vers", url: next });
-        window.location.replace(next);
+        // Diagnostic temporaire : on passe volontairement par /__diag (qui
+        // affiche du JSON brut, impossible à confondre avec autre chose)
+        // au lieu d'aller directement sur `next`, pour voir sans aucune
+        // ambiguïté l'état du cookie juste après la connexion réussie.
+        // À remettre en `window.location.replace(next)` une fois résolu.
+        window.location.replace("/__diag?real_next=" + encodeURIComponent(next));
       }, 3000);
     } catch (err) {
       console.log("[login] exception attrapée :", err);
