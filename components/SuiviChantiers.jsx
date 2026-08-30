@@ -446,30 +446,32 @@ function regrouperFournisseurs(fournisseurs) {
 // ---------- Position de l'encadr\u00e9 "R\u00e9partition de r\u00e8glement" ----------
 // Cal\u00e9e une fois pour toutes sur le vrai mod\u00e8le "R\u00e9capitulatif" fourni par
 // Morgane (HTA RECAP.pdf, page A4 595,32 \u00d7 841,92 pt) \u2014 elle a confirm\u00e9 que
-// ce mod\u00e8le est TOUJOURS le m\u00eame pour tous les chantiers. Coordonn\u00e9es
-// mesur\u00e9es directement sur ce document. La zone repr\u00e9sent\u00e9e sur la capture
-// d'exemple de Morgane (juste sous "R\u00e8glement / Net \u00e0 payer") est en r\u00e9alit\u00e9
-// d\u00e9j\u00e0 occup\u00e9e sur son vrai mod\u00e8le Sage (lib\u00e9ll\u00e9 "R\u00e8glement :" au-dessus,
-// paragraphe "CLAUSE PENALE" juste en dessous) : y superposer 5 lignes de
-// texte + signature provoque une collision. La bande enti\u00e8rement vierge la
-// plus proche, v\u00e9rifi\u00e9e sur le PDF r\u00e9el (analyse pixel par pixel), est la
-// marge basse de page, sous le bloc RIB/IBAN et au-dessus du pied de page
-// (SIRET / \u00a9Sage) : vierge sur toute la largeur, de 24,9 \u00e0 93,9 pt du bas.
-//   - marge gauche du texte : 15,7 pt (m\u00eame alignement que le reste du doc)
-//   - 1\u00e8re ligne : 90 pt du bas de page (police 12, rouge)
-//   - lignes suivantes : hauteur de ligne ~12,5 pt
-//   - signature : \u00e0 droite du texte (m\u00eame bande, pas de risque de chevaucher
-//     le pied de page m\u00eame avec le bloc de texte complet)
+// ce mod\u00e8le est TOUJOURS le m\u00eame pour tous les chantiers. Positionn\u00e9e \u00e0
+// l'endroit qu'elle avait elle-m\u00eame choisi (juste sous "R\u00e8glement :
+// Comptant") \u2014 c'est une zone \u00e9troite, coinc\u00e9e entre ce libell\u00e9 et le
+// paragraphe "CLAUSE PENALE" juste en dessous (~50 pt de haut, mesur\u00e9s
+// directement sur le PDF r\u00e9el), donc la taille de police et l'interligne
+// s'adaptent automatiquement au nombre de lignes \u00e0 afficher (peu de
+// fournisseurs \u2192 texte confortable ; beaucoup de fournisseurs + prorata \u2192
+// texte plus compact) pour ne jamais d\u00e9border sur le texte existant.
+//   - marge gauche du texte : 15,7 pt (m\u00eame alignement que "R\u00e8glement :")
+//   - zone verticale disponible : de 193 \u00e0 243 pt du bas de page
+// La signature reste dans la marge basse de page (bande enti\u00e8rement vierge
+// sur toute la largeur, v\u00e9rifi\u00e9e pixel par pixel, de 24,9 \u00e0 93,9 pt du bas)
+// \u2014 il n'y a pas la place pour elle \u00e0 c\u00f4t\u00e9 du texte dans la zone \u00e9troite
+// ci-dessus.
 // Si un futur document utilise une taille de page l\u00e9g\u00e8rement diff\u00e9rente,
 // tout est remis \u00e0 l'\u00e9chelle proportionnellement plut\u00f4t que cod\u00e9 en dur.
 const REF_PAGE_WIDTH = 595.32;
 const REF_PAGE_HEIGHT = 841.92;
 const REF_BLOCK_X = 15.7;
-const REF_LINE1_Y = 90; // coordonn\u00e9e PDF (bas de page = 0), dans la bande vierge basse
-const REF_LINE_HEIGHT = 12.5;
-const REF_FONT_SIZE = 12;
-const REF_SIGNATURE_X = 330; // \u00e0 droite du texte, m\u00eame bande vierge
-const REF_SIGNATURE_WIDTH = 95; // largeur cible de la signature, en pt
+const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant"
+const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
+const REF_LINE_HEIGHT_MAX = 11;
+const REF_LINE_HEIGHT_MIN = 7.5;
+const REF_SIGNATURE_X = 15.7; // marge basse de page, align\u00e9e sous le texte principal
+const REF_SIGNATURE_Y = 30; // pt du bas de page, dans la bande vierge basse
+const REF_SIGNATURE_WIDTH = 85; // largeur cible de la signature, en pt
 
 // Superpose (jamais une nouvelle page) sur la DERNI\u00c8RE page du PDF
 // "R\u00e9capitulatif" d\u00e9pos\u00e9 : la r\u00e9partition de r\u00e8glement par fournisseur,
@@ -491,11 +493,22 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   const red = rgb(0.858824, 0.2, 0.141176); // m\u00eame rouge que sur le mod\u00e8le de Morgane
   const navy = rgb(0.09, 0.14, 0.23);
 
-  const x = REF_BLOCK_X * scaleX;
-  const lineHeight = REF_LINE_HEIGHT * scaleY;
-  let curY = REF_LINE1_Y * scaleY;
+  const prorata = Number(situation?.prorata) || 0;
+  // Nombre total de lignes \u00e0 caser dans la zone \u00e9troite (+ 0,4 ligne de
+  // marge suppl\u00e9mentaire avant "Frais de prorata" quand elle est affich\u00e9e).
+  const numLines = 1 + lignes.length + (prorata > 0 ? 2 : 0);
+  const extraGapUnits = prorata > 0 ? 0.4 : 0;
+  const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y) * scaleY;
+  const lineHeight = Math.min(
+    REF_LINE_HEIGHT_MAX * scaleY,
+    Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / (numLines + extraGapUnits))
+  );
+  const fontSize = Math.max(6.5, lineHeight - 1.2);
 
-  function drawLine(text, { bold = false, color = red, size = REF_FONT_SIZE, extraGapBefore = 0 } = {}) {
+  const x = REF_BLOCK_X * scaleX;
+  let curY = REF_ZONE_TOP_Y * scaleY - fontSize * 0.85;
+
+  function drawLine(text, { bold = false, color = red, size = fontSize, extraGapBefore = 0 } = {}) {
     curY -= extraGapBefore;
     page.drawText(sanitizeForPdfText(text), { x, y: curY, size, font: bold ? fontBold : font, color });
     curY -= lineHeight;
@@ -506,15 +519,14 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
     drawLine(`${nom} : ${pdfSafeEUR(montant)}`);
   }
 
-  const prorata = Number(situation?.prorata) || 0;
   if (prorata > 0) {
     drawLine(`Frais de prorata : ${pdfSafeEUR(prorata)}`, { bold: true, extraGapBefore: lineHeight * 0.4 });
-    drawLine(`Net \u00e0 payer corrig\u00e9 : ${pdfSafeEUR(net)}`, { bold: true, color: navy, size: REF_FONT_SIZE + 1 });
+    drawLine(`Net \u00e0 payer corrig\u00e9 : ${pdfSafeEUR(net)}`, { bold: true, color: navy, size: fontSize + 1 });
   }
 
-  // Signature, \u00e0 droite du texte (m\u00eame bande vierge basse de page \u2014 voir
-  // REF_SIGNATURE_X ci-dessus), verticalement centr\u00e9e sur le bloc de texte.
-  // Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne peut pas \u00eatre charg\u00e9e/int\u00e9gr\u00e9e.
+  // Signature, dans la marge basse de page (bande enti\u00e8rement vierge \u2014 voir
+  // REF_SIGNATURE_* ci-dessus). Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne
+  // peut pas \u00eatre charg\u00e9e/int\u00e9gr\u00e9e.
   try {
     const sigResp = await fetch("/signature-morgane.png");
     if (sigResp.ok) {
@@ -522,10 +534,8 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
       const sigImage = await pdfDoc.embedPng(sigBytes);
       const sigWidth = REF_SIGNATURE_WIDTH * scaleX;
       const sigHeight = sigWidth * (sigImage.height / sigImage.width);
-      const blockTop = REF_LINE1_Y * scaleY + lineHeight * 0.7;
-      const blockBottom = curY;
-      const sigY = (blockTop + blockBottom) / 2 - sigHeight / 2;
       const sigX = REF_SIGNATURE_X * scaleX;
+      const sigY = REF_SIGNATURE_Y * scaleY;
       page.drawImage(sigImage, { x: sigX, y: sigY, width: sigWidth, height: sigHeight });
     }
   } catch (sigErr) {
