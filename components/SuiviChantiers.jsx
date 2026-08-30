@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, FileText, Undo2 } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2 } from "lucide-react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -443,69 +443,94 @@ function regrouperFournisseurs(fournisseurs) {
   const total = lignes.reduce((a, [, m]) => a + m, 0);
   return { lignes, total };
 }
-// Ajoute une page \u00e0 la fin du PDF d\u00e9pos\u00e9 (le "R\u00e9capitulatif" de facturation
-// BTP) listant la r\u00e9partition de r\u00e8glement par fournisseur, calcul\u00e9e \u00e0
-// partir des cessions d\u00e9j\u00e0 saisies sur la situation, et le montant net
-// revenant \u00e0 Synergie BTP. Ne touche jamais aux pages existantes du document
-// d\u00e9pos\u00e9 \u2014 la r\u00e9partition est toujours une page neuve \u00e0 la fin.
-async function appendRepartitionPageToPdf(arrayBuffer, { chantierTitre, marcheLabel, situation, lignes, total, net }) {
+// ---------- Position de l'encadr\u00e9 "R\u00e9partition de r\u00e8glement" ----------
+// Cal\u00e9e une fois pour toutes sur le vrai mod\u00e8le "R\u00e9capitulatif" fourni par
+// Morgane (HTA RECAP.pdf, page A4 595,32 \u00d7 841,92 pt) \u2014 elle a confirm\u00e9 que
+// ce mod\u00e8le est TOUJOURS le m\u00eame pour tous les chantiers. Coordonn\u00e9es
+// mesur\u00e9es directement sur ce document. La zone repr\u00e9sent\u00e9e sur la capture
+// d'exemple de Morgane (juste sous "R\u00e8glement / Net \u00e0 payer") est en r\u00e9alit\u00e9
+// d\u00e9j\u00e0 occup\u00e9e sur son vrai mod\u00e8le Sage (lib\u00e9ll\u00e9 "R\u00e8glement :" au-dessus,
+// paragraphe "CLAUSE PENALE" juste en dessous) : y superposer 5 lignes de
+// texte + signature provoque une collision. La bande enti\u00e8rement vierge la
+// plus proche, v\u00e9rifi\u00e9e sur le PDF r\u00e9el (analyse pixel par pixel), est la
+// marge basse de page, sous le bloc RIB/IBAN et au-dessus du pied de page
+// (SIRET / \u00a9Sage) : vierge sur toute la largeur, de 24,9 \u00e0 93,9 pt du bas.
+//   - marge gauche du texte : 15,7 pt (m\u00eame alignement que le reste du doc)
+//   - 1\u00e8re ligne : 90 pt du bas de page (police 12, rouge)
+//   - lignes suivantes : hauteur de ligne ~12,5 pt
+//   - signature : \u00e0 droite du texte (m\u00eame bande, pas de risque de chevaucher
+//     le pied de page m\u00eame avec le bloc de texte complet)
+// Si un futur document utilise une taille de page l\u00e9g\u00e8rement diff\u00e9rente,
+// tout est remis \u00e0 l'\u00e9chelle proportionnellement plut\u00f4t que cod\u00e9 en dur.
+const REF_PAGE_WIDTH = 595.32;
+const REF_PAGE_HEIGHT = 841.92;
+const REF_BLOCK_X = 15.7;
+const REF_LINE1_Y = 90; // coordonn\u00e9e PDF (bas de page = 0), dans la bande vierge basse
+const REF_LINE_HEIGHT = 12.5;
+const REF_FONT_SIZE = 12;
+const REF_SIGNATURE_X = 330; // \u00e0 droite du texte, m\u00eame bande vierge
+const REF_SIGNATURE_WIDTH = 95; // largeur cible de la signature, en pt
+
+// Superpose (jamais une nouvelle page) sur la DERNI\u00c8RE page du PDF
+// "R\u00e9capitulatif" d\u00e9pos\u00e9 : la r\u00e9partition de r\u00e8glement par fournisseur,
+// les frais de prorata (s'il y en a) avec le montant net Synergie BTP
+// corrig\u00e9, et la signature \u2014 \u00e0 l'emplacement cal\u00e9 sur le mod\u00e8le r\u00e9el de
+// Morgane (voir constantes REF_* ci-dessus). Ne touche jamais au contenu
+// d\u00e9j\u00e0 pr\u00e9sent sur le document d\u00e9pos\u00e9.
+async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   const pdfDoc = await PDFDocument.load(arrayBuffer);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = 595.28; // A4 portrait, en points
-  const pageHeight = 841.89;
-  const margin = 50;
-  const ink = rgb(0.11, 0.14, 0.19);
-  const inkSoft = rgb(0.36, 0.39, 0.45);
-  const line = rgb(0.88, 0.86, 0.81);
+  const pages = pdfDoc.getPages();
+  const page = pages[pages.length - 1];
+  const { width: pageWidth, height: pageHeight } = page.getSize();
+  const scaleX = pageWidth / REF_PAGE_WIDTH;
+  const scaleY = pageHeight / REF_PAGE_HEIGHT;
+
+  const red = rgb(0.858824, 0.2, 0.141176); // m\u00eame rouge que sur le mod\u00e8le de Morgane
   const navy = rgb(0.09, 0.14, 0.23);
 
-  const page = pdfDoc.addPage([pageWidth, pageHeight]);
-  let y = pageHeight - margin;
+  const x = REF_BLOCK_X * scaleX;
+  const lineHeight = REF_LINE_HEIGHT * scaleY;
+  let curY = REF_LINE1_Y * scaleY;
 
-  function text(value, { x = margin, size = 11, bold = false, color = ink } = {}) {
-    page.drawText(sanitizeForPdfText(value), { x, y, size, font: bold ? fontBold : font, color });
-  }
-  function textRight(value, { size = 11, bold = false, color = ink } = {}) {
-    const f = bold ? fontBold : font;
-    const t = sanitizeForPdfText(value);
-    const w = f.widthOfTextAtSize(t, size);
-    page.drawText(t, { x: pageWidth - margin - w, y, size, font: f, color });
-  }
-  function hr(gapBefore = 6) {
-    y -= gapBefore;
-    page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.75, color: line });
-    y -= gapBefore;
+  function drawLine(text, { bold = false, color = red, size = REF_FONT_SIZE, extraGapBefore = 0 } = {}) {
+    curY -= extraGapBefore;
+    page.drawText(sanitizeForPdfText(text), { x, y: curY, size, font: bold ? fontBold : font, color });
+    curY -= lineHeight;
   }
 
-  text("R\u00e9partition de r\u00e8glement", { size: 16, bold: true, color: navy });
-  y -= 24;
-  if (chantierTitre) { text(chantierTitre, { size: 10, color: inkSoft }); y -= 15; }
-  const sitLabel = [
-    marcheLabel || null,
-    situation?.nSituation !== "" && situation?.nSituation != null ? `Situation n\u00b0${situation.nSituation}` : null,
-    situation?.nFact ? `Facture ${situation.nFact}` : null,
-    situation?.dateFacture ? fmtDate(situation.dateFacture) : null,
-  ].filter(Boolean).join(" \u00b7 ");
-  if (sitLabel) { text(sitLabel, { size: 10, color: inkSoft }); y -= 10; }
-
-  hr(10);
-
+  drawLine("R\u00e9partition de r\u00e8glement :", { bold: true });
   for (const [nom, montant] of lignes) {
-    text(nom, { size: 11 });
-    textRight(pdfSafeEUR(montant), { size: 11 });
-    y -= 18;
+    drawLine(`${nom} : ${pdfSafeEUR(montant)}`);
   }
 
-  hr(4);
+  const prorata = Number(situation?.prorata) || 0;
+  if (prorata > 0) {
+    drawLine(`Frais de prorata : ${pdfSafeEUR(prorata)}`, { bold: true, extraGapBefore: lineHeight * 0.4 });
+    drawLine(`Net \u00e0 payer corrig\u00e9 : ${pdfSafeEUR(net)}`, { bold: true, color: navy, size: REF_FONT_SIZE + 1 });
+  }
 
-  text("Total c\u00e9d\u00e9 aux fournisseurs", { size: 11, bold: true });
-  textRight(pdfSafeEUR(total), { size: 11, bold: true });
-  y -= 26;
-
-  text("Montant net Synergie BTP", { size: 13, bold: true, color: navy });
-  textRight(pdfSafeEUR(net), { size: 13, bold: true, color: navy });
+  // Signature, \u00e0 droite du texte (m\u00eame bande vierge basse de page \u2014 voir
+  // REF_SIGNATURE_X ci-dessus), verticalement centr\u00e9e sur le bloc de texte.
+  // Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne peut pas \u00eatre charg\u00e9e/int\u00e9gr\u00e9e.
+  try {
+    const sigResp = await fetch("/signature-morgane.png");
+    if (sigResp.ok) {
+      const sigBytes = await sigResp.arrayBuffer();
+      const sigImage = await pdfDoc.embedPng(sigBytes);
+      const sigWidth = REF_SIGNATURE_WIDTH * scaleX;
+      const sigHeight = sigWidth * (sigImage.height / sigImage.width);
+      const blockTop = REF_LINE1_Y * scaleY + lineHeight * 0.7;
+      const blockBottom = curY;
+      const sigY = (blockTop + blockBottom) / 2 - sigHeight / 2;
+      const sigX = REF_SIGNATURE_X * scaleX;
+      page.drawImage(sigImage, { x: sigX, y: sigY, width: sigWidth, height: sigHeight });
+    }
+  } catch (sigErr) {
+    console.error("\u00c9chec de l'ajout de la signature sur le PDF", sigErr);
+  }
 
   return pdfDoc.save();
 }
@@ -657,6 +682,18 @@ function normalizeChantiersData(list) {
           patched[k] = Number(s[k]);
           sChanged = true;
         }
+      }
+      // Migration silencieuse : l'ancien emplacement unique "situationDoc"
+      // (une seule bulle PDF par situation) devient "situationDocs.recap",
+      // pour ne pas perdre les fichiers déjà déposés avant l'ajout de la
+      // 2e bulle "avancement".
+      if (s.situationDoc && !s.situationDocs) {
+        patched.situationDocs = { recap: s.situationDoc, avancement: null };
+        delete patched.situationDoc;
+        sChanged = true;
+      } else if (!s.situationDocs) {
+        patched.situationDocs = { recap: null, avancement: null };
+        sChanged = true;
       }
       if (sChanged) { chantierChanged = true; return patched; }
       return s;
@@ -1535,10 +1572,14 @@ const emptySituation = () => ({
   id: uid("sit"), nSituation: "", nFact: "", dateFacture: "", pctAvancement: "",
   montantHt: "", tva: "", montantTtc: "", rg: "", avanceDeduite: "", prorata: "", rembAdd: "",
   fournisseurs: [], totalARecevoir: "", dateEnvoi: "", validBet: "", validAmo: "", validAutre: "", datePaiement: "", montantRegle: "", dateDepotChorus: "", paye: false, note: "",
-  // PDF déposé sur la bulle à côté de cette situation (voir la colonne "PDF"
-  // du tableau des situations) : même forme que les documents de chantier
-  // ({ present, fileName, filePath, uploadedAt }), stocké par situation.
-  situationDoc: null,
+  // Les 2 PDF déposés sur les bulles à côté de cette situation (voir la
+  // colonne "PDF" du tableau des situations) : "recap" (le Récapitulatif de
+  // facturation — c'est sur celui-là que la répartition de règlement est
+  // ajoutée automatiquement) et "avancement" (le document d'avancement).
+  // Deux emplacements nommés et bien séparés, pour ne plus jamais qu'un
+  // dépôt écrase l'autre — chacun a la même forme que les documents de
+  // chantier ({ present, fileName, filePath, uploadedAt }).
+  situationDocs: { recap: null, avancement: null },
 });
 
 function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
@@ -1552,9 +1593,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   const [docError, setDocError] = useState("");
   const [pendingUploadKey, setPendingUploadKey] = useState(null);
   const docFileInputRef = useRef(null);
-  // Bulle PDF à côté de chaque ligne de situation (marché principal, TS,
-  // Prorata) — même principe que les bulles documents ci-dessus, mais une
-  // par situation au lieu d'une par chantier.
+  // 2 bulles PDF à côté de chaque ligne de situation (marché principal, TS,
+  // Prorata) — "recap" (Récapitulatif) et "avancement" — même principe que
+  // les bulles documents ci-dessus, mais une paire par situation au lieu
+  // d'une par chantier. uploadingSituationDocId/dragOverSituationId portent
+  // une clé composite "<situationId>:<docType>" pour distinguer les deux
+  // bulles d'une même situation ; pendingSituationUploadId porte
+  // { situationId, docType }.
   const [uploadingSituationDocId, setUploadingSituationDocId] = useState(null);
   const [dragOverSituationId, setDragOverSituationId] = useState(null);
   const [situationDocError, setSituationDocError] = useState("");
@@ -2030,31 +2075,44 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     }
   }
 
-  // ---------- Bulle PDF par situation ----------
+  // ---------- 2 bulles PDF par situation (Récapitulatif + Avancement) ----------
   // Réutilise la même route /api/documents (qui ne connaît que chantierId +
-  // docKey) avec un docKey dérivé de l'id de situation ("situation-<id>"),
-  // pour éviter de dupliquer toute la logique de stockage. Les métadonnées
-  // du fichier sont écrites directement sur la situation concernée
-  // (situation.situationDoc), indépendamment du formulaire d'édition.
-  function situationDocKey(situationId) {
-    return "situation-" + situationId;
+  // docKey) avec un docKey dérivé de l'id de situation ET du type de
+  // document ("situation-<id>-<recap|avancement>"), pour éviter de dupliquer
+  // toute la logique de stockage tout en gardant les deux fichiers
+  // totalement séparés — déposer l'un n'écrase jamais l'autre. Les
+  // métadonnées sont écrites directement sur la situation concernée
+  // (situation.situationDocs.recap / .avancement), indépendamment du
+  // formulaire d'édition. L'état (upload en cours / survol drag) est suivi
+  // par une clé composite "<situationId>:<docType>" pour distinguer les deux
+  // bulles d'une même situation.
+  function situationDocKey(situationId, docType) {
+    return "situation-" + situationId + "-" + docType;
   }
-  function setSituationDocMeta(situationId, meta) {
-    const situations = chantier.situations.map((x) => (x.id === situationId ? { ...x, situationDoc: meta } : x));
+  function situationDocMeta(s, docType) {
+    return (s && s.situationDocs && s.situationDocs[docType]) || { present: false };
+  }
+  function setSituationDocMeta(situationId, docType, meta) {
+    const situations = chantier.situations.map((x) =>
+      x.id === situationId
+        ? { ...x, situationDocs: { recap: null, avancement: null, ...x.situationDocs, [docType]: meta } }
+        : x
+    );
     updateChantier({ ...chantier, situations });
   }
-  function triggerSituationDocUpload(situationId) {
+  function triggerSituationDocUpload(situationId, docType) {
     if (!unlocked) return;
-    setPendingSituationUploadId(situationId);
+    setPendingSituationUploadId({ situationId, docType });
     situationDocFileInputRef.current?.click();
   }
   function handleSituationDocFileInputChange(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
-    if (file && pendingSituationUploadId) uploadSituationDocument(pendingSituationUploadId, file);
+    if (file && pendingSituationUploadId) uploadSituationDocument(pendingSituationUploadId.situationId, pendingSituationUploadId.docType, file);
   }
-  async function uploadSituationDocument(situationId, file) {
+  async function uploadSituationDocument(situationId, docType, file) {
     if (!unlocked) return;
+    const stateKey = situationId + ":" + docType;
     const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
     if (!isPdf) {
       setSituationDocError("Seuls les fichiers PDF sont acceptés ici.");
@@ -2066,68 +2124,66 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
       return;
     }
     setSituationDocError("");
-    setUploadingSituationDocId(situationId);
+    setUploadingSituationDocId(stateKey);
     try {
       const situation = chantier.situations.find((x) => x.id === situationId);
       let fileToUpload = file;
-      // Si des cessions fournisseurs sont saisies sur cette situation, on
-      // ajoute automatiquement une page de répartition à la fin du PDF avant
-      // de l'envoyer. En cas d'échec (PDF protégé/illisible...), on dépose
+      // La répartition de règlement (+ frais de prorata, signature) n'est
+      // ajoutée automatiquement QUE sur le PDF "Récapitulatif" — jamais sur
+      // le document d'avancement, qui n'a rien à voir avec les cessions
+      // fournisseurs. En cas d'échec (PDF protégé/illisible...), on dépose
       // quand même le fichier original tel quel plutôt que de bloquer l'envoi.
-      if (situation && situation.fournisseurs && situation.fournisseurs.length > 0) {
+      if (docType === "recap" && situation && situation.fournisseurs && situation.fournisseurs.length > 0) {
         try {
-          const { lignes, total } = regrouperFournisseurs(situation.fournisseurs);
-          const marche = getMarche(situation.marcheId);
+          const { lignes } = regrouperFournisseurs(situation.fournisseurs);
           const arrayBuffer = await file.arrayBuffer();
-          const stampedBytes = await appendRepartitionPageToPdf(arrayBuffer, {
-            chantierTitre: chantier.titre,
-            marcheLabel: marche ? marcheDisplayName(marche) : "",
+          const stampedBytes = await stampRepartitionOnPdf(arrayBuffer, {
             situation,
             lignes,
-            total,
             net: situation.totalARecevoir,
           });
           fileToUpload = new File([stampedBytes], file.name, { type: "application/pdf" });
         } catch (stampErr) {
           console.error("Échec de l'ajout automatique de la répartition sur le PDF", stampErr);
-          setSituationDocError("La répartition n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans la page de répartition.");
+          setSituationDocError("La répartition n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans la répartition.");
           fileToUpload = file;
         }
       }
       const fd = new FormData();
       fd.append("file", fileToUpload);
       fd.append("chantierId", chantier.id);
-      fd.append("docKey", situationDocKey(situationId));
+      fd.append("docKey", situationDocKey(situationId, docType));
       const res = await fetch("/api/documents", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
-      setSituationDocMeta(situationId, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+      setSituationDocMeta(situationId, docType, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
     } catch (err) {
       setSituationDocError(err.message || "Échec de l'envoi du PDF.");
     } finally {
       setUploadingSituationDocId(null);
     }
   }
-  async function removeSituationDocument(situationId) {
+  async function removeSituationDocument(situationId, docType) {
     if (!unlocked) return;
+    const stateKey = situationId + ":" + docType;
     const s = chantier.situations.find((x) => x.id === situationId);
-    const meta = s?.situationDoc;
-    setUploadingSituationDocId(situationId);
+    const meta = situationDocMeta(s, docType);
+    setUploadingSituationDocId(stateKey);
     setSituationDocError("");
     try {
       if (meta?.filePath) {
         await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
       }
-      setSituationDocMeta(situationId, { present: false, fileName: null, filePath: null, uploadedAt: null });
+      setSituationDocMeta(situationId, docType, { present: false, fileName: null, filePath: null, uploadedAt: null });
     } catch (err) {
       setSituationDocError(err.message || "Échec de la suppression du PDF.");
     } finally {
       setUploadingSituationDocId(null);
     }
   }
-  async function openSituationDocument(situationId) {
+  async function openSituationDocument(situationId, docType) {
     const s = chantier.situations.find((x) => x.id === situationId);
-    const meta = s?.situationDoc;
+    const meta = situationDocMeta(s, docType);
     if (!meta?.filePath) return;
     setSituationDocError("");
     try {
@@ -2581,6 +2637,61 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         // ou la modification d'une autre situation du même marché dans la
         // même session, tant que la page n'a pas été rechargée.
         const pctMap = computeSituationPercentages(chantier.situations, chantier.marches);
+        // Une bulle PDF pour un type de document donné ("recap" ou
+        // "avancement") sur une situation donnée. Toujours consultable
+        // (ouverture du PDF déjà déposé) même en lecture seule ; seuls le
+        // dépôt/remplacement/suppression sont réservés au mode édition.
+        const renderSituationDocBubble = (s, docType, label) => {
+          const meta = situationDocMeta(s, docType);
+          const stateKey = s.id + ":" + docType;
+          const isUploading = uploadingSituationDocId === stateKey;
+          const isDragOver = dragOverSituationId === stateKey;
+          const clickable = !isUploading && (meta.present || unlocked);
+          const typeLabel = docType === "recap" ? "Récapitulatif" : "Avancement";
+          return (
+            <div
+              key={docType}
+              onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverSituationId(stateKey); }}
+              onDragLeave={() => setDragOverSituationId((k) => (k === stateKey ? null : k))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverSituationId((k) => (k === stateKey ? null : k));
+                if (!unlocked || isUploading) return;
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) uploadSituationDocument(s.id, docType, f);
+              }}
+              onClick={() => {
+                if (isUploading) return;
+                if (meta.present) { openSituationDocument(s.id, docType); return; }
+                if (unlocked) triggerSituationDocUpload(s.id, docType);
+              }}
+              title={`${typeLabel}${meta.present ? " — " + (meta.fileName || "cliquer pour ouvrir") : unlocked ? " — cliquer ou glisser-déposer le PDF ici" : " — aucun PDF déposé"}`}
+              className="relative inline-flex items-center justify-center"
+              style={{
+                width: 24, height: 24, borderRadius: 7,
+                border: `1.5px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
+                background: meta.present ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
+                cursor: clickable ? "pointer" : "default",
+                opacity: isUploading ? 0.6 : 1,
+              }}
+            >
+              {unlocked && meta.present && !isUploading && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeSituationDocument(s.id, docType); }}
+                  title={`Retirer le PDF (${typeLabel})`}
+                  style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                >
+                  <X size={8} color={COLORS.red} />
+                </button>
+              )}
+              {isUploading ? (
+                <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
+              ) : (
+                <span className="text-[9px] font-bold leading-none" style={{ color: meta.present ? COLORS.green : COLORS.inkSoft }}>{label}</span>
+              )}
+            </div>
+          );
+        };
         const renderMarcheBlock = (m) => {
         const sits = [...chantier.situations].filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
         const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
@@ -2642,50 +2753,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                     {sits.map((s) => (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
                         <td className="px-1.5 py-2">
-                          {(() => {
-                            const meta = s.situationDoc && s.situationDoc.present ? s.situationDoc : { present: false };
-                            const isUploading = uploadingSituationDocId === s.id;
-                            const isDragOver = dragOverSituationId === s.id;
-                            const clickable = !isUploading && (meta.present || unlocked);
-                            return (
-                              <div
-                                onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverSituationId(s.id); }}
-                                onDragLeave={() => setDragOverSituationId((id) => (id === s.id ? null : id))}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  setDragOverSituationId((id) => (id === s.id ? null : id));
-                                  if (!unlocked || isUploading) return;
-                                  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-                                  if (f) uploadSituationDocument(s.id, f);
-                                }}
-                                onClick={() => {
-                                  if (isUploading) return;
-                                  if (meta.present) { openSituationDocument(s.id); return; }
-                                  if (unlocked) triggerSituationDocUpload(s.id);
-                                }}
-                                title={meta.present ? (meta.fileName || "PDF de la situation — cliquer pour ouvrir") : (unlocked ? "Cliquer ou glisser-déposer le PDF ici" : "Aucun PDF déposé")}
-                                className="relative inline-flex items-center justify-center"
-                                style={{
-                                  width: 28, height: 28, borderRadius: 8,
-                                  border: `1.5px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
-                                  background: meta.present ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
-                                  cursor: clickable ? "pointer" : "default",
-                                  opacity: isUploading ? 0.6 : 1,
-                                }}
-                              >
-                                {unlocked && meta.present && !isUploading && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); removeSituationDocument(s.id); }}
-                                    title="Retirer le PDF"
-                                    style={{ position: "absolute", top: -6, right: -6, width: 14, height: 14, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
-                                  >
-                                    <X size={9} color={COLORS.red} />
-                                  </button>
-                                )}
-                                {isUploading ? <Loader2 size={13} color={COLORS.accent} className="animate-spin" /> : <FileText size={13} color={meta.present ? COLORS.green : COLORS.inkSoft} />}
-                              </div>
-                            );
-                          })()}
+                          <div className="flex items-center gap-1">
+                            {renderSituationDocBubble(s, "recap", "R")}
+                            {renderSituationDocBubble(s, "avancement", "A")}
+                          </div>
                         </td>
                         {!isProrata && (
                           <td className="px-3 py-2">
