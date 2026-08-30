@@ -587,6 +587,64 @@ function computeAutoRgCumulees(chantiers) {
 // silencieuse (ex. 0 + "29745.44" = "029745.44"), ce qui fausse tous les
 // totaux du chantier et casse l'affichage "€" dans les exports PDF.
 const NUMERIC_SITUATION_FIELDS = ["nSituation", "pctAvancement", "montantHt", "tva", "montantTtc", "rg", "avanceDeduite", "prorata", "rembAdd", "totalARecevoir", "montantRegle"];
+
+// ---------- % d'avancement : calcul canonique unique ----------
+// Une seule implémentation, partagée par TOUS les endroits qui ont besoin du
+// cumul HT/% d'avancement d'une situation (le tableau des situations, le
+// formulaire d'ajout/édition, l'export PDF, et la réparation silencieuse au
+// chargement ci-dessous). Avant, chaque endroit avait sa propre copie du
+// calcul ; deux versions légèrement différentes (celle du formulaire et
+// celle de la réparation au chargement) ne départageaient pas les
+// situations à égalité de rang (même n° de situation, même date) de la même
+// façon — l'une pouvait faire compter deux situations à égalité comme
+// "avant" l'une de l'autre EN MÊME TEMPS, doublant leur cumul HT et donc
+// gonflant leur %. Résultat : le % affiché dans le tableau pouvait rester
+// figé sur une valeur fausse tant que la page n'était pas rechargée (seul
+// moment où la réparation silencieuse tournait), ou redevenir faux dès
+// qu'une situation voisine était ajoutée/modifiée dans la même session.
+function computeCumulativeHtBySituation(situations, marches) {
+  const cumulMap = new Map();
+  const marcheHtMap = new Map();
+  const byMarche = {};
+  for (const s of situations) {
+    const key = s.marcheId || "_sans_marche";
+    (byMarche[key] = byMarche[key] || []).push(s);
+  }
+  const rankOf = (s) => {
+    const n = Number(s.nSituation);
+    const hasN = s.nSituation !== "" && s.nSituation !== null && s.nSituation !== undefined && !isNaN(n);
+    return [hasN ? n : Infinity, s.dateFacture || "9999-99-99"];
+  };
+  const cmpRank = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
+  for (const [marcheId, list] of Object.entries(byMarche)) {
+    const marche = (marches || []).find((m) => m.id === marcheId);
+    marcheHtMap.set(marcheId, marche ? Number(marche.montantHt) || 0 : 0);
+    // Tri stable avec repli explicite sur l'ordre d'origine : à rang
+    // STRICTEMENT égal, on ne fait jamais compter deux situations comme
+    // "avant" l'une de l'autre en même temps — une seule passe avant
+    // l'autre, jamais les deux réciproquement (ce qui doublait leur cumul).
+    const ordered = list
+      .map((s, i) => [s, i])
+      .sort((a, b) => cmpRank(rankOf(a[0]), rankOf(b[0])) || a[1] - b[1])
+      .map(([s]) => s);
+    let cumul = 0;
+    for (const s of ordered) {
+      cumul += Number(s.montantHt) || 0;
+      cumulMap.set(s.id, cumul);
+    }
+  }
+  return { cumulMap, marcheHtMap };
+}
+function computeSituationPercentages(situations, marches) {
+  const { cumulMap, marcheHtMap } = computeCumulativeHtBySituation(situations, marches);
+  const pctMap = new Map();
+  for (const s of situations) {
+    const marcheHt = marcheHtMap.get(s.marcheId || "_sans_marche") || 0;
+    const cumul = cumulMap.get(s.id) || 0;
+    pctMap.set(s.id, marcheHt ? Math.round((cumul / marcheHt) * 1000) / 1000 : 0);
+  }
+  return pctMap;
+}
 function normalizeChantiersData(list) {
   let changed = false;
   const next = list.map((c) => {
@@ -604,42 +662,19 @@ function normalizeChantiersData(list) {
       return s;
     });
 
-    // Auto-réparation du % d'avancement cumulé : recalcule, pour chaque
-    // marché/TS, le cumul du montant HT de chaque situation + de toutes
-    // celles qui la PRÉCÈDENT (n° de situation, puis date de facture en
-    // repli), rapporté au montant HT du marché — jamais en comptant les
-    // situations qui la SUIVENT. Corrige silencieusement les valeurs déjà
-    // enregistrées avec l'ancien calcul buggé, qui sommait toutes les
-    // situations du marché sans distinguer avant/après (chaque situation
-    // affichait alors le même total cumulé sur tout le marché).
-    const byMarche = {};
-    casted.forEach((s, idx) => {
-      const key = s.marcheId || "_sans_marche";
-      (byMarche[key] = byMarche[key] || []).push(idx);
-    });
-    const rankOf = (s) => {
-      const n = Number(s.nSituation);
-      const hasN = s.nSituation !== "" && s.nSituation !== null && s.nSituation !== undefined && !isNaN(n);
-      return [hasN ? n : Infinity, s.dateFacture || "9999-99-99"];
-    };
-    const cmpRank = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
-    const situations = casted.slice();
-    for (const [marcheId, idxs] of Object.entries(byMarche)) {
-      const marche = (c.marches || []).find((m) => m.id === marcheId);
-      const marcheHt = marche ? Number(marche.montantHt) || 0 : 0;
-      if (!marcheHt) continue;
-      const ordered = idxs.slice().sort((ia, ib) => cmpRank(rankOf(casted[ia]), rankOf(casted[ib])));
-      let cumul = 0;
-      for (const idx of ordered) {
-        const s = casted[idx];
-        cumul += Number(s.montantHt) || 0;
-        const pct = Math.round((cumul / marcheHt) * 1000) / 1000;
-        if (s.pctAvancement !== pct) {
-          situations[idx] = { ...s, pctAvancement: pct };
-          chantierChanged = true;
-        }
+    // Auto-réparation du % d'avancement cumulé, via le calcul canonique
+    // partagé ci-dessus (computeSituationPercentages) — jamais une deuxième
+    // copie de cette logique ici, pour ne plus jamais risquer que la valeur
+    // corrigée au chargement diverge de celle affichée en direct ailleurs.
+    const pctMap = computeSituationPercentages(casted, c.marches);
+    const situations = casted.map((s) => {
+      const pct = pctMap.get(s.id) ?? 0;
+      if (s.pctAvancement !== pct) {
+        chantierChanged = true;
+        return { ...s, pctAvancement: pct };
       }
-    }
+      return s;
+    });
 
     if (chantierChanged) { changed = true; return { ...c, situations }; }
     return c;
@@ -1556,19 +1591,17 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   // (= facturé cumulé sur tout le marché), y compris en comptant des
   // situations postérieures pas encore arrivées à ce stade — d'où le "ça se
   // cumule à 100 % à chaque fois" remonté.
+  // Délègue au calcul canonique partagé (computeCumulativeHtBySituation) en
+  // simulant la situation en cours d'édition dans le formulaire (elle n'est
+  // pas encore, ou plus à jour, dans chantier.situations à ce stade) — ainsi
+  // le cumul affiché en direct pendant la saisie est TOUJOURS identique à ce
+  // qui sera affiché dans le tableau une fois enregistré, y compris pour les
+  // situations à égalité de rang (même n° / même date).
   function cumulativeMontantHt(marcheId, ownHt, excludeId, ownSituation) {
-    const rank = (s) => {
-      const n = num(s?.nSituation);
-      const hasN = s?.nSituation !== "" && s?.nSituation !== null && s?.nSituation !== undefined && !isNaN(n);
-      return [hasN ? n : Infinity, s?.dateFacture || "9999-99-99"];
-    };
-    const cmp = (a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1].localeCompare(b[1]));
-    const ownRank = rank(ownSituation);
-    const others = chantier.situations.filter(
-      (s) => s.marcheId === marcheId && s.id !== excludeId && cmp(rank(s), ownRank) <= 0
-    );
-    const sum = others.reduce((a, s) => a + (num(s.montantHt) || 0), 0);
-    return sum + ownHt;
+    const candidate = { ...(ownSituation || {}), id: excludeId || "__preview__", marcheId, montantHt: ownHt };
+    const others = chantier.situations.filter((s) => s.marcheId === marcheId && s.id !== excludeId);
+    const { cumulMap } = computeCumulativeHtBySituation([...others, candidate], chantier.marches);
+    return cumulMap.get(candidate.id) || 0;
   }
 
   function autoCalc(f) {
@@ -1774,11 +1807,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
     const totalFactureX = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
     const totalAttenteX = soldeAttenteChantier(chantier.situations);
     setExportPdfError("");
+    const pctMapExport = computeSituationPercentages(chantier.situations, chantier.marches);
     const blocks = chantier.marches.map((m) => {
       const sits = chantier.situations.filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
       const rows = sits.map((s) => `<tr>
           <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
-          <td style="text-align:right">${fmtPct(s.pctAvancement)}</td>
+          <td style="text-align:right">${fmtPct(pctMapExport.get(s.id) ?? s.pctAvancement)}</td>
           <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
           <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
           <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
@@ -2539,6 +2573,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
       {situationDocError && <p className="text-xs mb-2" style={{ color: COLORS.red }}>{situationDocError}</p>}
 
       {(() => {
+        // % d'avancement toujours calculé EN DIRECT à partir des situations
+        // actuelles (jamais depuis la valeur enregistrée sur la situation,
+        // qui ne se met à jour que quand CETTE situation précise est
+        // sauvegardée, ou au tout premier chargement de la page) — sinon la
+        // situation n°1 peut continuer d'afficher un % périmé après l'ajout
+        // ou la modification d'une autre situation du même marché dans la
+        // même session, tant que la page n'a pas été rechargée.
+        const pctMap = computeSituationPercentages(chantier.situations, chantier.marches);
         const renderMarcheBlock = (m) => {
         const sits = [...chantier.situations].filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
         const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
@@ -2668,7 +2710,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                           </span>
                         </td>
                         <td className="px-2 py-2">{fmtDate(s.dateFacture)}</td>
-                        {!isProrata && <td className="px-2 py-2 text-right tabular-nums">{fmtPct(s.pctAvancement)}</td>}
+                        {!isProrata && <td className="px-2 py-2 text-right tabular-nums">{fmtPct(pctMap.get(s.id) ?? s.pctAvancement)}</td>}
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantHt)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.montantTtc)}</td>
                         {!isProrata && (

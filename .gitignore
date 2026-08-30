@@ -1,0 +1,19 @@
+# Dépendances
+/node_modules
+
+# Build Next.js
+/.next/
+/out/
+
+# Fichiers d'environnement (secrets) — ne jamais commiter, seul
+# .env.local.example (avec des valeurs factices) doit rester versionné.
+.env
+.env*.local
+
+# Divers
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vercel
