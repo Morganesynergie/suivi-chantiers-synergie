@@ -489,7 +489,7 @@ function regrouperFournisseurs(fournisseurs) {
 const REF_PAGE_WIDTH = 595.32;
 const REF_PAGE_HEIGHT = 841.92;
 const REF_BLOCK_X = 26;
-const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant" \u2014 reste la ligne du haut de l'encadr\u00e9 rouge
+const REF_ZONE_TOP_Y = 233; // sous "R\u00e8glement : Comptant", avec un peu d'air (10 pt) au lieu de d\u00e9marrer juste dessous \u2014 ligne du haut de l'encadr\u00e9 rouge
 const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
 const REF_TITLE_TOP_GAP = 5; // pt d'air entre le trait du haut de l'encadr\u00e9 et "R\u00e9partition de r\u00e8glement :"
 const REF_LINE_HEIGHT_MAX = 12.5;
@@ -517,69 +517,76 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
   const scaleX = pageWidth / REF_PAGE_WIDTH;
   const scaleY = pageHeight / REF_PAGE_HEIGHT;
 
-  const red = rgb(0.858824, 0.2, 0.141176); // m\u00eame rouge que sur le mod\u00e8le de Morgane
+  const red = rgb(0.858824, 0.2, 0.141176); // même rouge que sur le modèle de Morgane
 
-  const prorata = Number(situation?.prorata) || 0;
-  // Part qui revient \u00e0 Synergie BTP elle-m\u00eame une fois les cessions
-  // fournisseurs d\u00e9duites (totalARecevoir est d\u00e9j\u00e0 net des cessions ET du
-  // prorata \u2014 voir le calcul auto "TTC \u2212 RG \u2212 Prorata \u2212 Cession fournisseur
-  // \u2212 Remb. ADD" \u2014 donc avant prorata, la part Synergie BTP est
-  // totalARecevoir + prorata). Cette ligne compl\u00e8te la r\u00e9partition : la
-  // somme des cessions fournisseurs + cette part retombe sur le montant
-  // "Net \u00e0 payer" d\u00e9j\u00e0 imprim\u00e9 sur le PDF d'origine (qui n'est pas modifi\u00e9).
-  const partSynergie = (Number(situation?.totalARecevoir) || 0) + prorata;
-  const numLines = 1 + lignes.length + 1;
-  // La ligne du haut de l'encadré rouge reste ancrée sur REF_ZONE_TOP_Y (juste
-  // sous "Règlement : Comptant") ; REF_TITLE_TOP_GAP est retiré de la hauteur
-  // utile pour le texte, pour laisser un peu d'air visible entre ce trait et
-  // "Répartition de règlement :" sans faire déborder le bas du bloc.
-  const boxTopY = REF_ZONE_TOP_Y * scaleY;
-  const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y - REF_TITLE_TOP_GAP) * scaleY;
-  const lineHeight = Math.min(
-    REF_LINE_HEIGHT_MAX * scaleY,
-    Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / numLines)
-  );
-  const fontSize = Math.max(7.5, lineHeight - 0.8);
+  // L'encadré rouge "Répartition de règlement" ne veut dire quelque chose que
+  // s'il y a au moins une cession fournisseur à détailler ; sans cession, on
+  // saute directement à la signature ci-dessous (elle, en revanche, est
+  // ajoutée systématiquement, cession ou pas — avant, un récapitulatif sans
+  // fournisseur n'était jamais signé du tout).
+  if (lignes.length > 0) {
+    const prorata = Number(situation?.prorata) || 0;
+    // Part qui revient à Synergie BTP elle-même une fois les cessions
+    // fournisseurs déduites (totalARecevoir est déjà net des cessions ET du
+    // prorata — voir le calcul auto "TTC − RG − Prorata − Cession fournisseur
+    // − Remb. ADD" — donc avant prorata, la part Synergie BTP est
+    // totalARecevoir + prorata). Cette ligne complète la répartition : la
+    // somme des cessions fournisseurs + cette part retombe sur le montant
+    // "Net à payer" déjà imprimé sur le PDF d'origine (qui n'est pas modifié).
+    const partSynergie = (Number(situation?.totalARecevoir) || 0) + prorata;
+    const numLines = 1 + lignes.length + 1;
+    // La ligne du haut de l'encadré rouge reste ancrée sur REF_ZONE_TOP_Y (sous
+    // "Règlement : Comptant") ; REF_TITLE_TOP_GAP est retiré de la hauteur
+    // utile pour le texte, pour laisser un peu d'air visible entre ce trait et
+    // "Répartition de règlement :" sans faire déborder le bas du bloc.
+    const boxTopY = REF_ZONE_TOP_Y * scaleY;
+    const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y - REF_TITLE_TOP_GAP) * scaleY;
+    const lineHeight = Math.min(
+      REF_LINE_HEIGHT_MAX * scaleY,
+      Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / numLines)
+    );
+    const fontSize = Math.max(7.5, lineHeight - 0.8);
 
-  const x = REF_BLOCK_X * scaleX;
-  const firstBaselineY = boxTopY - REF_TITLE_TOP_GAP * scaleY - fontSize * 0.85;
-  let curY = firstBaselineY;
-  let maxLineWidth = 0;
+    const x = REF_BLOCK_X * scaleX;
+    const firstBaselineY = boxTopY - REF_TITLE_TOP_GAP * scaleY - fontSize * 0.85;
+    let curY = firstBaselineY;
+    let maxLineWidth = 0;
 
-  function drawLine(text, { bold = false, color = red, size = fontSize } = {}) {
-    const sanitized = sanitizeForPdfText(text);
-    const usedFont = bold ? fontBold : font;
-    const width = usedFont.widthOfTextAtSize(sanitized, size);
-    if (width > maxLineWidth) maxLineWidth = width;
-    page.drawText(sanitized, { x, y: curY, size, font: usedFont, color });
-    curY -= lineHeight;
+    const drawLine = (text, { bold = false, color = red, size = fontSize } = {}) => {
+      const sanitized = sanitizeForPdfText(text);
+      const usedFont = bold ? fontBold : font;
+      const width = usedFont.widthOfTextAtSize(sanitized, size);
+      if (width > maxLineWidth) maxLineWidth = width;
+      page.drawText(sanitized, { x, y: curY, size, font: usedFont, color });
+      curY -= lineHeight;
+    };
+
+    drawLine("Répartition de règlement :", { bold: true });
+    for (const [nom, montant] of lignes) {
+      drawLine(`${nom} : ${pdfSafeEUR(montant)}`);
+    }
+    drawLine(`SYNERGIE BTP : ${pdfSafeEUR(partSynergie)}`);
+
+    // Encadré rouge autour du bloc, ajusté à la largeur de sa ligne la plus
+    // longue et à sa hauteur réelle (qui varie avec le nombre de fournisseurs),
+    // pour que le client repère immédiatement la répartition.
+    const lastBaselineY = curY + lineHeight; // annule la dernière décrémentation
+    const boxPadX = 5 * scaleX;
+    const boxPadBottom = fontSize * 0.3;
+    const boxBottomY = lastBaselineY - boxPadBottom;
+    page.drawRectangle({
+      x: x - boxPadX,
+      y: boxBottomY,
+      width: maxLineWidth + boxPadX * 2,
+      height: boxTopY - boxBottomY,
+      borderColor: red,
+      borderWidth: 1,
+    });
   }
 
-  drawLine("R\u00e9partition de r\u00e8glement :", { bold: true });
-  for (const [nom, montant] of lignes) {
-    drawLine(`${nom} : ${pdfSafeEUR(montant)}`);
-  }
-  drawLine(`SYNERGIE BTP : ${pdfSafeEUR(partSynergie)}`);
-
-  // Encadr\u00e9 rouge autour du bloc, ajust\u00e9 \u00e0 la largeur de sa ligne la plus
-  // longue et \u00e0 sa hauteur r\u00e9elle (qui varie avec le nombre de fournisseurs),
-  // pour que le client rep\u00e8re imm\u00e9diatement la r\u00e9partition.
-  const lastBaselineY = curY + lineHeight; // annule la derni\u00e8re d\u00e9cr\u00e9mentation
-  const boxPadX = 5 * scaleX;
-  const boxPadBottom = fontSize * 0.3;
-  const boxBottomY = lastBaselineY - boxPadBottom;
-  page.drawRectangle({
-    x: x - boxPadX,
-    y: boxBottomY,
-    width: maxLineWidth + boxPadX * 2,
-    height: boxTopY - boxBottomY,
-    borderColor: red,
-    borderWidth: 1,
-  });
-
-  // Signature/cachet, en bas \u00e0 droite de la page (voir REF_SIGNATURE_*
-  // ci-dessus). Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne peut pas \u00eatre
-  // charg\u00e9e/int\u00e9gr\u00e9e.
+  // Signature/cachet, en bas à droite de la page (voir REF_SIGNATURE_*
+  // ci-dessus). Ne bloque jamais le dépôt du PDF si elle ne peut pas être
+  // chargée/intégrée. Toujours ajoutée, avec ou sans cession fournisseur.
   try {
     const sigResp = await fetch("/signature-morgane.png");
     if (sigResp.ok) {
@@ -592,7 +599,7 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
       page.drawImage(sigImage, { x: sigX, y: sigY, width: sigWidth, height: sigHeight });
     }
   } catch (sigErr) {
-    console.error("\u00c9chec de l'ajout de la signature sur le PDF", sigErr);
+    console.error("Échec de l'ajout de la signature sur le PDF", sigErr);
   }
 
   return pdfDoc.save();
@@ -2225,14 +2232,16 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     try {
       const situation = chantier.situations.find((x) => x.id === situationId);
       let fileToUpload = file;
-      // La répartition de règlement (+ frais de prorata, signature) n'est
-      // ajoutée automatiquement QUE sur le PDF "Récapitulatif" — jamais sur
-      // le document d'avancement, qui n'a rien à voir avec les cessions
-      // fournisseurs. En cas d'échec (PDF protégé/illisible...), on dépose
-      // quand même le fichier original tel quel plutôt que de bloquer l'envoi.
-      if (docType === "recap" && situation && situation.fournisseurs && situation.fournisseurs.length > 0) {
+      // La signature est ajoutée automatiquement sur TOUT PDF "Récapitulatif"
+      // déposé (avec ou sans cession fournisseur) — jamais sur avancement/EA/
+      // facture, qui n'ont rien à voir avec ça. L'encadré "Répartition de
+      // règlement" ne s'ajoute en plus que s'il y a des fournisseurs à
+      // détailler (voir stampRepartitionOnPdf). En cas d'échec (PDF protégé/
+      // illisible...), on dépose quand même le fichier original tel quel
+      // plutôt que de bloquer l'envoi.
+      if (docType === "recap" && situation) {
         try {
-          const { lignes } = regrouperFournisseurs(situation.fournisseurs);
+          const { lignes } = regrouperFournisseurs(situation.fournisseurs || []);
           const arrayBuffer = await file.arrayBuffer();
           const stampedBytes = await stampRepartitionOnPdf(arrayBuffer, {
             situation,
@@ -2240,8 +2249,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           });
           fileToUpload = new File([stampedBytes], file.name, { type: "application/pdf" });
         } catch (stampErr) {
-          console.error("Échec de l'ajout automatique de la répartition sur le PDF", stampErr);
-          setSituationDocError("La répartition n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans la répartition.");
+          console.error("Échec de l'ajout automatique de la signature/répartition sur le PDF", stampErr);
+          setSituationDocError("La signature n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans signature.");
           fileToUpload = file;
         }
       }
@@ -2252,9 +2261,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       const res = await fetch("/api/documents", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
-      // Déposer l'état d'acompte (EA) vaut validation BET : la date du jour
-      // est enregistrée automatiquement dans "Validation BET" de la situation.
-      const extraPatch = docType === "ea" ? { validBet: new Date().toISOString().slice(0, 10) } : undefined;
+      // Déposer l'état d'acompte (EA) ou, pour une situation prorata, la
+      // facture signée (F) vaut validation BET : la date du jour est
+      // enregistrée automatiquement dans "Validation BET" de la situation.
+      const extraPatch = (docType === "ea" || docType === "facture") ? { validBet: new Date().toISOString().slice(0, 10) } : undefined;
       setSituationDocMeta(situationId, docType, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt }, extraPatch);
     } catch (err) {
       setSituationDocError(err.message || "Échec de l'envoi du PDF.");
