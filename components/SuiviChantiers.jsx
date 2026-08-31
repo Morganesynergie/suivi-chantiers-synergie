@@ -445,10 +445,12 @@ const ANALYZABLE_DOC_KEYS = ["devisSigne", "acteEngagement", "contratSousTraitan
 const FIXED_DOC_TYPES = [
   { key: "acteEngagement", label: "Acte d'engagement" },
   { key: "os", label: "OS" },
+  { key: "bonCommande", label: "Bon de commande" },
   { key: "ccap", label: "CCAP" },
   { key: "dc4", label: "DC4" },
   { key: "contratSousTraitance", label: "Contrat de sous-traitance" },
   { key: "devisSigne", label: "Devis signé" },
+  { key: "pvReception", label: "PV de réception" },
   { key: "dgd", label: "DGD" },
 ];
 // Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
