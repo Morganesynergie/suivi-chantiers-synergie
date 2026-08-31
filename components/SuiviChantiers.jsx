@@ -2476,13 +2476,49 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, nom } : a)) } });
   }
-  function removeAvenant(id) {
+  // Supprime l'avenant ET, s'il avait un PDF déposé, ce fichier (sur le
+  // stockage ET dans chantier.documents) — sinon le fichier restait
+  // orphelin indéfiniment (jamais réaffiché nulle part, mais jamais
+  // supprimé du stockage non plus).
+  async function removeAvenant(id) {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
-    updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.filter((a) => a.id !== id) } });
+    const meta = getDocMeta(docs, id);
+    if (meta.present && meta.filePath) {
+      try {
+        await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
+      } catch {
+        // On retire quand même l'avenant même si la suppression du fichier
+        // sur le stockage échoue (pas de blocage pour Morgane).
+      }
+    }
+    const { [id]: _removed, ...restDocs } = docs;
+    updateChantier({ ...chantier, documents: { ...restDocs, avenants: (docs.avenants || []).filter((a) => a.id !== id) } });
   }
-  function toggleDocTypeActif(key) {
+  // Décocher un type de document qui a déjà un PDF déposé doit aussi
+  // supprimer ce fichier (sur le stockage ET dans chantier.documents) :
+  // sinon le fichier reste "orphelin" en coulisses et réapparaît tel quel
+  // dès qu'on recoche ce même type — ce qui donnait l'impression qu'il
+  // était impossible de vraiment supprimer un PDF depuis cette liste (la
+  // petite corbeille en haut à gauche ne faisait que décocher la case,
+  // jamais supprimer le fichier déjà déposé dessous).
+  async function toggleDocTypeActif(key) {
     const actifs = chantier.docTypesActifs || [];
-    const next = actifs.includes(key) ? actifs.filter((k) => k !== key) : [...actifs, key];
+    const isRemoving = actifs.includes(key);
+    const next = isRemoving ? actifs.filter((k) => k !== key) : [...actifs, key];
+    const docs = chantier.documents || {};
+    const meta = getDocMeta(docs, key);
+    if (isRemoving && meta.present) {
+      if (meta.filePath) {
+        try {
+          await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
+        } catch {
+          // On décoche quand même la case même si la suppression du fichier
+          // sur le stockage échoue (pas de blocage pour Morgane).
+        }
+      }
+      updateChantier({ ...chantier, docTypesActifs: next, documents: { ...docs, [key]: { present: false, fileName: null, filePath: null, uploadedAt: null } } });
+      return;
+    }
     updateChantier({ ...chantier, docTypesActifs: next });
   }
 
@@ -2677,7 +2713,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 {unlocked && !isUploading && (
                   <button
                     onClick={(e) => { e.stopPropagation(); d.isAvenant ? removeAvenant(d.key) : toggleDocTypeActif(d.key); }}
-                    title={d.isAvenant ? "Supprimer cet avenant" : "Retirer ce type de document de la liste"}
+                    title={d.isAvenant ? "Supprimer cet avenant (et son PDF)" : "Retirer ce type de document de la liste (et son PDF)"}
                     style={{ position: "absolute", top: 4, left: 4 }}
                   >
                     <Trash2 size={11} color={COLORS.inkSoft} />
