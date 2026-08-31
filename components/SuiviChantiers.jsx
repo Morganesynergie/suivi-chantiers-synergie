@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2 } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2, HardHat } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const LOGO_SYNERGIE = "data:image/png;base64,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";
@@ -453,6 +453,82 @@ const FIXED_DOC_TYPES = [
   { key: "pvReception", label: "PV de réception" },
   { key: "dgd", label: "DGD" },
 ];
+
+// ---------- Sous-traitance ----------
+// Le DC4 et le contrat de sous-traitance suivent chacun une progression en
+// étapes (pas juste présent/absent) : rédigé, signé côté sous-traitant,
+// envoyé au BET, puis signé par le client (maître d'ouvrage) — ou annulé.
+// Sur marché privé, seule la case "Contrat" a vraiment un sens (le DC4 est
+// propre aux marchés publics) ; elle reste modifiable dans tous les cas,
+// simplement laissée vide si non concernée.
+const SS_TRAITANCE_STATUTS = [
+  { key: "redige", label: "Rédigé" },
+  { key: "signe_st", label: "Signé Sous-Traitant" },
+  { key: "envoye_bet", label: "Envoyé BET" },
+  { key: "signe_client", label: "Signé Client" },
+  { key: "annule", label: "Annulé" },
+];
+function ssTraitanceStatutLabel(key) {
+  return (SS_TRAITANCE_STATUTS.find((s) => s.key === key) || {}).label || "—";
+}
+function ssTraitanceStatutColor(key) {
+  if (key === "signe_client") return "green";
+  if (key === "annule") return "red";
+  if (key === "envoye_bet" || key === "signe_st") return "amber";
+  if (key === "redige") return "ink";
+  return "ink";
+}
+// Documents administratifs à réunir pour chaque sous-traitant employé sur un
+// chantier, à jour au moment de CE contrat précis (Morgane les re-demande à
+// chaque nouvel engagement plutôt que de se fier à un document ancien) —
+// une simple bulle PDF par pièce, comme partout ailleurs dans l'appli :
+// déposée = à jour, vide = manquante.
+const ATTESTATION_TYPES = [
+  { key: "kbis", label: "KBIS", sousLabel: "< 3 mois" },
+  { key: "urssaf", label: "URSSAF", sousLabel: "< 6 mois" },
+  { key: "fiscale", label: "Attestation fiscale", sousLabel: "< 6 mois" },
+  { key: "assurance", label: "Assurance", sousLabel: "décennale/RC pro" },
+  { key: "pi", label: "PI", sousLabel: "police d'assurance" },
+];
+// Clé de document réutilisant le même stockage générique que le reste de
+// l'appli (chantier.documents / getDocMeta / uploadDocument / removeDocument
+// / openDocument — voir plus bas) : un sous-traitant donné peut avoir
+// plusieurs contrats sur le même chantier au fil du temps (rare mais
+// possible), d'où l'id du contrat dans la clé et pas seulement le type de
+// pièce.
+function sousTraitanceDocKey(entryId, type) {
+  return "sst-" + entryId + "-" + type;
+}
+function emptySousTraitanceEntry() {
+  return { id: uid("sst"), sousTraitantId: "", montant: null, dateDebut: "", dateFin: "", statutDc4: "", statutContrat: "" };
+}
+// Une entrée du répertoire des sous-traitants (réutilisable d'un chantier à
+// l'autre) — coordonnées + infos bancaires + validité CACES.
+function emptySousTraitant() {
+  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", caces: "" };
+}
+// Répertoire initial repris du fichier "FICHIER RENSEIGNEMENTS SS
+// TRAITANTS.xlsx" fourni par Morgane — ne sert qu'une seule fois, au tout
+// premier chargement (si rien n'est encore enregistré dans le répertoire),
+// exactement comme SEED_CHANTIERS/SEED_RG. Les contrats/DC4/attestations par
+// chantier ne sont PAS repris automatiquement (le fichier "SUIVI DC4
+// CONTRATS.xlsx" désigne les chantiers par un intitulé libre qu'on ne peut
+// pas relier à coup sûr aux chantiers réels déjà enregistrés) — Morgane les
+// recrée à la main depuis la fiche de chaque chantier, en piochant dans ce
+// répertoire déjà prérempli.
+const SEED_SOUS_TRAITANTS = [
+  { id: uid("stt"), nom: "GENIE BTP & VRD", representant: "VAINQUEUR ALAIN", telephone: "0690092981", email: "alainvainqueure71@gmail.com", banque: "QUONTO", iban: "FR76 1695 8000 0187 8243 1774 375", siret: "80447556400014", adresse: "RTE DE SAINT PROTAIS GRANDS FONDS 97160 LE MOULE", caces: "" },
+  { id: uid("stt"), nom: "BELFORT BMV BTP", representant: "BELFORT HARRY", telephone: "0690572028", email: "belfortbmvbtp@gmail.com", banque: "BRED", iban: "FR7610107003920053804852201", siret: "83808241000021", adresse: "Roussel 97129 Lamentin", caces: "" },
+  { id: uid("stt"), nom: "JVE BTP", representant: "ELUSUE JEAN JEROME", telephone: "0690949108", email: "elusue.jean.jerome971@gmail.com", banque: "CAISSE D'EPARGNE", iban: "FR7611315000010405242386324", siret: "98225254600014", adresse: "Chemin de Belle Plaine 97115 Sainte-Rose", caces: "" },
+  { id: uid("stt"), nom: "PYRAMIDE CONSTRUCTION", representant: "EVANS EDME", telephone: "0690189855", email: "", banque: "", iban: "", siret: "83988152100018", adresse: "RUE ACHILLE BOIS NEUF, 97122 MORNE A L'EAU", caces: "" },
+  { id: uid("stt"), nom: "GREGO BTP SERVICES", representant: "GREGO BERNARD", telephone: "0690093631", email: "", banque: "", iban: "", siret: "85173054900017", adresse: "Chemin de La Case aux lamentin 97111 Morne à L'eau", caces: "2033-03-01" },
+  { id: uid("stt"), nom: "LAMA ROBERT", representant: "LAMA ROBERT", telephone: "0690302922", email: "robertlama97130@gmail.com", banque: "", iban: "", siret: "53887517000010", adresse: "Source Perou 3 - 97130 Capesterre Belle-eau", caces: "" },
+  { id: uid("stt"), nom: "HJB CONSTRUCTIONS", representant: "HENRISCA JEAN-BAPTISTE", telephone: "0690232017", email: "hjbconstructionsasu@gmail.com", banque: "", iban: "", siret: "81070740900015", adresse: "Section Bois de Rose Caraque 97139 Les Abymes", caces: "" },
+  { id: uid("stt"), nom: "ENTREPRISE ACESSE JOEL", representant: "ACESSE JOEL", telephone: "0690478796", email: "joelacesse@gmail.com", banque: "", iban: "", siret: "75295752200010", adresse: "34 CARANGAISE 97130 CAPESTERRE-BELLE-EAU", caces: "" },
+  { id: uid("stt"), nom: "RENOV HOME", representant: "HATCHI Ayann Lary", telephone: "0690330727", email: "contact.renovhomefwi@gmail.com", banque: "", iban: "", siret: "95331624700022", adresse: "1 Résidence Creole Rubane à Calvaire Rue Gaby Jourson 97122 Baie-Mahault", caces: "" },
+  { id: uid("stt"), nom: "LAMA TP", representant: "LAMA RONY", telephone: "0690641557", email: "lamatp586@gmail.com", banque: "", iban: "", siret: "44120598600041", adresse: "Changy 97130 Capesterre-Belle-Eau", caces: "" },
+  { id: uid("stt"), nom: "SASU VIVA BTP", representant: "SIMON Guva", telephone: "", email: "", banque: "", iban: "", siret: "98098881000019", adresse: "ROUTE de Pliane 97190, Le Gosier", caces: "" },
+];
 // Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
 // utilisée par normalizeChantiersData pour initialiser docTypesActifs sur les
 // chantiers existants, afin que les bulles déjà affichées ne disparaissent
@@ -655,6 +731,16 @@ function normalizeChantiersData(list) {
     })();
     if (docTypesActifsChanged) chantierChanged = true;
 
+    // Migration silencieuse : liste des sous-traitants employés sur ce
+    // chantier (contrat + DC4 + attestations), absente sur les chantiers
+    // créés avant cette fonctionnalité.
+    let sousTraitanceChanged = false;
+    const sousTraitance = Array.isArray(c.sousTraitance) ? c.sousTraitance : (() => {
+      sousTraitanceChanged = true;
+      return [];
+    })();
+    if (sousTraitanceChanged) chantierChanged = true;
+
     if (chantierChanged) {
       changed = true;
       return {
@@ -662,6 +748,7 @@ function normalizeChantiersData(list) {
         situations,
         ...(fournisseursChanged ? { fournisseurs } : {}),
         ...(docTypesActifsChanged ? { docTypesActifs } : {}),
+        ...(sousTraitanceChanged ? { sousTraitance } : {}),
       };
     }
     return c;
@@ -816,6 +903,7 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
     { key: "archives", label: "Archives", icon: Archive },
     { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
     { key: "documents", label: "Documents contractuels", icon: FileWarning },
+    { key: "soustraitants", label: "Sous-traitants", icon: HardHat },
   ];
   return (
     <div className="h-full flex flex-col justify-between py-5 px-3" style={{ background: COLORS.navy }}>
@@ -1563,7 +1651,7 @@ const emptySituation = () => ({
   fournisseurFactures: [],
 });
 
-function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier }) {
+function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier, sousTraitants, onAddSousTraitant }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptySituation());
@@ -1598,6 +1686,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const [exportPdfError, setExportPdfError] = useState("");
   const [sendingEmailId, setSendingEmailId] = useState(null);
   const [emailNotice, setEmailNotice] = useState("");
+  // Bloc "Sous-traitance" : formulaire inline "+ Nouveau sous-traitant"
+  // ouvert sous une entrée précise (id de l'entrée sousTraitance concernée,
+  // ou null si fermé) quand elle ne trouve pas son entreprise dans le
+  // répertoire global et veut l'ajouter à la volée.
+  const [addingSousTraitantForEntryId, setAddingSousTraitantForEntryId] = useState(null);
+  const [newSousTraitantNom, setNewSousTraitantNom] = useState("");
   // Lecture automatique (IA) d'un devis signé / acte d'engagement / contrat
   // de sous-traitance à l'upload, pour proposer un pré-remplissage de la
   // fiche chantier. `docAnalysis` porte le résultat de la dernière lecture
@@ -2522,6 +2616,48 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     updateChantier({ ...chantier, docTypesActifs: next });
   }
 
+  // ---- Sous-traitance : contrats des sous-traitants employés sur ce
+  // chantier (DC4, contrat, attestations à jour) — voir SS_TRAITANCE_STATUTS
+  // / ATTESTATION_TYPES / sousTraitanceDocKey plus haut dans le fichier.
+  function addSousTraitanceEntry() {
+    updateChantier({ ...chantier, sousTraitance: [...(chantier.sousTraitance || []), emptySousTraitanceEntry()] });
+  }
+  function updateSousTraitanceEntry(id, patch) {
+    updateChantier({ ...chantier, sousTraitance: (chantier.sousTraitance || []).map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  // Supprime l'entrée ET les pièces déjà déposées dessus (DC4, contrat, les
+  // 5 attestations) — même logique que removeAvenant/toggleDocTypeActif :
+  // jamais de fichier orphelin laissé sur le stockage.
+  async function removeSousTraitanceEntry(id) {
+    const docsCur = chantier.documents || {};
+    const pieceKeys = ["dc4", "contrat", ...ATTESTATION_TYPES.map((a) => a.key)].map((t) => sousTraitanceDocKey(id, t));
+    await Promise.all(pieceKeys.map(async (k) => {
+      const meta = getDocMeta(docsCur, k);
+      if (meta.present && meta.filePath) {
+        try {
+          await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
+        } catch {
+          // On retire quand même l'entrée même si une suppression échoue.
+        }
+      }
+    }));
+    const restDocs = { ...docsCur };
+    for (const k of pieceKeys) delete restDocs[k];
+    updateChantier({ ...chantier, documents: restDocs, sousTraitance: (chantier.sousTraitance || []).filter((e) => e.id !== id) });
+  }
+  // Crée une nouvelle entreprise dans le répertoire global des sous-traitants
+  // (réutilisable sur tous les chantiers) et l'affecte aussitôt à l'entrée en
+  // cours d'édition — évite d'aller jusqu'à l'onglet "Sous-traitants" juste
+  // pour saisir une entreprise rencontrée pour la première fois.
+  function confirmNewSousTraitant(entryId) {
+    const nom = newSousTraitantNom.trim();
+    if (!nom || !onAddSousTraitant) { setAddingSousTraitantForEntryId(null); setNewSousTraitantNom(""); return; }
+    const newId = onAddSousTraitant({ nom });
+    updateSousTraitanceEntry(entryId, { sousTraitantId: newId });
+    setAddingSousTraitantForEntryId(null);
+    setNewSousTraitantNom("");
+  }
+
   const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
   const reqDocs = requiredDocuments(chantier);
   const missingDocs = reqDocs.filter((d) => !d.present);
@@ -2537,6 +2673,65 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
   const resteAFacturer = Math.round((totalMarcheTtc - totalFactureTtc) * 100) / 100;
   const allSupplierNames = Array.from(new Set((chantier.fournisseurs || []).map((f) => f.nom).filter(Boolean)));
+
+  // Petite bulle PDF (24x24, comme R/A/EA/F sur les situations) réutilisée
+  // pour chaque pièce d'un contrat de sous-traitance (DC4, contrat,
+  // attestations) — repose sur le même stockage générique chantier.documents
+  // que le reste de l'appli (getDocMeta/uploadDocument/removeDocument/
+  // openDocument/triggerDocUpload, déjà génériques sur la clé).
+  function renderSousTraitanceDocBubble(entryId, type, label) {
+    const key = sousTraitanceDocKey(entryId, type);
+    const meta = getDocMeta(docs, key);
+    const isUploading = uploadingDocKey === key;
+    const isDragOver = dragOverDocKey === key;
+    const clickable = !isUploading && (meta.present || unlocked);
+    return (
+      <div
+        key={type}
+        onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverDocKey(key); }}
+        onDragLeave={() => setDragOverDocKey((k) => (k === key ? null : k))}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOverDocKey((k) => (k === key ? null : k));
+          if (!unlocked || isUploading) return;
+          const f = e.dataTransfer.files && e.dataTransfer.files[0];
+          if (f) uploadDocument(key, f);
+        }}
+        onClick={() => {
+          if (isUploading) return;
+          if (meta.present) { openDocument(key); return; }
+          if (unlocked) triggerDocUpload(key);
+        }}
+        title={`${label}${meta.present ? " — " + (meta.fileName || "cliquer pour ouvrir") : unlocked ? " — cliquer ou glisser-déposer le PDF ici" : " — manquant"}`}
+        className="relative inline-flex items-center justify-center"
+        style={{
+          width: 24, height: 24, borderRadius: 7,
+          border: `1.5px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
+          background: meta.present ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
+          cursor: clickable ? "pointer" : "default",
+          opacity: isUploading ? 0.6 : 1,
+          flexShrink: 0,
+        }}
+      >
+        {unlocked && meta.present && !isUploading && (
+          <button
+            onClick={(e) => { e.stopPropagation(); removeDocument(key); }}
+            title={`Retirer (${label})`}
+            style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+          >
+            <X size={8} color={COLORS.red} />
+          </button>
+        )}
+        {isUploading ? (
+          <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
+        ) : (
+          <span className="text-[8px] font-bold leading-none text-center" style={{ color: meta.present ? COLORS.green : COLORS.inkSoft }}>
+            {label.slice(0, 3).toUpperCase()}
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-6xl">
@@ -2769,6 +2964,123 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           )}
         </div>
       </Card>
+
+      {!chantier.isFacturesLibres && (
+        <Card className="p-4 mb-4">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center rounded-full shrink-0" style={{ width: 36, height: 36, background: COLORS.accentSoft }}>
+                <HardHat size={17} color={COLORS.accent} />
+              </div>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: COLORS.ink }}>Sous-traitance</div>
+                <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                  {(chantier.sousTraitance || []).length
+                    ? `${(chantier.sousTraitance || []).length} sous-traitant${(chantier.sousTraitance || []).length > 1 ? "s" : ""} sur ce chantier`
+                    : "Aucun sous-traitant employé sur ce chantier"}
+                </div>
+              </div>
+            </div>
+            {unlocked && (
+              <Btn size="sm" variant="ghost" onClick={addSousTraitanceEntry}><Plus size={13} /> Sous-traitant</Btn>
+            )}
+          </div>
+          {(chantier.sousTraitance || []).length === 0 ? (
+            <p className="text-xs" style={{ color: COLORS.inkSoft }}>
+              {unlocked ? "Ajoute un sous-traitant employé sur ce chantier pour suivre son contrat, son DC4 et ses attestations à jour." : "Aucun sous-traitant renseigné."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {(chantier.sousTraitance || []).map((entry) => {
+                const sst = sousTraitants.find((s) => s.id === entry.sousTraitantId);
+                return (
+                  <div key={entry.id} className="rounded-lg p-3" style={{ border: `1px solid ${COLORS.line}`, background: "#FBFAF6" }}>
+                    <div className="flex flex-wrap items-end gap-2 mb-2.5">
+                      <Field label="Sous-traitant">
+                        <select
+                          value={entry.sousTraitantId || ""}
+                          disabled={!unlocked}
+                          onChange={(e) => {
+                            if (e.target.value === "__new__") { setAddingSousTraitantForEntryId(entry.id); setNewSousTraitantNom(""); return; }
+                            updateSousTraitanceEntry(entry.id, { sousTraitantId: e.target.value });
+                          }}
+                          style={{ ...inputStyle, minWidth: 190 }}
+                          className="outline-none focus:ring-2"
+                        >
+                          <option value="">— Choisir —</option>
+                          {sousTraitants.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                          {unlocked && <option value="__new__">+ Nouveau sous-traitant…</option>}
+                        </select>
+                      </Field>
+                      <Field label="Montant HT">
+                        <TextInput
+                          type="number"
+                          value={entry.montant ?? ""}
+                          disabled={!unlocked}
+                          onChange={(e) => updateSousTraitanceEntry(entry.id, { montant: e.target.value === "" ? null : Number(e.target.value) })}
+                          style={{ width: 110 }}
+                        />
+                      </Field>
+                      <Field label="Date début">
+                        <TextInput type="date" value={entry.dateDebut || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateDebut: e.target.value })} style={{ width: 145 }} />
+                      </Field>
+                      <Field label="Date fin">
+                        <TextInput type="date" value={entry.dateFin || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateFin: e.target.value })} style={{ width: 145 }} />
+                      </Field>
+                      <Field label="Statut DC4">
+                        <select value={entry.statutDc4 || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutDc4: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
+                          <option value="">— (non concerné)</option>
+                          {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Statut Contrat">
+                        <select value={entry.statutContrat || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutContrat: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
+                          <option value="">—</option>
+                          {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                        </select>
+                      </Field>
+                      {unlocked && (
+                        <button onClick={() => removeSousTraitanceEntry(entry.id)} title="Supprimer ce sous-traitant de ce chantier (et ses pièces jointes)" className="p-1.5 rounded-md h-fit">
+                          <Trash2 size={14} color={COLORS.red} />
+                        </button>
+                      )}
+                    </div>
+                    {addingSousTraitantForEntryId === entry.id && (
+                      <div className="flex items-center gap-2 mb-2.5 p-2 rounded-md" style={{ background: COLORS.accentSoft }}>
+                        <TextInput
+                          autoFocus
+                          placeholder="Nom de l'entreprise"
+                          value={newSousTraitantNom}
+                          onChange={(e) => setNewSousTraitantNom(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") confirmNewSousTraitant(entry.id); }}
+                          style={{ flex: 1, minWidth: 140 }}
+                        />
+                        <Btn size="sm" variant="accent" onClick={() => confirmNewSousTraitant(entry.id)}>Ajouter</Btn>
+                        <button onClick={() => { setAddingSousTraitantForEntryId(null); setNewSousTraitantNom(""); }}><X size={14} color={COLORS.inkSoft} /></button>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex items-center gap-1">
+                        {renderSousTraitanceDocBubble(entry.id, "dc4", "DC4")}
+                        {renderSousTraitanceDocBubble(entry.id, "contrat", "Contrat")}
+                      </div>
+                      <div style={{ width: 1, height: 20, background: COLORS.line }} />
+                      <div className="flex items-center gap-1">
+                        {ATTESTATION_TYPES.map((a) => renderSousTraitanceDocBubble(entry.id, a.key, a.label))}
+                      </div>
+                    </div>
+                    {sst && (sst.representant || sst.telephone || sst.email) && (
+                      <div className="text-[11px] mt-2" style={{ color: COLORS.inkSoft }}>
+                        {sst.representant}{sst.representant && (sst.telephone || sst.email) ? " — " : ""}{sst.telephone}{sst.telephone && sst.email ? " · " : ""}{sst.email}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
 
       {analyzingDoc && (
         <Card className="p-3 mb-4 flex items-center gap-2 text-xs" style={{ color: COLORS.inkSoft }}>
@@ -3842,6 +4154,193 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   );
 }
 
+// ---------- Sous-traitants ----------
+// Deux sections : le répertoire (entreprises réutilisables d'un chantier à
+// l'autre, éditable ici même) et la vue globale de tous les contrats déjà
+// saisis sur les chantiers (lecture seule ici — l'édition détaillée d'un
+// contrat, avec ses bulles PDF DC4/Contrat/attestations, se fait toujours
+// depuis la fiche du chantier concerné ; cliquer une ligne y amène).
+function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSelectedChantier, onAddSousTraitant, onUpdateSousTraitant, onRemoveSousTraitant }) {
+  const [section, setSection] = useState("repertoire");
+  const [q, setQ] = useState("");
+
+  const allContrats = useMemo(() => {
+    const out = [];
+    for (const c of chantiers) {
+      if (c.isFacturesLibres) continue;
+      const docs = c.documents || {};
+      for (const e of (c.sousTraitance || [])) {
+        const sst = sousTraitants.find((s) => s.id === e.sousTraitantId);
+        const attestationsPresentes = ATTESTATION_TYPES.filter((a) => docPresent(docs, sousTraitanceDocKey(e.id, a.key))).length;
+        out.push({
+          ...e,
+          chantierId: c.id,
+          chantierTitre: c.titre,
+          sousTraitantNom: sst ? sst.nom : "(sous-traitant supprimé du répertoire)",
+          attestationsPresentes,
+        });
+      }
+    }
+    return out.sort((a, b) => (b.dateDebut || "").localeCompare(a.dateDebut || ""));
+  }, [chantiers, sousTraitants]);
+
+  const qLower = q.trim().toLowerCase();
+  const filteredContrats = qLower
+    ? allContrats.filter((e) => (e.sousTraitantNom || "").toLowerCase().includes(qLower) || (e.chantierTitre || "").toLowerCase().includes(qLower))
+    : allContrats;
+  const filteredRepertoire = qLower
+    ? sousTraitants.filter((s) => (s.nom || "").toLowerCase().includes(qLower) || (s.representant || "").toLowerCase().includes(qLower))
+    : sousTraitants;
+
+  return (
+    <div className="p-4 max-w-6xl">
+      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Sous-traitants</h1>
+      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
+        Répertoire des entreprises sous-traitantes et vue globale de tous leurs contrats, tous chantiers confondus.
+      </p>
+
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button
+          onClick={() => setSection("repertoire")}
+          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+          style={{ background: section === "repertoire" ? COLORS.navy : "transparent", color: section === "repertoire" ? "#fff" : COLORS.inkSoft }}
+        >
+          Répertoire ({sousTraitants.length})
+        </button>
+        <button
+          onClick={() => setSection("contrats")}
+          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+          style={{ background: section === "contrats" ? COLORS.navy : "transparent", color: section === "contrats" ? "#fff" : COLORS.inkSoft }}
+        >
+          Tous les contrats ({allContrats.length})
+        </button>
+        <div className="relative ml-auto">
+          <Search size={13} style={{ position: "absolute", left: 8, top: 9 }} color={COLORS.inkSoft} />
+          <TextInput placeholder="Rechercher..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 26, width: 220 }} />
+        </div>
+      </div>
+
+      {section === "repertoire" ? (
+        <>
+          {unlocked && (
+            <div className="flex justify-end mb-2">
+              <Btn size="sm" variant="primary" onClick={() => onAddSousTraitant({})}><Plus size={13} /> Nouveau sous-traitant</Btn>
+            </div>
+          )}
+          <Card className="overflow-x-auto">
+            <div style={{ overflowX: "auto" }}>
+              <table className="text-xs" style={{ width: "100%", minWidth: 1080 }}>
+                <thead>
+                  <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
+                    <th className="text-left font-medium px-3 py-2">Entreprise</th>
+                    <th className="text-left font-medium px-2 py-2">Représentant</th>
+                    <th className="text-left font-medium px-2 py-2">Téléphone</th>
+                    <th className="text-left font-medium px-2 py-2">Email</th>
+                    <th className="text-left font-medium px-2 py-2">Banque</th>
+                    <th className="text-left font-medium px-2 py-2">IBAN</th>
+                    <th className="text-left font-medium px-2 py-2">SIRET</th>
+                    <th className="text-left font-medium px-2 py-2">Adresse</th>
+                    <th className="text-left font-medium px-2 py-2">Validité CACES</th>
+                    {unlocked && <th className="px-3 py-2"></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRepertoire.length === 0 && (
+                    <tr><td colSpan={10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
+                  )}
+                  {filteredRepertoire.map((s) => {
+                    const cacesDaysUntil = s.caces ? daysUntil(s.caces) : null;
+                    const cacesExpired = cacesDaysUntil !== null && cacesDaysUntil < 0;
+                    const cacesBientot = cacesDaysUntil !== null && cacesDaysUntil >= 0 && cacesDaysUntil <= 60;
+                    return (
+                      <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                        {unlocked ? (
+                          <>
+                            <td className="px-1 py-1"><TextInput value={s.nom || ""} onChange={(e) => onUpdateSousTraitant(s.id, { nom: e.target.value })} style={{ minWidth: 140 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.representant || ""} onChange={(e) => onUpdateSousTraitant(s.id, { representant: e.target.value })} style={{ minWidth: 120 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.telephone || ""} onChange={(e) => onUpdateSousTraitant(s.id, { telephone: e.target.value })} style={{ minWidth: 100 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.email || ""} onChange={(e) => onUpdateSousTraitant(s.id, { email: e.target.value })} style={{ minWidth: 150 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.banque || ""} onChange={(e) => onUpdateSousTraitant(s.id, { banque: e.target.value })} style={{ minWidth: 90 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.iban || ""} onChange={(e) => onUpdateSousTraitant(s.id, { iban: e.target.value })} style={{ minWidth: 170 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.siret || ""} onChange={(e) => onUpdateSousTraitant(s.id, { siret: e.target.value })} style={{ minWidth: 110 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.adresse || ""} onChange={(e) => onUpdateSousTraitant(s.id, { adresse: e.target.value })} style={{ minWidth: 200 }} /></td>
+                            <td className="px-1 py-1"><TextInput type="date" value={s.caces || ""} onChange={(e) => onUpdateSousTraitant(s.id, { caces: e.target.value })} style={{ minWidth: 130 }} /></td>
+                            <td className="px-2 py-1"><button onClick={() => onRemoveSousTraitant(s.id)} title="Supprimer du répertoire"><Trash2 size={13} color={COLORS.red} /></button></td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 font-medium" style={{ color: COLORS.ink }}>{s.nom || "—"}</td>
+                            <td className="px-2 py-2">{s.representant || "—"}</td>
+                            <td className="px-2 py-2">{s.telephone || "—"}</td>
+                            <td className="px-2 py-2">{s.email || "—"}</td>
+                            <td className="px-2 py-2">{s.banque || "—"}</td>
+                            <td className="px-2 py-2">{s.iban || "—"}</td>
+                            <td className="px-2 py-2">{s.siret || "—"}</td>
+                            <td className="px-2 py-2">{s.adresse || "—"}</td>
+                            <td className="px-2 py-2">
+                              {s.caces ? (
+                                <Pill color={cacesExpired ? "red" : cacesBientot ? "amber" : "green"}>{fmtDate(s.caces)}</Pill>
+                              ) : "—"}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      ) : (
+        <Card className="overflow-x-auto">
+          <div style={{ overflowX: "auto" }}>
+            <table className="text-xs" style={{ width: "100%", minWidth: 900 }}>
+              <thead>
+                <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
+                  <th className="text-left font-medium px-3 py-2">Sous-traitant</th>
+                  <th className="text-left font-medium px-2 py-2">Chantier</th>
+                  <th className="text-right font-medium px-2 py-2">Montant HT</th>
+                  <th className="text-left font-medium px-2 py-2">Début</th>
+                  <th className="text-left font-medium px-2 py-2">Fin</th>
+                  <th className="text-left font-medium px-2 py-2">Statut DC4</th>
+                  <th className="text-left font-medium px-2 py-2">Statut Contrat</th>
+                  <th className="text-center font-medium px-2 py-2">Attestations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredContrats.length === 0 && (
+                  <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun contrat de sous-traitance{qLower ? " ne correspond à cette recherche" : " enregistré pour l'instant"}</td></tr>
+                )}
+                {filteredContrats.map((e) => (
+                  <tr key={e.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                    <td className="px-3 py-2 font-medium" style={{ color: COLORS.ink }}>{e.sousTraitantNom}</td>
+                    <td className="px-2 py-2">
+                      <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier(e.chantierId); setTab("chantierDetail"); }}>
+                        {e.chantierTitre}
+                      </button>
+                    </td>
+                    <td className="px-2 py-2 text-right">{fmtEUR(e.montant)}</td>
+                    <td className="px-2 py-2">{fmtDate(e.dateDebut)}</td>
+                    <td className="px-2 py-2">{fmtDate(e.dateFin)}</td>
+                    <td className="px-2 py-2">{e.statutDc4 ? <Pill color={ssTraitanceStatutColor(e.statutDc4)}>{ssTraitanceStatutLabel(e.statutDc4)}</Pill> : "—"}</td>
+                    <td className="px-2 py-2">{e.statutContrat ? <Pill color={ssTraitanceStatutColor(e.statutContrat)}>{ssTraitanceStatutLabel(e.statutContrat)}</Pill> : "—"}</td>
+                    <td className="px-2 py-2 text-center">
+                      <Pill color={e.attestationsPresentes === ATTESTATION_TYPES.length ? "green" : e.attestationsPresentes === 0 ? "red" : "amber"}>
+                        {e.attestationsPresentes}/{ATTESTATION_TYPES.length}
+                      </Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ---------- Settings panel ----------
 // ---------- Documents contractuels ----------
 function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
@@ -3956,6 +4455,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [chantiers, setChantiers] = useState([]);
   const [rgDues, setRgDues] = useState({ echues: [], aVenir: [] });
+  // Répertoire global des sous-traitants (réutilisable d'un chantier à
+  // l'autre) — les contrats/DC4/attestations, eux, restent rattachés à
+  // chaque chantier (chantier.sousTraitance, voir ChantierDetail).
+  const [sousTraitants, setSousTraitants] = useState([]);
   const [editCode, setEditCode] = useState(DEFAULT_EDIT_CODE);
   const [unlocked, setUnlocked] = useState(false);
   const [showGate, setShowGate] = useState(false);
@@ -3992,10 +4495,11 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        let ch, rg, settings;
+        let ch, rg, settings, stt;
         try { ch = await storage.get("chantiers", true); } catch { ch = null; }
         try { rg = await storage.get("rg-dues", true); } catch { rg = null; }
         try { settings = await storage.get("settings", true); } catch { settings = null; }
+        try { stt = await storage.get("sous-traitants", true); } catch { stt = null; }
 
         const parsedSettings = settings && settings.value ? JSON.parse(settings.value) : {};
         // Once real data exists in storage, it always wins — never auto-overwrite it again.
@@ -4026,10 +4530,17 @@ export default function App() {
         } else {
           await storage.set("settings", JSON.stringify({ editCode: parsedSettings.editCode || DEFAULT_EDIT_CODE }), true);
         }
+        if (stt && stt.value) {
+          setSousTraitants(JSON.parse(stt.value));
+        } else {
+          setSousTraitants(SEED_SOUS_TRAITANTS);
+          await storage.set("sous-traitants", JSON.stringify(SEED_SOUS_TRAITANTS), true);
+        }
       } catch (e) {
         console.error("Erreur de chargement", e);
         setChantiers(SEED_CHANTIERS);
         setRgDues(SEED_RG);
+        setSousTraitants(SEED_SOUS_TRAITANTS);
       } finally {
         setLoading(false);
       }
@@ -4068,6 +4579,54 @@ export default function App() {
     }
   }, [pushUndoSnapshot]);
 
+  // Répertoire des sous-traitants : volontairement HORS du système "Annuler
+  // la dernière action" (comme le code d'édition) — ce sont des fiches
+  // contact, pas des saisies comptables où une fausse manip coûte cher.
+  const persistSousTraitants = useCallback(async (next) => {
+    setSousTraitants(next);
+    pendingWritesRef.current++;
+    try {
+      await storage.set("sous-traitants", JSON.stringify(next), true);
+      setSaveError(false);
+    } catch (e) {
+      console.error("Erreur de sauvegarde", e);
+      setSaveError(true);
+    } finally {
+      pendingWritesRef.current--;
+    }
+  }, []);
+  // Crée une entreprise dans le répertoire et retourne aussitôt son id
+  // (avant même que la sauvegarde réseau ne se termine) : utilisé depuis la
+  // fiche chantier pour affecter tout de suite la nouvelle entreprise au
+  // contrat en cours de saisie, sans attendre un aller-retour serveur.
+  const addSousTraitant = useCallback((patch) => {
+    const entry = { ...emptySousTraitant(), ...patch };
+    setSousTraitants((prev) => {
+      const next = [...prev, entry];
+      persistSousTraitants(next);
+      return next;
+    });
+    return entry.id;
+  }, [persistSousTraitants]);
+  const updateSousTraitant = useCallback((id, patch) => {
+    setSousTraitants((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...patch } : s));
+      persistSousTraitants(next);
+      return next;
+    });
+  }, [persistSousTraitants]);
+  // Ne supprime QUE la fiche du répertoire — les contrats déjà saisis sur
+  // les chantiers restent tels quels (sousTraitantId ne pointera simplement
+  // plus vers personne), pour ne jamais faire disparaître un contrat/DC4/
+  // des attestations déjà déposées suite à la suppression d'une fiche.
+  const removeSousTraitant = useCallback((id) => {
+    setSousTraitants((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      persistSousTraitants(next);
+      return next;
+    });
+  }, [persistSousTraitants]);
+
   // Dépile le dernier instantané et le réécrit (chantiers + rg-dues
   // ensemble, pour rester cohérent même si un seul des deux a changé).
   const undoLastAction = useCallback(() => {
@@ -4104,9 +4663,10 @@ export default function App() {
   const refreshFromServer = useCallback(async () => {
     if (pendingWritesRef.current > 0) return;
     try {
-      const [ch, rg] = await Promise.all([
+      const [ch, rg, stt] = await Promise.all([
         storage.get("chantiers", true).catch(() => null),
         storage.get("rg-dues", true).catch(() => null),
+        storage.get("sous-traitants", true).catch(() => null),
       ]);
       if (ch && ch.value) {
         const { chantiers: fixedChantiers } = normalizeChantiersData(JSON.parse(ch.value));
@@ -4114,6 +4674,9 @@ export default function App() {
       }
       if (rg && rg.value) {
         setRgDues(JSON.parse(rg.value));
+      }
+      if (stt && stt.value) {
+        setSousTraitants(JSON.parse(stt.value));
       }
     } catch (e) {
       console.error("Erreur de resynchronisation", e);
@@ -4168,6 +4731,7 @@ export default function App() {
       situations: [],
       documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "manquant" },
       docTypesActifs: [],
+      sousTraitance: [],
     };
     persistChantiers([...chantiers, newC]);
     setSelectedChantierId(newC.id);
@@ -4223,6 +4787,7 @@ export default function App() {
         marches: [newMarche], situations: [newSit],
         documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "non_concerne" },
         docTypesActifs: [],
+        sousTraitance: [],
         isFacturesLibres: true,
       };
       persistChantiers([...chantiers, newC]);
@@ -4348,10 +4913,22 @@ export default function App() {
           <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} archivedOnly />
         )}
         {tab === "chantierDetail" && selectedChantier && (
-          <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} />
+          <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} sousTraitants={sousTraitants} onAddSousTraitant={addSousTraitant} />
         )}
         {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRgBulk={markMarcheRgExtractedBulk} />}
         {tab === "documents" && <DocumentsView chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
+        {tab === "soustraitants" && (
+          <SousTraitantsView
+            chantiers={chantiers}
+            sousTraitants={sousTraitants}
+            unlocked={unlocked}
+            setTab={setTab}
+            setSelectedChantier={setSelectedChantierId}
+            onAddSousTraitant={addSousTraitant}
+            onUpdateSousTraitant={updateSousTraitant}
+            onRemoveSousTraitant={removeSousTraitant}
+          />
+        )}
       </div>
       </div>
 
