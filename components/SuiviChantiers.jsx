@@ -458,11 +458,13 @@ function regrouperFournisseurs(fournisseurs) {
 //   - zone verticale disponible : de 193 \u00e0 243 pt du bas de page
 // La signature/cachet est positionn\u00e9e en bas \u00e0 droite de la page, dans la
 // marge basse (bande enti\u00e8rement vierge sur toute la largeur, v\u00e9rifi\u00e9e
-// pixel par pixel, de 24,9 \u00e0 93,9 pt du bas) \u2014 loin de la zone de texte
-// ci-dessus pour ne jamais g\u00eaner, m\u00eame quand la ligne "Frais de prorata"
-// s'affiche. Le fond blanc de l'image signature-morgane.png a \u00e9t\u00e9 rendu
-// transparent (seul le trait bleu du tampon/de la signature reste visible)
-// pour qu'elle puisse se superposer sans masquer le texte d\u00e9j\u00e0 pr\u00e9sent.
+// pixel par pixel, de 24,9 \u00e0 93,9 pt du bas). Le fond blanc de l'image
+// signature-morgane.png a \u00e9t\u00e9 rendu transparent (seul le trait bleu du
+// tampon/de la signature reste visible) pour qu'elle puisse se superposer
+// sans masquer le texte d\u00e9j\u00e0 pr\u00e9sent.
+// Le r\u00e9capitulatif garde toujours son montant "Net \u00e0 payer" d'origine
+// intact, non modifi\u00e9 \u2014 la r\u00e9partition est un simple encadr\u00e9 rouge
+// d'information, sans lien avec les mentions l\u00e9gales de la facture.
 // Si un futur document utilise une taille de page l\u00e9g\u00e8rement diff\u00e9rente,
 // tout est remis \u00e0 l'\u00e9chelle proportionnellement plut\u00f4t que cod\u00e9 en dur.
 const REF_PAGE_WIDTH = 595.32;
@@ -470,20 +472,21 @@ const REF_PAGE_HEIGHT = 841.92;
 const REF_BLOCK_X = 15.7;
 const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant"
 const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
-const REF_LINE_HEIGHT_MAX = 11;
-const REF_LINE_HEIGHT_MIN = 7.5;
+const REF_LINE_HEIGHT_MAX = 12.5;
+const REF_LINE_HEIGHT_MIN = 6.5;
 const REF_SIGNATURE_WIDTH = 125; // largeur cible de la signature, en pt (plus grande qu'au d\u00e9part)
 const REF_SIGNATURE_MARGIN_RIGHT = 20; // marge depuis le bord droit de la page
 const REF_SIGNATURE_Y = 28; // pt du bas de page, dans la bande vierge basse
 const REF_SIGNATURE_X = REF_PAGE_WIDTH - REF_SIGNATURE_MARGIN_RIGHT - REF_SIGNATURE_WIDTH; // bas \u00e0 droite
 
 // Superpose (jamais une nouvelle page) sur la DERNI\u00c8RE page du PDF
-// "R\u00e9capitulatif" d\u00e9pos\u00e9 : la r\u00e9partition de r\u00e8glement par fournisseur,
-// les frais de prorata (s'il y en a) avec le montant net Synergie BTP
-// corrig\u00e9, et la signature \u2014 \u00e0 l'emplacement cal\u00e9 sur le mod\u00e8le r\u00e9el de
-// Morgane (voir constantes REF_* ci-dessus). Ne touche jamais au contenu
-// d\u00e9j\u00e0 pr\u00e9sent sur le document d\u00e9pos\u00e9.
-async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
+// "R\u00e9capitulatif" d\u00e9pos\u00e9 : la r\u00e9partition de r\u00e8glement par fournisseur (avec
+// un encadr\u00e9 rouge pour bien la faire ressortir), la part Synergie BTP, et
+// la signature \u2014 \u00e0 l'emplacement cal\u00e9 sur le mod\u00e8le r\u00e9el de Morgane (voir
+// constantes REF_* ci-dessus). Ne touche jamais au contenu d\u00e9j\u00e0 pr\u00e9sent sur
+// le document d\u00e9pos\u00e9 (le montant "Net \u00e0 payer" d'origine n'est jamais
+// modifi\u00e9).
+async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
   const pdfDoc = await PDFDocument.load(arrayBuffer);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -495,7 +498,6 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   const scaleY = pageHeight / REF_PAGE_HEIGHT;
 
   const red = rgb(0.858824, 0.2, 0.141176); // m\u00eame rouge que sur le mod\u00e8le de Morgane
-  const navy = rgb(0.09, 0.14, 0.23);
 
   const prorata = Number(situation?.prorata) || 0;
   // Part qui revient \u00e0 Synergie BTP elle-m\u00eame une fois les cessions
@@ -503,27 +505,28 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   // prorata \u2014 voir le calcul auto "TTC \u2212 RG \u2212 Prorata \u2212 Cession fournisseur
   // \u2212 Remb. ADD" \u2014 donc avant prorata, la part Synergie BTP est
   // totalARecevoir + prorata). Cette ligne compl\u00e8te la r\u00e9partition : la
-  // somme des cessions fournisseurs + cette part doit retomber sur le
-  // montant "Net \u00e0 payer" d\u00e9j\u00e0 imprim\u00e9 sur le PDF d'origine.
+  // somme des cessions fournisseurs + cette part retombe sur le montant
+  // "Net \u00e0 payer" d\u00e9j\u00e0 imprim\u00e9 sur le PDF d'origine (qui n'est pas modifi\u00e9).
   const partSynergie = (Number(situation?.totalARecevoir) || 0) + prorata;
-  // Nombre total de lignes \u00e0 caser dans la zone \u00e9troite (titre + fournisseurs
-  // + part Synergie BTP, + 0,4 ligne de marge suppl\u00e9mentaire avant "Frais de
-  // prorata" quand elle est affich\u00e9e).
-  const numLines = 1 + lignes.length + 1 + (prorata > 0 ? 2 : 0);
-  const extraGapUnits = prorata > 0 ? 0.4 : 0;
+  const numLines = 1 + lignes.length + 1;
   const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y) * scaleY;
   const lineHeight = Math.min(
     REF_LINE_HEIGHT_MAX * scaleY,
-    Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / (numLines + extraGapUnits))
+    Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / numLines)
   );
-  const fontSize = Math.max(6.5, lineHeight - 1.2);
+  const fontSize = Math.max(7.5, lineHeight - 0.8);
 
   const x = REF_BLOCK_X * scaleX;
-  let curY = REF_ZONE_TOP_Y * scaleY - fontSize * 0.85;
+  const firstBaselineY = REF_ZONE_TOP_Y * scaleY - fontSize * 0.85;
+  let curY = firstBaselineY;
+  let maxLineWidth = 0;
 
-  function drawLine(text, { bold = false, color = red, size = fontSize, extraGapBefore = 0 } = {}) {
-    curY -= extraGapBefore;
-    page.drawText(sanitizeForPdfText(text), { x, y: curY, size, font: bold ? fontBold : font, color });
+  function drawLine(text, { bold = false, color = red, size = fontSize } = {}) {
+    const sanitized = sanitizeForPdfText(text);
+    const usedFont = bold ? fontBold : font;
+    const width = usedFont.widthOfTextAtSize(sanitized, size);
+    if (width > maxLineWidth) maxLineWidth = width;
+    page.drawText(sanitized, { x, y: curY, size, font: usedFont, color });
     curY -= lineHeight;
   }
 
@@ -533,10 +536,21 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   }
   drawLine(`SYNERGIE BTP : ${pdfSafeEUR(partSynergie)}`);
 
-  if (prorata > 0) {
-    drawLine(`Frais de prorata : ${pdfSafeEUR(prorata)}`, { bold: true, extraGapBefore: lineHeight * 0.4 });
-    drawLine(`Net \u00e0 payer corrig\u00e9 : ${pdfSafeEUR(net)}`, { bold: true, color: navy, size: fontSize + 1 });
-  }
+  // Encadr\u00e9 rouge autour du bloc, ajust\u00e9 \u00e0 la largeur de sa ligne la plus
+  // longue et \u00e0 sa hauteur r\u00e9elle (qui varie avec le nombre de fournisseurs),
+  // pour que le client rep\u00e8re imm\u00e9diatement la r\u00e9partition.
+  const lastBaselineY = curY + lineHeight; // annule la derni\u00e8re d\u00e9cr\u00e9mentation
+  const boxPadX = 5 * scaleX;
+  const boxPadTop = fontSize * 0.75;
+  const boxPadBottom = fontSize * 0.3;
+  page.drawRectangle({
+    x: x - boxPadX,
+    y: lastBaselineY - boxPadBottom,
+    width: maxLineWidth + boxPadX * 2,
+    height: firstBaselineY - lastBaselineY + boxPadTop + boxPadBottom,
+    borderColor: red,
+    borderWidth: 1,
+  });
 
   // Signature/cachet, en bas \u00e0 droite de la page (voir REF_SIGNATURE_*
   // ci-dessus). Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne peut pas \u00eatre
@@ -2164,7 +2178,6 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           const stampedBytes = await stampRepartitionOnPdf(arrayBuffer, {
             situation,
             lignes,
-            net: situation.totalARecevoir,
           });
           fileToUpload = new File([stampedBytes], file.name, { type: "application/pdf" });
         } catch (stampErr) {
@@ -2746,7 +2759,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
             </div>
             <Card className="overflow-x-auto" style={isProrata ? { border: "1px solid #DDD6FE" } : undefined}>
               <div style={{ overflowX: "auto" }}>
-                <table className="text-xs" style={{ width: "100%", minWidth: 980 }}>
+                <table className="text-xs" style={{ width: "100%", minWidth: 1040 }}>
                   <thead>
                     <tr style={{ color: COLORS.inkSoft, background: isProrata ? "#F5F3FF" : "#F7F5EF" }}>
                       <th className="text-center font-medium px-1.5 py-2">PDF</th>
@@ -2759,6 +2772,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                       {!isProrata && (
                         <>
                           <th className="text-right font-medium px-2 py-2">RG</th>
+                          <th className="text-right font-medium px-2 py-2">Prorata</th>
                           <th className="text-right font-medium px-2 py-2">Remb. ADD</th>
                           <th className="text-right font-medium px-2 py-2">Fournisseur</th>
                         </>
@@ -2772,7 +2786,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                   </thead>
                   <tbody>
                     {sits.length === 0 && (
-                      <tr><td colSpan={14} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
+                      <tr><td colSpan={15} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
                     )}
                     {sits.map((s) => (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
@@ -2811,6 +2825,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
                         {!isProrata && (
                           <>
                             <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(s.rg)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{s.prorata ? fmtEUR(s.prorata) : "—"}</td>
                             <td className="px-2 py-2 text-right tabular-nums">{s.rembAdd ? fmtEUR(s.rembAdd) : "—"}</td>
                             <td className="px-2 py-2 text-right tabular-nums">
                               {(s.fournisseurs && s.fournisseurs.length)
