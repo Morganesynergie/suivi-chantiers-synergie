@@ -783,7 +783,21 @@ function normalizeChantiersData(list) {
       return s;
     });
 
-    if (chantierChanged) { changed = true; return { ...c, situations }; }
+    // Migration silencieuse : les fournisseurs cessionnaires créés avant
+    // l'ajout de la bulle PDF "acte de cession" n'ont pas d'id stable — on
+    // leur en attribue un une fois pour toutes (voir addChantierFournisseur,
+    // qui en donne un dès la création) pour que le document déposé reste
+    // bien associé au bon fournisseur même si la liste est réordonnée/un
+    // fournisseur supprimé entre-temps.
+    let fournisseursChanged = false;
+    const fournisseurs = (c.fournisseurs || []).map((f) => {
+      if (f.id) return f;
+      fournisseursChanged = true;
+      return { ...f, id: uid("fourn") };
+    });
+    if (fournisseursChanged) chantierChanged = true;
+
+    if (chantierChanged) { changed = true; return { ...c, situations, ...(fournisseursChanged ? { fournisseurs } : {}) }; }
     return c;
   });
   return { changed, chantiers: next };
@@ -1913,7 +1927,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     updateChantier({ ...chantier, marches: chantier.marches.filter((m) => m.id !== id) });
   }
   function addChantierFournisseur() {
-    updateChantier({ ...chantier, fournisseurs: [...(chantier.fournisseurs || []), { nom: "", enveloppe: "" }], cessionPaiement: "OUI" });
+    updateChantier({ ...chantier, fournisseurs: [...(chantier.fournisseurs || []), { id: uid("fourn"), nom: "", enveloppe: "" }], cessionPaiement: "OUI" });
   }
   function updateChantierFournisseur(idx, field, value) {
     const next = [...(chantier.fournisseurs || [])];
@@ -1927,6 +1941,67 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const key = (nom || "").trim().toLowerCase();
     if (!key) return 0;
     return chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + ((f.nom || "").trim().toLowerCase() === key ? (f.montant || 0) : 0), 0), 0);
+  }
+  // Petite bulle PDF pour l'acte de cession d'un fournisseur cessionnaire —
+  // même mécanique visuelle que les bulles Récap/Avancement/EA/Facture des
+  // situations, mais réutilise le système générique de documents CHANTIER
+  // (chantier.documents / getDocMeta / uploadDocument / removeDocument /
+  // openDocument / triggerDocUpload, définis plus bas dans ce composant —
+  // ce sont des déclarations "function", donc hissées, donc appelables ici)
+  // puisque l'acte de cession est un document par FOURNISSEUR, pas par
+  // situation. Toujours consultable (ouverture du PDF déjà déposé) même en
+  // lecture seule — seuls le dépôt/remplacement/suppression sont réservés au
+  // mode édition.
+  function renderFournisseurCessionBubble(f) {
+    const docs = chantier.documents || {};
+    const key = "fournisseur-cession-" + (f.id || f.nom);
+    const meta = getDocMeta(docs, key);
+    const isUploading = uploadingDocKey === key;
+    const isDragOver = dragOverDocKey === key;
+    const clickable = !isUploading && (meta.present || unlocked);
+    return (
+      <div
+        key={key}
+        onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverDocKey(key); }}
+        onDragLeave={() => setDragOverDocKey((k) => (k === key ? null : k))}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOverDocKey((k) => (k === key ? null : k));
+          if (!unlocked || isUploading) return;
+          const file = e.dataTransfer.files && e.dataTransfer.files[0];
+          if (file) uploadDocument(key, file);
+        }}
+        onClick={() => {
+          if (isUploading) return;
+          if (meta.present) { openDocument(key); return; }
+          if (unlocked) triggerDocUpload(key);
+        }}
+        title={`Acte de cession${meta.present ? " — " + (meta.fileName || "cliquer pour ouvrir") : unlocked ? " — cliquer ou glisser-déposer le PDF ici" : " — aucun PDF déposé"}`}
+        className="relative inline-flex items-center justify-center shrink-0"
+        style={{
+          width: 34, height: 24, borderRadius: 7,
+          border: `1.5px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
+          background: meta.present ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
+          cursor: clickable ? "pointer" : "default",
+          opacity: isUploading ? 0.6 : 1,
+        }}
+      >
+        {unlocked && meta.present && !isUploading && (
+          <button
+            onClick={(e) => { e.stopPropagation(); removeDocument(key); }}
+            title="Retirer le PDF (acte de cession)"
+            style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+          >
+            <X size={8} color={COLORS.red} />
+          </button>
+        )}
+        {isUploading ? (
+          <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
+        ) : (
+          <span className="text-[8px] font-bold leading-none" style={{ color: meta.present ? COLORS.green : COLORS.inkSoft }}>PDF</span>
+        )}
+      </div>
+    );
   }
   // Montant déjà remboursé sur l'ADD d'un marché : par défaut la somme de la colonne "Remb.
   // ADD" des situations de ce marché, mais peut être saisi/corrigé directement (champ "Déjà
@@ -2832,6 +2907,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                       <div className="flex items-center gap-2">
                         <TextInput value={f.nom} onChange={(e) => updateChantierFournisseur(idx, "nom", e.target.value)} placeholder="Nom du fournisseur" style={{ flex: 2 }} />
                         <TextInput type="number" step="0.01" value={f.enveloppe ?? ""} onChange={(e) => updateChantierFournisseur(idx, "enveloppe", e.target.value === "" ? "" : parseFloat(e.target.value))} placeholder="Enveloppe totale" style={{ flex: 1 }} />
+                        {renderFournisseurCessionBubble(f)}
                         <button onClick={() => removeChantierFournisseur(idx)} title="Supprimer"><X size={13} color={COLORS.red} /></button>
                       </div>
                       {restant !== null && (
@@ -2866,17 +2942,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                   const hasEnveloppe = f.enveloppe !== "" && f.enveloppe != null;
                   const restant = hasEnveloppe ? Math.round((f.enveloppe - utilise) * 100) / 100 : null;
                   return (
-                    <div key={idx} className="flex items-center justify-between text-xs">
+                    <div key={idx} className="flex items-center justify-between text-xs gap-2">
                       <span style={{ color: COLORS.ink }}>
                         <span className="font-medium">{f.nom}</span>
                       </span>
-                      {hasEnveloppe ? (
-                        <span className="tabular-nums" style={{ color: restant < 0 ? COLORS.red : COLORS.ink }}>
-                          {fmtEUR(restant)} <span style={{ color: COLORS.inkSoft }}>restant sur {fmtEUR(f.enveloppe)}</span>
-                        </span>
-                      ) : (
-                        <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>{fmtEUR(utilise)} cédés (pas d'enveloppe définie)</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {hasEnveloppe ? (
+                          <span className="tabular-nums" style={{ color: restant < 0 ? COLORS.red : COLORS.ink }}>
+                            {fmtEUR(restant)} <span style={{ color: COLORS.inkSoft }}>restant sur {fmtEUR(f.enveloppe)}</span>
+                          </span>
+                        ) : (
+                          <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>{fmtEUR(utilise)} cédés (pas d'enveloppe définie)</span>
+                        )}
+                        {renderFournisseurCessionBubble(f)}
+                      </div>
                     </div>
                   );
                 })}
