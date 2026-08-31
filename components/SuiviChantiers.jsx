@@ -454,8 +454,13 @@ function regrouperFournisseurs(fournisseurs) {
 // s'adaptent automatiquement au nombre de lignes \u00e0 afficher (peu de
 // fournisseurs \u2192 texte confortable ; beaucoup de fournisseurs + prorata \u2192
 // texte plus compact) pour ne jamais d\u00e9border sur le texte existant.
-//   - marge gauche du texte : 15,7 pt (m\u00eame alignement que "R\u00e8glement :")
-//   - zone verticale disponible : de 193 \u00e0 243 pt du bas de page
+//   - marge gauche du texte : d\u00e9cal\u00e9e \u00e0 26 pt (l'encadr\u00e9 rouge, un peu plus
+//     large que le texte, d\u00e9marre alors vers 21 pt) pour ne pas chevaucher le
+//     bord gauche de l'encadr\u00e9 d\u00e9j\u00e0 imprim\u00e9 sur le mod\u00e8le (un rectangle allant
+//     de x=10 \u00e0 x=260 pt, mesur\u00e9 directement dans le contenu vectoriel du PDF)
+//   - zone verticale disponible : de 193 \u00e0 243 pt du bas de page, avec un
+//     petit espace suppl\u00e9mentaire (REF_TITLE_TOP_GAP) entre le trait du haut
+//     de l'encadr\u00e9 rouge et le texte "R\u00e9partition de r\u00e8glement :"
 // La signature/cachet est positionn\u00e9e en bas \u00e0 droite de la page, dans la
 // marge basse (bande enti\u00e8rement vierge sur toute la largeur, v\u00e9rifi\u00e9e
 // pixel par pixel, de 24,9 \u00e0 93,9 pt du bas). Le fond blanc de l'image
@@ -469,9 +474,10 @@ function regrouperFournisseurs(fournisseurs) {
 // tout est remis \u00e0 l'\u00e9chelle proportionnellement plut\u00f4t que cod\u00e9 en dur.
 const REF_PAGE_WIDTH = 595.32;
 const REF_PAGE_HEIGHT = 841.92;
-const REF_BLOCK_X = 15.7;
-const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant"
+const REF_BLOCK_X = 26;
+const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant" \u2014 reste la ligne du haut de l'encadr\u00e9 rouge
 const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
+const REF_TITLE_TOP_GAP = 5; // pt d'air entre le trait du haut de l'encadr\u00e9 et "R\u00e9partition de r\u00e8glement :"
 const REF_LINE_HEIGHT_MAX = 12.5;
 const REF_LINE_HEIGHT_MIN = 6.5;
 const REF_SIGNATURE_WIDTH = 125; // largeur cible de la signature, en pt (plus grande qu'au d\u00e9part)
@@ -509,7 +515,12 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
   // "Net \u00e0 payer" d\u00e9j\u00e0 imprim\u00e9 sur le PDF d'origine (qui n'est pas modifi\u00e9).
   const partSynergie = (Number(situation?.totalARecevoir) || 0) + prorata;
   const numLines = 1 + lignes.length + 1;
-  const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y) * scaleY;
+  // La ligne du haut de l'encadré rouge reste ancrée sur REF_ZONE_TOP_Y (juste
+  // sous "Règlement : Comptant") ; REF_TITLE_TOP_GAP est retiré de la hauteur
+  // utile pour le texte, pour laisser un peu d'air visible entre ce trait et
+  // "Répartition de règlement :" sans faire déborder le bas du bloc.
+  const boxTopY = REF_ZONE_TOP_Y * scaleY;
+  const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y - REF_TITLE_TOP_GAP) * scaleY;
   const lineHeight = Math.min(
     REF_LINE_HEIGHT_MAX * scaleY,
     Math.max(REF_LINE_HEIGHT_MIN * scaleY, zoneHeight / numLines)
@@ -517,7 +528,7 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
   const fontSize = Math.max(7.5, lineHeight - 0.8);
 
   const x = REF_BLOCK_X * scaleX;
-  const firstBaselineY = REF_ZONE_TOP_Y * scaleY - fontSize * 0.85;
+  const firstBaselineY = boxTopY - REF_TITLE_TOP_GAP * scaleY - fontSize * 0.85;
   let curY = firstBaselineY;
   let maxLineWidth = 0;
 
@@ -541,13 +552,13 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes }) {
   // pour que le client rep\u00e8re imm\u00e9diatement la r\u00e9partition.
   const lastBaselineY = curY + lineHeight; // annule la derni\u00e8re d\u00e9cr\u00e9mentation
   const boxPadX = 5 * scaleX;
-  const boxPadTop = fontSize * 0.75;
   const boxPadBottom = fontSize * 0.3;
+  const boxBottomY = lastBaselineY - boxPadBottom;
   page.drawRectangle({
     x: x - boxPadX,
-    y: lastBaselineY - boxPadBottom,
+    y: boxBottomY,
     width: maxLineWidth + boxPadX * 2,
-    height: firstBaselineY - lastBaselineY + boxPadTop + boxPadBottom,
+    height: boxTopY - boxBottomY,
     borderColor: red,
     borderWidth: 1,
   });
