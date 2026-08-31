@@ -3185,12 +3185,37 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
 const emptyRgEchue = () => ({ id: uid("rg-e"), chantierId: "", nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEnvoi: "", notes: "", validBet: false });
 const emptyRgVenir = () => ({ id: uid("rg-v"), chantierId: "", nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEcheance: "" });
 
-function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChantier, onExtractMarcheRg }) {
+function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChantier, onExtractMarcheRgBulk }) {
   const [showEchue, setShowEchue] = useState(false);
   const [showVenir, setShowVenir] = useState(false);
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
+
+  // Dès qu'un chantier soldé à 100 % est détecté (voir computeAutoRgCumulees),
+  // sa RG cumulée est aussitôt transformée en une vraie ligne "RG à venir"
+  // (chantierId renseigné, pour la mention automatique sur la fiche chantier
+  // une fois réglée — voir markRgReceived) au lieu de rester une simple
+  // suggestion calculée à la volée. Elle devient alors modifiable comme
+  // n'importe quelle ligne saisie à la main (date d'échéance, montants...) —
+  // c'est ce qui manquait pour pouvoir corriger la date d'un chantier comme
+  // SCI HORIZONS. rgExtracted est marqué dans le même mouvement pour que le
+  // chantier ne soit plus jamais re-proposé par la détection auto.
+  useEffect(() => {
+    if (autoRg.length === 0) return;
+    const newEntries = autoRg.map((item) => {
+      const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
+      const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
+      return {
+        id: uid("rg-v"), chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
+        montantHt: montantHtRg, montantTtc: item.totalRg, betMo: "",
+        dateEcheance: new Date().toISOString().slice(0, 10),
+      };
+    });
+    updateRg({ ...rgDues, aVenir: [...rgDues.aVenir, ...newEntries] });
+    onExtractMarcheRgBulk(autoRg.map((item) => item.chantierId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRg]);
 
   function addEchue() {
     updateRg({ ...rgDues, echues: [...rgDues.echues, { ...formE, id: uid("rg-e") }] });
@@ -3210,28 +3235,6 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   function updateEchue(id, patch) { updateRg({ ...rgDues, echues: rgDues.echues.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
   function removeVenir(id) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.filter((r) => r.id !== id) }); }
   function updateVenir(id, patch) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
-
-  // Équivalent de moveToEchue/removeVenir pour un chantier soldé détecté
-  // automatiquement (voir computeAutoRgCumulees) : il n'existe pas en tant
-  // qu'entrée dans rgDues.aVenir, donc "réclamée" crée directement une vraie
-  // ligne dans rgDues.echues (chantierId renseigné, pour que la mention sur
-  // la fiche chantier fonctionne une fois réglée — voir markRgReceived), et
-  // dans les deux cas on masque le chantier de la détection auto via
-  // onExtractMarcheRg (rgExtracted) pour qu'il ne réapparaisse pas.
-  function moveAutoRgToEchue(item) {
-    const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
-    const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
-    updateRg({
-      ...rgDues,
-      echues: [...rgDues.echues, {
-        id: uid("rg-e"), chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
-        montantHt: montantHtRg, montantTtc: item.totalRg, betMo: "",
-        dateEnvoi: new Date().toISOString().slice(0, 10), notes: "", validBet: false,
-      }],
-    });
-    onExtractMarcheRg(item.chantierId);
-  }
-  function dismissAutoRg(item) { onExtractMarcheRg(item.chantierId); }
 
   const totalEchues = rgDues.echues.reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0);
 
@@ -3347,27 +3350,13 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             </tr>
           </thead>
           <tbody>
-            {rgDues.aVenir.length === 0 && autoRg.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
-            {[
-              ...[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => ({ ...r, isAuto: false })),
-              // Chantiers soldés à 100 % (marché principal + TS confondus), détectés
-              // automatiquement : leur RG cumulée est prête à réclamer. Affichés à la
-              // suite des RG à venir saisies à la main, avec EXACTEMENT la même mise en
-              // page qu'elles (même colonnes, mêmes styles, pas de couleur/pastille à
-              // part) plutôt que dans un encadré séparé — une échéance du jour est
-              // utilisée pour que la colonne "À réclamer ?" les signale bien "oui".
-              ...autoRg.map((item) => ({
-                id: `auto-${item.chantierId}`, isAuto: true, _autoItem: item,
-                chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
-                montantHt: Math.round((item.totalRg / (1 + (TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085))) * 100) / 100,
-                montantTtc: item.totalRg, betMo: "", dateEcheance: new Date().toISOString().slice(0, 10),
-              })),
-            ].map((r) => {
+            {rgDues.aVenir.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
+            {[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
               const d = daysUntil(r.dateEcheance);
               const soon = d !== null && d <= 30;
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                  {unlocked && !r.isAuto ? (
+                  {unlocked ? (
                     <>
                       <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateVenir(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
                       <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateVenir(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
@@ -3379,11 +3368,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                   ) : (
                     <>
                       <td className="px-3 py-2">{r.nChantier || "—"}</td>
-                      <td className="px-2 py-2 font-medium">
-                        {r.isAuto ? (
-                          <button className="hover:underline text-left" onClick={() => { setSelectedChantier(r.chantierId); setTab("chantierDetail"); }}>{r.nom}</button>
-                        ) : r.nom}
-                      </td>
+                      <td className="px-2 py-2 font-medium">{r.nom}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
                       <td className="px-2 py-2">{r.betMo || "—"}</td>
@@ -3394,17 +3379,8 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                   {unlocked && (
                     <td className="px-3 py-2">
                       <div className="flex gap-2 justify-end">
-                        {r.isAuto ? (
-                          <>
-                            <button title="Marquer comme réclamée" onClick={() => moveAutoRgToEchue(r._autoItem)}><Check size={13} color={COLORS.green} /></button>
-                            <button title="Ignorer cette RG détectée automatiquement" onClick={() => dismissAutoRg(r._autoItem)}><X size={13} color={COLORS.red} /></button>
-                          </>
-                        ) : (
-                          <>
-                            <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
-                            <button title="Supprimer" onClick={() => removeVenir(r.id)}><X size={13} color={COLORS.red} /></button>
-                          </>
-                        )}
+                        <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
+                        <button title="Supprimer" onClick={() => removeVenir(r.id)}><X size={13} color={COLORS.red} /></button>
                       </div>
                     </td>
                   )}
@@ -3775,8 +3751,13 @@ export default function App() {
     persistChantiers(chantiers.map((c) => (c.id === updated.id ? updated : c)));
   }
 
-  function markMarcheRgExtracted(chantierId) {
-    persistChantiers(chantiers.map((c) => c.id !== chantierId ? c : { ...c, rgExtracted: true }));
+  // Marque plusieurs chantiers "rgExtracted" en un seul persistChantiers (voir
+  // RgView) : les appeler un par un ré-écrirait chaque fois depuis le même
+  // "chantiers" figé au moment du rendu, et les appels précédents seraient
+  // perdus (seul le dernier persisterait réellement).
+  function markMarcheRgExtractedBulk(chantierIds) {
+    const idSet = new Set(chantierIds);
+    persistChantiers(chantiers.map((c) => (idSet.has(c.id) ? { ...c, rgExtracted: true } : c)));
   }
 
   function createChantier({ titre, client }) {
@@ -3971,7 +3952,7 @@ export default function App() {
         {tab === "chantierDetail" && selectedChantier && (
           <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} />
         )}
-        {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRg={markMarcheRgExtracted} />}
+        {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRgBulk={markMarcheRgExtractedBulk} />}
         {tab === "documents" && <DocumentsView chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
       </div>
       </div>
