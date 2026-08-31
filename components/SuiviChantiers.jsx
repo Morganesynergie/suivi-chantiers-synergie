@@ -524,6 +524,14 @@ const SALARIE_ETRANGER_PIECE_TYPES = [
   { key: "pieceIdentite", label: "Pièce d'identité", dateLabel: "Date d'expiration", validityMonths: null },
   { key: "titreSejour", label: "Titre de séjour", dateLabel: "Date d'expiration", validityMonths: null },
 ];
+// Document à part, distinct des pièces individuelles de chaque salarié :
+// la liste nominative elle-même (qui récapitule tous les salariés étrangers
+// du sous-traitant). Stockée comme une pièce "de l'entreprise" classique
+// (sousTraitant.documents), donc avec historique/archive, mais affichée
+// dans le bloc "Salariés étrangers" et seulement pertinente quand le
+// sous-traitant a effectivement des salariés étrangers déclarés — pas de
+// durée de validité réglementaire connue, donc pas d'alerte "périmée".
+const LISTE_NOMINATIVE_PIECE_TYPE = { key: "listeNominative", label: "Liste nominative des salariés étrangers", dateLabel: "Date de la liste", validityMonths: null, noAlert: true };
 function emptySalarieEtranger() {
   return { id: uid("sal"), nom: "", documents: {} };
 }
@@ -575,6 +583,10 @@ function sousTraitantActiveChantiers(sousTraitantId, chantiers) {
 function sousTraitantPieceAlerts(sousTraitant) {
   const out = [];
   for (const typeDef of SOUS_TRAITANT_PIECE_TYPES) {
+    // Titre de séjour ignoré si Morgane a explicitement indiqué que le
+    // représentant n'est pas de nationalité étrangère (case à cocher dans
+    // le dossier — voir titreSejourApplicable).
+    if (typeDef.key === "titreSejour" && sousTraitant.titreSejourApplicable === false) continue;
     const entries = (sousTraitant.documents || {})[typeDef.key] || [];
     const current = currentPieceEntry(entries);
     if (!current) {
@@ -586,13 +598,22 @@ function sousTraitantPieceAlerts(sousTraitant) {
     if (days !== null && days < 0) out.push({ key: typeDef.key, label: typeDef.label, status: "perimee", expiryIso, days });
     else if (days !== null && days <= 30) out.push({ key: typeDef.key, label: typeDef.label, status: "bientot", expiryIso, days });
   }
+  // Liste nominative des salariés étrangers : uniquement exigée quand le
+  // sous-traitant a effectivement déclaré des salariés étrangers — pas de
+  // durée de validité connue, donc seule l'absence totale est signalée.
+  if ((sousTraitant.salariesEtrangers || []).length > 0) {
+    const entries = (sousTraitant.documents || {})[LISTE_NOMINATIVE_PIECE_TYPE.key] || [];
+    if (!currentPieceEntry(entries)) {
+      out.push({ key: LISTE_NOMINATIVE_PIECE_TYPE.key, label: LISTE_NOMINATIVE_PIECE_TYPE.label, status: "manquante", expiryIso: null, days: null });
+    }
+  }
   return out;
 }
 // Une entrée du répertoire des sous-traitants (réutilisable d'un chantier à
 // l'autre) — coordonnées + infos bancaires + validité CACES + dossier
 // administratif (pièces à jour, avec historique) + salariés étrangers.
 function emptySousTraitant() {
-  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", caces: "", documents: {}, salariesEtrangers: [] };
+  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", caces: "", documents: {}, salariesEtrangers: [], titreSejourApplicable: true };
 }
 // Répertoire initial repris du fichier "FICHIER RENSEIGNEMENTS SS
 // TRAITANTS.xlsx" fourni par Morgane — ne sert qu'une seule fois, au tout
@@ -616,7 +637,7 @@ const SEED_SOUS_TRAITANTS_RAW = [
   { id: uid("stt"), nom: "LAMA TP", representant: "LAMA RONY", telephone: "0690641557", email: "lamatp586@gmail.com", banque: "", iban: "", siret: "44120598600041", adresse: "Changy 97130 Capesterre-Belle-Eau", caces: "" },
   { id: uid("stt"), nom: "SASU VIVA BTP", representant: "SIMON Guva", telephone: "", email: "", banque: "", iban: "", siret: "98098881000019", adresse: "ROUTE de Pliane 97190, Le Gosier", caces: "" },
 ];
-const SEED_SOUS_TRAITANTS = SEED_SOUS_TRAITANTS_RAW.map((s) => ({ ...s, documents: {}, salariesEtrangers: [] }));
+const SEED_SOUS_TRAITANTS = SEED_SOUS_TRAITANTS_RAW.map((s) => ({ ...s, documents: {}, salariesEtrangers: [], titreSejourApplicable: true }));
 // Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
 // utilisée par normalizeChantiersData pour initialiser docTypesActifs sur les
 // chantiers existants, afin que les bulles déjà affichées ne disparaissent
@@ -755,6 +776,10 @@ function normalizeSousTraitants(list) {
     ...s,
     documents: s.documents || {},
     salariesEtrangers: (s.salariesEtrangers || []).map((sal) => ({ ...sal, documents: sal.documents || {} })),
+    // Par défaut le titre de séjour reste requis (comportement historique
+    // inchangé) — Morgane décoche explicitement, par sous-traitant, quand le
+    // représentant n'est pas de nationalité étrangère.
+    titreSejourApplicable: s.titreSejourApplicable !== false,
   }));
 }
 function normalizeChantiersData(list) {
@@ -4538,9 +4563,10 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
 // ajouter un nouveau document conserve automatiquement les précédents en
 // archive (jamais de remplacement destructif) — voir SOUS_TRAITANT_PIECE_TYPES
 // / currentPieceEntry / pieceExpiryIso plus haut dans le fichier.
-function DossierPieceRow({ typeDef, entries, unlocked, uploadingKey, storageKey, onTriggerUpload, onOpenEntry, onRemoveEntry }) {
+function DossierPieceRow({ typeDef, entries, unlocked, uploadingKey, storageKey, onTriggerUpload, onDropFile, onOpenEntry, onRemoveEntry }) {
   const [pendingDate, setPendingDate] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const sorted = [...(entries || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const current = sorted[0] || null;
   const archive = sorted.slice(1);
@@ -4568,7 +4594,25 @@ function DossierPieceRow({ typeDef, entries, unlocked, uploadingKey, storageKey,
   }
 
   return (
-    <div className="rounded-lg p-3" style={{ border: `1px solid ${COLORS.line}`, background: "#FBFAF6" }}>
+    <div
+      className="rounded-lg p-3"
+      style={{
+        border: `1.5px ${isDragOver ? "dashed" : "solid"} ${isDragOver ? COLORS.accent : COLORS.line}`,
+        background: isDragOver ? COLORS.accentSoft : "#FBFAF6",
+      }}
+      onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setIsDragOver(true); }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (!unlocked || isUploading) return;
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        if (!pendingDate) { alert("Indique d'abord la date du document avant de le glisser ici."); return; }
+        onDropFile(pendingDate, f);
+        setPendingDate("");
+      }}
+    >
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="text-sm font-semibold" style={{ color: COLORS.ink }}>{typeDef.label}</div>
@@ -4614,6 +4658,7 @@ function DossierPieceRow({ typeDef, entries, unlocked, uploadingKey, storageKey,
           >
             {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {current ? "Remplacer (archive l'ancien)" : "Ajouter"}
           </Btn>
+          <span className="text-[11px]" style={{ color: COLORS.inkSoft }}>ou glisse-dépose le fichier directement ici</span>
         </div>
       )}
     </div>
@@ -4643,11 +4688,11 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
     fileInputRef.current?.click();
   }
 
-  async function handleFileChosen(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    const target = pendingUploadTarget;
-    setPendingUploadTarget(null);
+  // Logique d'envoi partagée entre le bouton "Ajouter/Remplacer" (passe par
+  // le sélecteur de fichier du système) et le glisser-déposer directement
+  // sur la pièce (pas de boîte de dialogue) — les deux aboutissent ici avec
+  // la même forme de "target" ({ kind, key, date, salarieId? }).
+  async function performUpload(target, file) {
     if (!file || !target) return;
     const storageKey = target.kind === "piece"
       ? sousTraitantPieceDocKey(sousTraitant.id, target.key)
@@ -4680,6 +4725,14 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
     } finally {
       setUploadingKey(null);
     }
+  }
+
+  async function handleFileChosen(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    const target = pendingUploadTarget;
+    setPendingUploadTarget(null);
+    await performUpload(target, file);
   }
 
   async function openEntry(entry) {
@@ -4752,8 +4805,17 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
           )}
 
           <div className="text-sm font-semibold mb-2" style={{ color: COLORS.ink }}>Pièces de l'entreprise</div>
+          <label className="flex items-center gap-2 text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+            <input
+              type="checkbox"
+              disabled={!unlocked}
+              checked={sousTraitant.titreSejourApplicable === false}
+              onChange={(e) => onUpdateSousTraitant(sousTraitant.id, { titreSejourApplicable: !e.target.checked })}
+            />
+            Le représentant n'est pas de nationalité étrangère (titre de séjour non nécessaire)
+          </label>
           <div className="flex flex-col gap-2 mb-5">
-            {SOUS_TRAITANT_PIECE_TYPES.map((typeDef) => {
+            {SOUS_TRAITANT_PIECE_TYPES.filter((t) => t.key !== "titreSejour" || sousTraitant.titreSejourApplicable !== false).map((typeDef) => {
               const storageKey = sousTraitantPieceDocKey(sousTraitant.id, typeDef.key);
               return (
                 <DossierPieceRow
@@ -4764,6 +4826,7 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
                   uploadingKey={uploadingKey}
                   storageKey={storageKey}
                   onTriggerUpload={(date) => triggerUpload(typeDef.key, date)}
+                  onDropFile={(date, file) => performUpload({ kind: "piece", key: typeDef.key, date }, file)}
                   onOpenEntry={openEntry}
                   onRemoveEntry={(entry) => removePieceEntry(typeDef.key, entry)}
                 />
@@ -4776,6 +4839,19 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
             {unlocked && !addingSalarie && (
               <Btn size="sm" variant="ghost" onClick={() => setAddingSalarie(true)}><UserPlus size={13} /> Ajouter un salarié</Btn>
             )}
+          </div>
+          <div className="mb-3">
+            <DossierPieceRow
+              typeDef={LISTE_NOMINATIVE_PIECE_TYPE}
+              entries={documents[LISTE_NOMINATIVE_PIECE_TYPE.key] || []}
+              unlocked={unlocked}
+              uploadingKey={uploadingKey}
+              storageKey={sousTraitantPieceDocKey(sousTraitant.id, LISTE_NOMINATIVE_PIECE_TYPE.key)}
+              onTriggerUpload={(date) => triggerUpload(LISTE_NOMINATIVE_PIECE_TYPE.key, date)}
+              onDropFile={(date, file) => performUpload({ kind: "piece", key: LISTE_NOMINATIVE_PIECE_TYPE.key, date }, file)}
+              onOpenEntry={openEntry}
+              onRemoveEntry={(entry) => removePieceEntry(LISTE_NOMINATIVE_PIECE_TYPE.key, entry)}
+            />
           </div>
           {addingSalarie && (
             <div className="flex items-center gap-2 mb-3 p-2 rounded-md" style={{ background: COLORS.accentSoft }}>
@@ -4820,6 +4896,7 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
                               uploadingKey={uploadingKey}
                               storageKey={storageKey}
                               onTriggerUpload={(date) => triggerSalarieUpload(sal.id, typeDef.key, date)}
+                              onDropFile={(date, file) => performUpload({ kind: "salarie", salarieId: sal.id, key: typeDef.key, date }, file)}
                               onOpenEntry={openEntry}
                               onRemoveEntry={(entry) => removeSalarieEntry(sal.id, typeDef.key, entry)}
                             />
