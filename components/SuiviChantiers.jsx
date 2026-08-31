@@ -623,31 +623,53 @@ function docPresent(docs, key) {
 // automatique après l'upload.
 const ANALYZABLE_DOC_KEYS = ["devisSigne", "acteEngagement", "contratSousTraitance"];
 
-function requiredDocuments(chantier) {
+// Liste fixe des types de documents contractuels cochables depuis "Modifier
+// les infos". L'ordre ici est l'ordre d'affichage des bulles.
+const FIXED_DOC_TYPES = [
+  { key: "acteEngagement", label: "Acte d'engagement" },
+  { key: "os", label: "OS" },
+  { key: "ccap", label: "CCAP" },
+  { key: "dc4", label: "DC4" },
+  { key: "contratSousTraitance", label: "Contrat de sous-traitance" },
+  { key: "devisSigne", label: "Devis signé" },
+  { key: "dgd", label: "DGD" },
+];
+// Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
+// utilisée par normalizeChantiersData pour initialiser docTypesActifs sur les
+// chantiers existants, afin que les bulles déjà affichées ne disparaissent
+// pas au moment de la migration.
+function legacyAutoDocTypeKeys(chantier) {
   if (chantier.isFacturesLibres) return [];
   const docs = chantier.documents || {};
   const has = (k) => docPresent(docs, k);
   const isSousTraitant = has("contratSousTraitance");
   const hasOfficialDoc = has("ccap") || has("acteEngagement") || has("contratSousTraitance");
-  const items = [];
-  // CCAP / Acte d'engagement : uniquement pertinents s'il y a un BET/Archi et
-  // qu'on n'intervient pas comme sous-traitant (auquel cas on ne les reçoit pas).
+  const keys = [];
   if (hasBetArchi(chantier) && !isSousTraitant) {
-    items.push({ key: "acteEngagement", label: "Acte d'engagement", present: has("acteEngagement") });
-    items.push({ key: "ccap", label: "CCAP", present: has("ccap") });
+    keys.push("acteEngagement", "ccap");
   }
-  // Devis signé : uniquement pour les petits chantiers sans BET/Archi, et
-  // seulement si aucun document officiel (CCAP/Acte/sous-traitance) ne le remplace déjà.
   if (!hasBetArchi(chantier) && !hasOfficialDoc) {
-    items.push({ key: "devisSigne", label: "Devis signé", present: has("devisSigne") });
+    keys.push("devisSigne");
   }
-  // Anciennes données marquées "non concerné" pour le DC4 : on ne les fait pas
-  // réapparaître comme "manquant" tant qu'aucun fichier n'a été déposé depuis.
   const dc4LegacyNonConcerne = docs.dc4Statut === "non_concerne" && !has("dc4");
   if (!dc4LegacyNonConcerne) {
-    items.push({ key: "dc4", label: "DC4", present: has("dc4") });
+    keys.push("dc4");
   }
-  items.push({ key: "contratSousTraitance", label: "Contrat de sous-traitance", present: has("contratSousTraitance") });
+  keys.push("contratSousTraitance");
+  return keys;
+}
+// Les documents contractuels affichés sont désormais choisis explicitement
+// par la case à cocher dans "Modifier les infos" (chantier.docTypesActifs),
+// plus les avenants (dynamiques, numérotés automatiquement).
+function requiredDocuments(chantier) {
+  if (chantier.isFacturesLibres) return [];
+  const docs = chantier.documents || {};
+  const actifs = chantier.docTypesActifs || [];
+  const items = FIXED_DOC_TYPES.filter((t) => actifs.includes(t.key)).map((t) => ({
+    key: t.key,
+    label: t.label,
+    present: docPresent(docs, t.key),
+  }));
   const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: !!a.present, isAvenant: true }));
   return [...items, ...avenants];
 }
@@ -797,7 +819,26 @@ function normalizeChantiersData(list) {
     });
     if (fournisseursChanged) chantierChanged = true;
 
-    if (chantierChanged) { changed = true; return { ...c, situations, ...(fournisseursChanged ? { fournisseurs } : {}) }; }
+    // Migration silencieuse : la case à cocher manuelle "Documents
+    // contractuels" (docTypesActifs) remplace l'ancienne détection
+    // automatique — on l'initialise une fois avec ce que l'ancienne logique
+    // affichait déjà, pour ne rien faire disparaître.
+    let docTypesActifsChanged = false;
+    const docTypesActifs = c.docTypesActifs || (() => {
+      docTypesActifsChanged = true;
+      return legacyAutoDocTypeKeys(c);
+    })();
+    if (docTypesActifsChanged) chantierChanged = true;
+
+    if (chantierChanged) {
+      changed = true;
+      return {
+        ...c,
+        situations,
+        ...(fournisseursChanged ? { fournisseurs } : {}),
+        ...(docTypesActifsChanged ? { docTypesActifs } : {}),
+      };
+    }
     return c;
   });
   return { changed, chantiers: next };
@@ -949,7 +990,7 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
     { key: "chantiers", label: "Chantiers", icon: Building2 },
     { key: "archives", label: "Archives", icon: Archive },
     { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
-    { key: "documents", label: "Documents manquants", icon: FileWarning },
+    { key: "documents", label: "Documents contractuels", icon: FileWarning },
   ];
   return (
     <div className="h-full flex flex-col justify-between py-5 px-3" style={{ background: COLORS.navy }}>
@@ -1074,7 +1115,7 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier })
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>tous clients confondus</div>
         </Card>
         <Card className="p-4" style={{ cursor: "pointer" }} onClick={() => setTab("documents")}>
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Documents manquants</div>
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Documents contractuels</div>
           <div className="text-2xl font-semibold tabular-nums" style={{ color: chantiersDocsIncomplets > 0 ? COLORS.red : COLORS.green }}>{chantiersDocsIncomplets}</div>
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>chantier(s) incomplet(s)</div>
         </Card>
@@ -2492,7 +2533,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   function addAvenant() {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     const n = (docs.avenants || []).length + 1;
-    updateChantier({ ...chantier, documents: { ...docs, avenants: [...(docs.avenants || []), { id: uid("avn"), nom: "Avenant " + n, present: false }] } });
+    updateChantier({ ...chantier, documents: { ...docs, avenants: [...(docs.avenants || []), { id: uid("avn"), nom: "Avenant " + String(n).padStart(2, "0"), present: false }] } });
   }
   function toggleAvenant(id) {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
@@ -2505,6 +2546,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   function removeAvenant(id) {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.filter((a) => a.id !== id) } });
+  }
+  function toggleDocTypeActif(key) {
+    const actifs = chantier.docTypesActifs || [];
+    const next = actifs.includes(key) ? actifs.filter((k) => k !== key) : [...actifs, key];
+    updateChantier({ ...chantier, docTypesActifs: next });
   }
 
   const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
@@ -2614,8 +2660,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <FileWarning size={17} color={missingDocs.length ? COLORS.red : COLORS.green} />
           </div>
           <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold mb-0.5" style={{ color: COLORS.ink }}>Documents contractuels</div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>
+              <span className="text-xs font-medium" style={{ color: missingDocs.length ? COLORS.red : COLORS.green }}>
                 {missingDocs.length ? `${missingDocs.length} document${missingDocs.length > 1 ? "s" : ""} manquant${missingDocs.length > 1 ? "s" : ""}` : "Dossier documentaire complet"}
               </span>
               {!hasBetArchi(chantier) && (
@@ -2801,6 +2848,27 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             </div>
           </Card>
           <p className="text-xs mb-3" style={{ color: COLORS.inkSoft, marginTop: -8 }}>Chaque champ est enregistré automatiquement dès que tu le modifies.</p>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Documents contractuels</span>
+            <span className="text-xs" style={{ color: COLORS.inkSoft }}>coche les documents attendus pour ce chantier</span>
+          </div>
+          <Card className="p-4 mb-5">
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {FIXED_DOC_TYPES.map((t) => {
+                const checked = (chantier.docTypesActifs || []).includes(t.key);
+                return (
+                  <label key={t.key} className="flex items-center gap-1.5 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleDocTypeActif(t.key)} />
+                    {t.label}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs mt-2.5" style={{ color: COLORS.inkSoft }}>
+              Les documents cochés apparaissent en bulle dans "Documents contractuels" ci-dessus — rouge tant qu'aucun fichier n'est déposé, vert une fois ajouté. Les avenants se gèrent séparément (bouton "+ Avenant"), numérotés automatiquement.
+            </p>
+          </Card>
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Marché principal &amp; TS</span>
@@ -3695,7 +3763,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
 }
 
 // ---------- Settings panel ----------
-// ---------- Documents manquants ----------
+// ---------- Documents contractuels ----------
 function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
   const rows = chantiers
     .map((c) => ({ chantier: c, missing: missingDocuments(c) }))
@@ -3706,9 +3774,9 @@ function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
 
   return (
     <div className="p-4 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Documents manquants</h1>
+      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Documents contractuels</h1>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
-        Acte d'engagement, CCAP et avenants signés pour chaque chantier — devis signé suffit pour les petits chantiers sans BET/architecte.
+        Documents cochés comme attendus (dans "Modifier les infos" de chaque chantier) mais pas encore déposés.
       </p>
 
       {rows.length === 0 ? (
@@ -4019,6 +4087,7 @@ export default function App() {
       }],
       situations: [],
       documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "manquant" },
+      docTypesActifs: [],
     };
     persistChantiers([...chantiers, newC]);
     setSelectedChantierId(newC.id);
@@ -4073,6 +4142,7 @@ export default function App() {
         nChantier: "", dateDemarrage: null, betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [],
         marches: [newMarche], situations: [newSit],
         documents: { acteEngagement: false, ccap: false, devisSigne: false, avenants: [], dc4Statut: "non_concerne" },
+        docTypesActifs: [],
         isFacturesLibres: true,
       };
       persistChantiers([...chantiers, newC]);
