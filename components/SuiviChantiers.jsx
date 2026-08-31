@@ -400,6 +400,20 @@ function sanitizeFileName(v) {
     .slice(0, 80) || "export";
 }
 
+// Version "l\u00e9g\u00e8re" du sanitizer ci-dessus, r\u00e9serv\u00e9e aux PDF de situation
+// envoy\u00e9s par email (voir situationDocFileName) : contrairement \u00e0
+// sanitizeFileName, on garde les espaces/accents/apostrophes (autoris\u00e9s par
+// Windows/macOS) tels quels \u2014 seuls les caract\u00e8res r\u00e9ellement interdits par
+// un syst\u00e8me de fichiers (\ / : * ? " < > |) sont retir\u00e9s \u2014 pour produire un
+// nom de fichier lisible correspondant au format demand\u00e9 par Morgane.
+function sanitizeFileNameKeepAccents(v) {
+  return String(v || "")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const MOIS_FR = ["Janvier", "F\u00e9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\u00fbt", "Septembre", "Octobre", "Novembre", "D\u00e9cembre"];
+
 // ---------- R\u00e9partition de r\u00e8glement ajout\u00e9e automatiquement sur le PDF
 // "R\u00e9capitulatif" d\u00e9pos\u00e9 sur la bulle de chaque situation ----------
 // Les polices standard PDF (WinAnsiEncoding) ne couvrent que Latin-1 + le
@@ -2300,13 +2314,29 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     return true;
   }
   // Les 3 bulles PDF possibles pour une situation (recap/avancement/état
-  // d'acompte) — utilisé à la fois pour vérifier ce qui est déposé et pour
-  // nommer les fichiers téléchargés avant l'envoi par email.
+  // d'acompte) — utilisé pour vérifier ce qui est déposé avant l'envoi.
   const SITUATION_DOC_TYPES = [
-    { key: "recap", label: "récapitulatif", fileLabel: "Recap" },
-    { key: "avancement", label: "avancement", fileLabel: "Avancement" },
-    { key: "ea", label: "état d'acompte", fileLabel: "EtatAcompte" },
+    { key: "recap", label: "récapitulatif" },
+    { key: "avancement", label: "avancement" },
+    { key: "ea", label: "état d'acompte" },
   ];
+  // Nom du fichier téléchargé avant l'envoi par email, au format demandé :
+  //  - Récap/Avancement : "SIT.<n° situation sur 2 chiffres> <Mois><aa> - <Récapitulatif|Avancement> - <nom chantier>"
+  //    ex. "SIT.01 Août26 - Récapitulatif - HTA" (mois = mois de la date de
+  //    facture de la situation, en toutes lettres, collé à l'année sur 2 chiffres)
+  //  - État d'acompte : "EA n°<n° situation> - <nom chantier>" (pas de mois/année)
+  function situationDocFileName(docType, s) {
+    const chantierName = sanitizeFileNameKeepAccents(chantier.titre);
+    const nSituation = s.nSituation ?? "";
+    if (docType === "ea") {
+      return sanitizeFileNameKeepAccents(`EA n°${nSituation} - ${chantierName}`) + ".pdf";
+    }
+    const d = s.dateFacture ? new Date(s.dateFacture + "T00:00:00") : null;
+    const moisAnnee = d && !isNaN(d.getTime()) ? `${MOIS_FR[d.getMonth()]}${String(d.getFullYear()).slice(-2)}` : "";
+    const nSituationPadded = String(nSituation).padStart(2, "0");
+    const label = docType === "recap" ? "Récapitulatif" : "Avancement";
+    return sanitizeFileNameKeepAccents(`SIT.${nSituationPadded} ${moisAnnee} - ${label} - ${chantierName}`) + ".pdf";
+  }
   async function sendSituationByEmail(s) {
     const stateKey = s.id + ":send";
     setSituationDocError("");
@@ -2318,9 +2348,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
         setSituationDocError("Dépose d'abord le PDF récapitulatif, avancement et/ou état d'acompte de cette situation (bulles R/A/EA) avant de l'envoyer.");
         return;
       }
-      const base = sanitizeFileName(`${chantier.titre}_Situation${s.nSituation ?? ""}`);
       for (const t of present) {
-        await downloadSituationDoc(s.id, t.key, `${t.fileLabel}_${base}.pdf`);
+        await downloadSituationDoc(s.id, t.key, situationDocFileName(t.key, s));
       }
 
       const chantierLabel = `${chantier.titre}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""}`;
