@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2 } from "lucide-react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -670,7 +670,9 @@ function requiredDocuments(chantier) {
     label: t.label,
     present: docPresent(docs, t.key),
   }));
-  const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: !!a.present, isAvenant: true }));
+  // Comme les autres documents, un avenant est "présent" quand un fichier a
+  // été déposé dans sa bulle — plus une simple case cochée à la main.
+  const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: docPresent(docs, a.id), isAvenant: true }));
   return [...items, ...avenants];
 }
 function missingDocuments(chantier) {
@@ -2535,10 +2537,6 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const n = (docs.avenants || []).length + 1;
     updateChantier({ ...chantier, documents: { ...docs, avenants: [...(docs.avenants || []), { id: uid("avn"), nom: "Avenant " + String(n).padStart(2, "0"), present: false }] } });
   }
-  function toggleAvenant(id) {
-    const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
-    updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, present: !a.present } : a)) } });
-  }
   function renameAvenant(id, nom) {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, nom } : a)) } });
@@ -2696,8 +2694,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           style={{ display: "none" }}
           onChange={handleSituationDocFileInputChange}
         />
-        <div className="flex flex-wrap gap-2.5">
-          {reqDocs.filter((d) => !d.isAvenant).map((d) => {
+        <div className="flex flex-wrap gap-2.5 items-start">
+          {reqDocs.map((d) => {
             const meta = getDocMeta(docs, d.key);
             const isUploading = uploadingDocKey === d.key;
             const isDragOver = dragOverDocKey === d.key;
@@ -2733,6 +2731,15 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                   transition: "background 0.15s, border-color 0.15s",
                 }}
               >
+                {unlocked && !isUploading && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); d.isAvenant ? removeAvenant(d.key) : toggleDocTypeActif(d.key); }}
+                    title={d.isAvenant ? "Supprimer cet avenant" : "Retirer ce type de document de la liste"}
+                    style={{ position: "absolute", top: 4, left: 4 }}
+                  >
+                    <Trash2 size={11} color={COLORS.inkSoft} />
+                  </button>
+                )}
                 {unlocked && meta.present && !isUploading && (
                   <button
                     onClick={(e) => { e.stopPropagation(); removeDocument(d.key); }}
@@ -2747,7 +2754,17 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 ) : (
                   <FileWarning size={20} color={meta.present ? COLORS.green : COLORS.red} />
                 )}
-                <span className="text-[11px] font-medium leading-tight" style={{ color: COLORS.ink }}>{d.label}</span>
+                {d.isAvenant && unlocked ? (
+                  <input
+                    value={d.label}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => renameAvenant(d.key, e.target.value)}
+                    className="text-[11px] font-medium text-center"
+                    style={{ color: COLORS.ink, border: "none", background: "transparent", width: "100%", padding: 0 }}
+                  />
+                ) : (
+                  <span className="text-[11px] font-medium leading-tight" style={{ color: COLORS.ink }}>{d.label}</span>
+                )}
                 {meta.present ? (
                   <span className="text-[10px] truncate" style={{ color: COLORS.inkSoft, maxWidth: 100 }}>{meta.fileName || "Réuni"}</span>
                 ) : (
@@ -2756,24 +2773,18 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
               </div>
             );
           })}
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-3">
-          {(docs.avenants || []).map((a) => (
-            <div key={a.id} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs" style={{ background: a.present ? COLORS.greenSoft : "#fff", border: `1px solid ${a.present ? "#BFE0CD" : COLORS.line}` }}>
-              <button onClick={() => unlocked && toggleAvenant(a.id)} disabled={!unlocked} className="flex items-center gap-1" style={{ color: a.present ? COLORS.green : COLORS.ink }}>
-                {a.present ? <Check size={12} /> : <X size={12} color={COLORS.red} />}
-              </button>
-              {unlocked ? (
-                <input value={a.nom} onChange={(e) => renameAvenant(a.id, e.target.value)} style={{ border: "none", background: "transparent", fontSize: 12, width: Math.max(60, a.nom.length * 7) }} />
-              ) : (
-                <span>{a.nom}</span>
-              )}
-              {unlocked && <button onClick={() => removeAvenant(a.id)} title="Supprimer"><X size={11} color={COLORS.red} /></button>}
-            </div>
+          {unlocked && FIXED_DOC_TYPES.filter((t) => !(chantier.docTypesActifs || []).includes(t.key)).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => toggleDocTypeActif(t.key)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium h-fit"
+              style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}
+            >
+              <Plus size={12} /> {t.label}
+            </button>
           ))}
           {unlocked && (
-            <button onClick={addAvenant} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium" style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>
+            <button onClick={addAvenant} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium h-fit" style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>
               <Plus size={12} /> Avenant
             </button>
           )}
@@ -2847,28 +2858,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
               <Btn variant="primary" onClick={() => setHeaderEdit(false)}>Terminé</Btn>
             </div>
           </Card>
-          <p className="text-xs mb-3" style={{ color: COLORS.inkSoft, marginTop: -8 }}>Chaque champ est enregistré automatiquement dès que tu le modifies.</p>
-
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Documents contractuels</span>
-            <span className="text-xs" style={{ color: COLORS.inkSoft }}>coche les documents attendus pour ce chantier</span>
-          </div>
-          <Card className="p-4 mb-5">
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {FIXED_DOC_TYPES.map((t) => {
-                const checked = (chantier.docTypesActifs || []).includes(t.key);
-                return (
-                  <label key={t.key} className="flex items-center gap-1.5 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
-                    <input type="checkbox" checked={checked} onChange={() => toggleDocTypeActif(t.key)} />
-                    {t.label}
-                  </label>
-                );
-              })}
-            </div>
-            <p className="text-xs mt-2.5" style={{ color: COLORS.inkSoft }}>
-              Les documents cochés apparaissent en bulle dans "Documents contractuels" ci-dessus — rouge tant qu'aucun fichier n'est déposé, vert une fois ajouté. Les avenants se gèrent séparément (bouton "+ Avenant"), numérotés automatiquement.
-            </p>
-          </Card>
+          <p className="text-xs mb-5" style={{ color: COLORS.inkSoft, marginTop: -8 }}>
+            Chaque champ est enregistré automatiquement dès que tu le modifies. Pour les documents contractuels attendus (Acte d'engagement, OS, CCAP, DC4...), utilise les boutons "+" dans le bloc "Documents contractuels" ci-dessus.
+          </p>
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>Marché principal &amp; TS</span>
