@@ -472,9 +472,9 @@ const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant"
 const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
 const REF_LINE_HEIGHT_MAX = 11;
 const REF_LINE_HEIGHT_MIN = 7.5;
-const REF_SIGNATURE_WIDTH = 110; // largeur cible de la signature, en pt (plus grande qu'au d\u00e9part)
+const REF_SIGNATURE_WIDTH = 125; // largeur cible de la signature, en pt (plus grande qu'au d\u00e9part)
 const REF_SIGNATURE_MARGIN_RIGHT = 20; // marge depuis le bord droit de la page
-const REF_SIGNATURE_Y = 30; // pt du bas de page, dans la bande vierge basse
+const REF_SIGNATURE_Y = 28; // pt du bas de page, dans la bande vierge basse
 const REF_SIGNATURE_X = REF_PAGE_WIDTH - REF_SIGNATURE_MARGIN_RIGHT - REF_SIGNATURE_WIDTH; // bas \u00e0 droite
 
 // Superpose (jamais une nouvelle page) sur la DERNI\u00c8RE page du PDF
@@ -498,9 +498,18 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   const navy = rgb(0.09, 0.14, 0.23);
 
   const prorata = Number(situation?.prorata) || 0;
-  // Nombre total de lignes \u00e0 caser dans la zone \u00e9troite (+ 0,4 ligne de
-  // marge suppl\u00e9mentaire avant "Frais de prorata" quand elle est affich\u00e9e).
-  const numLines = 1 + lignes.length + (prorata > 0 ? 2 : 0);
+  // Part qui revient \u00e0 Synergie BTP elle-m\u00eame une fois les cessions
+  // fournisseurs d\u00e9duites (totalARecevoir est d\u00e9j\u00e0 net des cessions ET du
+  // prorata \u2014 voir le calcul auto "TTC \u2212 RG \u2212 Prorata \u2212 Cession fournisseur
+  // \u2212 Remb. ADD" \u2014 donc avant prorata, la part Synergie BTP est
+  // totalARecevoir + prorata). Cette ligne compl\u00e8te la r\u00e9partition : la
+  // somme des cessions fournisseurs + cette part doit retomber sur le
+  // montant "Net \u00e0 payer" d\u00e9j\u00e0 imprim\u00e9 sur le PDF d'origine.
+  const partSynergie = (Number(situation?.totalARecevoir) || 0) + prorata;
+  // Nombre total de lignes \u00e0 caser dans la zone \u00e9troite (titre + fournisseurs
+  // + part Synergie BTP, + 0,4 ligne de marge suppl\u00e9mentaire avant "Frais de
+  // prorata" quand elle est affich\u00e9e).
+  const numLines = 1 + lignes.length + 1 + (prorata > 0 ? 2 : 0);
   const extraGapUnits = prorata > 0 ? 0.4 : 0;
   const zoneHeight = (REF_ZONE_TOP_Y - REF_ZONE_BOTTOM_Y) * scaleY;
   const lineHeight = Math.min(
@@ -522,6 +531,7 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
   for (const [nom, montant] of lignes) {
     drawLine(`${nom} : ${pdfSafeEUR(montant)}`);
   }
+  drawLine(`SYNERGIE BTP : ${pdfSafeEUR(partSynergie)}`);
 
   if (prorata > 0) {
     drawLine(`Frais de prorata : ${pdfSafeEUR(prorata)}`, { bold: true, extraGapBefore: lineHeight * 0.4 });
