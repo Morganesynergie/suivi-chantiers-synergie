@@ -751,11 +751,11 @@ function normalizeChantiersData(list) {
       // pour ne pas perdre les fichiers déjà déposés avant l'ajout de la
       // 2e bulle "avancement".
       if (s.situationDoc && !s.situationDocs) {
-        patched.situationDocs = { recap: s.situationDoc, avancement: null, ea: null };
+        patched.situationDocs = { recap: s.situationDoc, avancement: null, ea: null, facture: null };
         delete patched.situationDoc;
         sChanged = true;
       } else if (!s.situationDocs) {
-        patched.situationDocs = { recap: null, avancement: null, ea: null };
+        patched.situationDocs = { recap: null, avancement: null, ea: null, facture: null };
         sChanged = true;
       }
       if (sChanged) { chantierChanged = true; return patched; }
@@ -1668,7 +1668,7 @@ const emptySituation = () => ({
   // Deux emplacements nommés et bien séparés, pour ne plus jamais qu'un
   // dépôt écrase l'autre — chacun a la même forme que les documents de
   // chantier ({ present, fileName, filePath, uploadedAt }).
-  situationDocs: { recap: null, avancement: null, ea: null },
+  situationDocs: { recap: null, avancement: null, ea: null, facture: null },
 });
 
 function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier }) {
@@ -2184,10 +2184,15 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   function situationDocMeta(s, docType) {
     return (s && s.situationDocs && s.situationDocs[docType]) || { present: false };
   }
-  function setSituationDocMeta(situationId, docType, meta) {
+  // extraPatch : champs supplémentaires à appliquer sur la situation dans le
+  // MÊME appel updateChantier (voir dépôt d'un PDF "ea" dans
+  // uploadSituationDocument, qui date automatiquement Validation BET) — deux
+  // appels updateChantier séparés partiraient chacun du même chantier.situations
+  // figé et le second écraserait le premier.
+  function setSituationDocMeta(situationId, docType, meta, extraPatch) {
     const situations = chantier.situations.map((x) =>
       x.id === situationId
-        ? { ...x, situationDocs: { recap: null, avancement: null, ea: null, ...x.situationDocs, [docType]: meta } }
+        ? { ...x, ...extraPatch, situationDocs: { recap: null, avancement: null, ea: null, facture: null, ...x.situationDocs, [docType]: meta } }
         : x
     );
     updateChantier({ ...chantier, situations });
@@ -2247,7 +2252,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       const res = await fetch("/api/documents", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
-      setSituationDocMeta(situationId, docType, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+      // Déposer l'état d'acompte (EA) vaut validation BET : la date du jour
+      // est enregistrée automatiquement dans "Validation BET" de la situation.
+      const extraPatch = docType === "ea" ? { validBet: new Date().toISOString().slice(0, 10) } : undefined;
+      setSituationDocMeta(situationId, docType, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt }, extraPatch);
     } catch (err) {
       setSituationDocError(err.message || "Échec de l'envoi du PDF.");
     } finally {
@@ -2313,15 +2321,18 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
     return true;
   }
-  // Les 3 bulles PDF possibles pour une situation (recap/avancement/état
-  // d'acompte) — utilisé pour vérifier ce qui est déposé avant l'envoi.
+  // Les bulles PDF possibles pour une situation — recap/avancement/état
+  // d'acompte pour un marché normal, ou juste "facture" (la facture signée)
+  // pour une situation PRORATA — utilisé pour vérifier ce qui est déposé
+  // avant l'envoi par email.
   const SITUATION_DOC_TYPES = [
     { key: "recap", label: "récapitulatif" },
     { key: "avancement", label: "avancement" },
     { key: "ea", label: "état d'acompte" },
+    { key: "facture", label: "facture signée" },
   ];
   // Nom du fichier téléchargé avant l'envoi par email, au format demandé :
-  //  - Récap/Avancement : "SIT.<n° situation sur 2 chiffres> <Mois><aa> - <Récapitulatif|Avancement> - <nom chantier>"
+  //  - Récap/Avancement/Facture : "SIT.<n° situation sur 2 chiffres> <Mois><aa> - <Récapitulatif|Avancement|Facture> - <nom chantier>"
   //    ex. "SIT.01 Août26 - Récapitulatif - HTA" (mois = mois de la date de
   //    facture de la situation, en toutes lettres, collé à l'année sur 2 chiffres)
   //  - État d'acompte : "EA n°<n° situation> - <nom chantier>" (pas de mois/année)
@@ -2334,10 +2345,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const d = s.dateFacture ? new Date(s.dateFacture + "T00:00:00") : null;
     const moisAnnee = d && !isNaN(d.getTime()) ? `${MOIS_FR[d.getMonth()]}${String(d.getFullYear()).slice(-2)}` : "";
     const nSituationPadded = String(nSituation).padStart(2, "0");
-    const label = docType === "recap" ? "Récapitulatif" : "Avancement";
+    const label = docType === "recap" ? "Récapitulatif" : docType === "facture" ? "Facture" : "Avancement";
     return sanitizeFileNameKeepAccents(`SIT.${nSituationPadded} ${moisAnnee} - ${label} - ${chantierName}`) + ".pdf";
   }
-  async function sendSituationByEmail(s) {
+  async function sendSituationByEmail(s, isProrata) {
     const stateKey = s.id + ":send";
     setSituationDocError("");
     setEmailNotice("");
@@ -2345,7 +2356,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     try {
       const present = SITUATION_DOC_TYPES.filter((t) => situationDocMeta(s, t.key).present);
       if (present.length === 0) {
-        setSituationDocError("Dépose d'abord le PDF récapitulatif, avancement et/ou état d'acompte de cette situation (bulles R/A/EA) avant de l'envoyer.");
+        setSituationDocError(
+          isProrata
+            ? "Dépose d'abord la facture signée de cette situation (bulle F) avant de l'envoyer."
+            : "Dépose d'abord le PDF récapitulatif, avancement et/ou état d'acompte de cette situation (bulles R/A/EA) avant de l'envoyer."
+        );
         return;
       }
       for (const t of present) {
@@ -2356,12 +2371,24 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       const subject = `Situation n°${s.nSituation ?? ""} — ${chantierLabel}`;
       const piecesJointes = present.map((t) => t.label).join(present.length > 1 ? " et " : "");
       const pluriel = present.length > 1 ? "s" : "";
+      // "du mois de ..." avec élision correcte devant une voyelle (d'avril,
+      // d'août, d'octobre) plutôt que "de avril"/"de août"/"de octobre".
+      const dFact = s.dateFacture ? new Date(s.dateFacture + "T00:00:00") : null;
+      const moisSegment = dFact && !isNaN(dFact.getTime())
+        ? (() => {
+            const nom = MOIS_FR[dFact.getMonth()];
+            const prep = /^[AEIOUÀÂÎÔÛÉÈÊËaeiouàâîôûéèêë]/.test(nom) ? "d’" : "de ";
+            return ` du mois ${prep}${nom.toLowerCase()} ${String(dFact.getFullYear()).slice(-2)}`;
+          })()
+        : "";
+      // Pas de formule de politesse/signature en dur : Outlook insère la
+      // signature enregistrée par Morgane à l'ouverture du nouveau message
+      // (si l'option "inclure automatiquement ma signature" est activée dans
+      // ses réglages Outlook — sinon il faudra l'ajouter à la main une fois).
       const body =
         `Bonjour,\n\n` +
-        `Veuillez trouver ci-joint la situation n°${s.nSituation ?? ""} du chantier ${chantierLabel}, ` +
-        `d'un montant de ${fmtEUR(s.montantHt)} HT (${fmtEUR(s.montantTtc)} TTC).\n\n` +
-        `Merci de nous confirmer sa bonne réception.\n\n` +
-        `Cordialement,\nSYNERGIE BTP`;
+        `Veuillez trouver ci-joint la situation n°${s.nSituation ?? ""}${moisSegment}, concernant le chantier ${chantierLabel}.\n\n` +
+        `Dans l'attente de votre retour pour validation.\n\n`;
       const to = (chantier.clientEmail || "").trim();
       const mailto = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       // Impossible de joindre un fichier à un email depuis une appli web
@@ -2875,7 +2902,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           const isUploading = uploadingSituationDocId === stateKey;
           const isDragOver = dragOverSituationId === stateKey;
           const clickable = !isUploading && (meta.present || unlocked);
-          const typeLabel = docType === "recap" ? "Récapitulatif" : docType === "ea" ? "État d'acompte" : "Avancement";
+          const typeLabel = docType === "recap" ? "Récapitulatif" : docType === "ea" ? "État d'acompte" : docType === "facture" ? "Facture signée" : "Avancement";
           return (
             <div
               key={docType}
@@ -2984,9 +3011,15 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
                         <td className="px-1.5 py-2">
                           <div className="flex items-center gap-1">
-                            {renderSituationDocBubble(s, "recap", "R")}
-                            {renderSituationDocBubble(s, "avancement", "A")}
-                            {renderSituationDocBubble(s, "ea", "EA")}
+                            {isProrata ? (
+                              renderSituationDocBubble(s, "facture", "F")
+                            ) : (
+                              <>
+                                {renderSituationDocBubble(s, "recap", "R")}
+                                {renderSituationDocBubble(s, "avancement", "A")}
+                                {renderSituationDocBubble(s, "ea", "EA")}
+                              </>
+                            )}
                           </div>
                         </td>
                         {!isProrata && (
@@ -3085,7 +3118,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                         <td className="px-2 py-2">
                           <button
                             title="Envoyer cette situation par email (télécharge les PDF puis ouvre un brouillon pré-rempli)"
-                            onClick={() => sendSituationByEmail(s)}
+                            onClick={() => sendSituationByEmail(s, isProrata)}
                             disabled={sendingEmailId === s.id + ":send"}
                             className="p-1 rounded"
                             style={{ background: COLORS.accentSoft, opacity: sendingEmailId === s.id + ":send" ? 0.6 : 1 }}
