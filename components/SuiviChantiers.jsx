@@ -789,6 +789,10 @@ function normalizeChantiersData(list) {
         patched.situationDocs = { recap: null, avancement: null, ea: null, facture: null };
         sChanged = true;
       }
+      if (!Array.isArray(s.fournisseurFactures)) {
+        patched.fournisseurFactures = [];
+        sChanged = true;
+      }
       if (sChanged) { chantierChanged = true; return patched; }
       return s;
     });
@@ -1733,6 +1737,11 @@ const emptySituation = () => ({
   // dépôt écrase l'autre — chacun a la même forme que les documents de
   // chantier ({ present, fileName, filePath, uploadedAt }).
   situationDocs: { recap: null, avancement: null, ea: null, facture: null },
+  // Factures fournisseurs en cession déposées sur cette situation : une
+  // LISTE (pas un simple slot unique comme situationDocs) car il peut y en
+  // avoir plusieurs, un dépôt ne doit jamais écraser les précédents — chaque
+  // entrée { id, fileName, filePath, uploadedAt }.
+  fournisseurFactures: [],
 });
 
 function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier }) {
@@ -1759,6 +1768,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const [situationDocError, setSituationDocError] = useState("");
   const [pendingSituationUploadId, setPendingSituationUploadId] = useState(null);
   const situationDocFileInputRef = useRef(null);
+  // Bulle "factures fournisseurs cédées" à côté de chaque situation : à la
+  // différence des bulles ci-dessus (un seul PDF par emplacement, remplacé à
+  // chaque dépôt), celle-ci accepte PLUSIEURS fichiers — un dépôt s'AJOUTE
+  // toujours à la liste (situation.fournisseurFactures), il n'écrase jamais
+  // les précédents. Une seule bulle pour tous les fournisseurs confondus.
+  const [pendingFournisseurFactureSituationId, setPendingFournisseurFactureSituationId] = useState(null);
+  const fournisseurFactureFileInputRef = useRef(null);
+  const [openFournisseurFacturesId, setOpenFournisseurFacturesId] = useState(null);
   const [exportPdfError, setExportPdfError] = useState("");
   const [sendingEmailId, setSendingEmailId] = useState(null);
   const [emailNotice, setEmailNotice] = useState("");
@@ -2422,6 +2439,94 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       setSituationDocError(err.message || "Impossible d'ouvrir le PDF.");
     }
   }
+  function triggerFournisseurFactureUpload(situationId) {
+    if (!unlocked) return;
+    setPendingFournisseurFactureSituationId(situationId);
+    fournisseurFactureFileInputRef.current?.click();
+  }
+  function handleFournisseurFactureFileInputChange(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length && pendingFournisseurFactureSituationId) uploadFournisseurFactureFiles(pendingFournisseurFactureSituationId, files);
+  }
+  // Ajoute un ou plusieurs PDF à la liste fournisseurFactures de la
+  // situation. IMPORTANT : un seul appel updateChantier à la toute fin (avec
+  // TOUS les fichiers de ce dépôt), jamais un appel par fichier dans la
+  // boucle — sinon chaque appel repartirait du même chantier.situations figé
+  // au moment du rendu et les ajouts précédents de CE dépôt s'écraseraient
+  // entre eux (cf. le même piège déjà rencontré sur les RG à venir groupées).
+  async function uploadFournisseurFactureFiles(situationId, files) {
+    if (!unlocked || !files.length) return;
+    const stateKey = situationId + ":fournFact";
+    const MAX_SIZE = 4 * 1024 * 1024;
+    setSituationDocError("");
+    setUploadingSituationDocId(stateKey);
+    try {
+      const newMetas = [];
+      for (const file of files) {
+        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+        if (!isPdf) {
+          setSituationDocError("Seuls les fichiers PDF sont acceptés ici.");
+          continue;
+        }
+        if (file.size > MAX_SIZE) {
+          setSituationDocError(`"${file.name}" est trop volumineux (4 Mo max) — ignoré.`);
+          continue;
+        }
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("chantierId", chantier.id);
+        fd.append("docKey", situationDocKey(situationId, "fournfact-" + uid("ff")));
+        const res = await fetch("/api/documents", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
+        newMetas.push({ id: uid("ff"), fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+      }
+      if (newMetas.length) {
+        const situations = chantier.situations.map((x) =>
+          x.id === situationId ? { ...x, fournisseurFactures: [...(x.fournisseurFactures || []), ...newMetas] } : x
+        );
+        updateChantier({ ...chantier, situations });
+      }
+    } catch (err) {
+      setSituationDocError(err.message || "Échec de l'envoi du PDF.");
+    } finally {
+      setUploadingSituationDocId(null);
+    }
+  }
+  async function removeFournisseurFactureFile(situationId, fileId) {
+    if (!unlocked) return;
+    const s = chantier.situations.find((x) => x.id === situationId);
+    const item = (s?.fournisseurFactures || []).find((f) => f.id === fileId);
+    const stateKey = situationId + ":fournFact";
+    setUploadingSituationDocId(stateKey);
+    setSituationDocError("");
+    try {
+      if (item?.filePath) {
+        await fetch(`/api/documents?path=${encodeURIComponent(item.filePath)}`, { method: "DELETE" });
+      }
+      const situations = chantier.situations.map((x) =>
+        x.id === situationId ? { ...x, fournisseurFactures: (x.fournisseurFactures || []).filter((f) => f.id !== fileId) } : x
+      );
+      updateChantier({ ...chantier, situations });
+    } catch (err) {
+      setSituationDocError(err.message || "Échec de la suppression du PDF.");
+    } finally {
+      setUploadingSituationDocId(null);
+    }
+  }
+  async function openFournisseurFactureFile(fileMeta) {
+    if (!fileMeta?.filePath) return;
+    setSituationDocError("");
+    try {
+      const res = await fetch(`/api/documents?path=${encodeURIComponent(fileMeta.filePath)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de l'ouverture du PDF.");
+      window.open(data.url, "_blank");
+    } catch (err) {
+      setSituationDocError(err.message || "Impossible d'ouvrir le PDF.");
+    }
+  }
   // Télécharge le PDF déjà déposé pour cette situation (recap ou avancement)
   // sous un nom de fichier explicite, prêt à être glissé dans un email. Un
   // navigateur ne peut pas joindre un fichier à un nouveau message pour des
@@ -2693,6 +2798,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           accept=".pdf,application/pdf"
           style={{ display: "none" }}
           onChange={handleSituationDocFileInputChange}
+        />
+        <input
+          ref={fournisseurFactureFileInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFournisseurFactureFileInputChange}
         />
         <div className="flex flex-wrap gap-2.5 items-start">
           {reqDocs.map((d) => {
@@ -3096,6 +3209,66 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             </div>
           );
         };
+        // Bulle "factures fournisseurs cédées" : accepte PLUSIEURS PDF (un
+        // dépôt s'ajoute à la liste, n'écrase jamais les précédents — voir
+        // uploadFournisseurFactureFiles). Affiche le nombre de fichiers déjà
+        // déposés ; clic ou glisser-déposer AJOUTE toujours un/des fichier(s)
+        // supplémentaire(s). Pour consulter/retirer un fichier précis, la
+        // bulle ouvre la petite liste juste en dessous (dans la même
+        // cellule du tableau).
+        const renderFournisseurFacturesBubble = (s) => {
+          const files = s.fournisseurFactures || [];
+          const stateKey = s.id + ":fournFact";
+          const isUploading = uploadingSituationDocId === stateKey;
+          const isDragOver = dragOverSituationId === stateKey;
+          const present = files.length > 0;
+          const clickable = !isUploading && (present || unlocked);
+          return (
+            <div
+              key="fournFact"
+              onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverSituationId(stateKey); }}
+              onDragLeave={() => setDragOverSituationId((k) => (k === stateKey ? null : k))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverSituationId((k) => (k === stateKey ? null : k));
+                if (!unlocked || isUploading) return;
+                const fs = Array.from(e.dataTransfer.files || []);
+                if (fs.length) uploadFournisseurFactureFiles(s.id, fs);
+              }}
+              onClick={() => {
+                if (isUploading) return;
+                if (present) { setOpenFournisseurFacturesId((id) => (id === s.id ? null : s.id)); return; }
+                if (unlocked) triggerFournisseurFactureUpload(s.id);
+              }}
+              title={`Factures fournisseurs cédées${present ? ` — ${files.length} déposée${files.length > 1 ? "s" : ""}, cliquer pour voir` : unlocked ? " — cliquer ou glisser-déposer le(s) PDF ici" : " — aucune facture déposée"}`}
+              className="relative inline-flex items-center justify-center"
+              style={{
+                width: 24, height: 24, borderRadius: 7,
+                border: `1.5px ${present ? "solid" : "dashed"} ${present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
+                background: present ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
+                cursor: clickable ? "pointer" : "default",
+                opacity: isUploading ? 0.6 : 1,
+              }}
+            >
+              {unlocked && present && !isUploading && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); triggerFournisseurFactureUpload(s.id); }}
+                  title="Ajouter une autre facture fournisseur"
+                  style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.accent}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                >
+                  <Plus size={8} color={COLORS.accent} />
+                </button>
+              )}
+              {isUploading ? (
+                <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
+              ) : (
+                <span className="text-[9px] font-bold leading-none" style={{ color: present ? COLORS.green : COLORS.inkSoft }}>
+                  {present ? files.length : "FF"}
+                </span>
+              )}
+            </div>
+          );
+        };
         const renderMarcheBlock = (m) => {
         const sits = [...chantier.situations].filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
         const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
@@ -3169,7 +3342,38 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                                 {renderSituationDocBubble(s, "ea", "EA")}
                               </>
                             )}
+                            {renderFournisseurFacturesBubble(s)}
                           </div>
+                          {openFournisseurFacturesId === s.id && (
+                            <div className="flex flex-col gap-1 mt-1.5 p-1.5 rounded-md" style={{ background: "#F7F5EF", border: `1px solid ${COLORS.line}`, minWidth: 150 }}>
+                              {(s.fournisseurFactures || []).map((f) => (
+                                <div key={f.id} className="flex items-center justify-between gap-1.5">
+                                  <button
+                                    onClick={() => openFournisseurFactureFile(f)}
+                                    title={f.fileName || "Ouvrir"}
+                                    className="text-left truncate"
+                                    style={{ color: COLORS.accent, fontSize: 10, maxWidth: 140 }}
+                                  >
+                                    {f.fileName || "Facture"}
+                                  </button>
+                                  {unlocked && (
+                                    <button onClick={() => removeFournisseurFactureFile(s.id, f.id)} title="Retirer cette facture">
+                                      <X size={9} color={COLORS.red} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {unlocked && (
+                                <button
+                                  onClick={() => triggerFournisseurFactureUpload(s.id)}
+                                  className="flex items-center gap-1 text-left"
+                                  style={{ color: COLORS.accent, fontSize: 10 }}
+                                >
+                                  <Plus size={9} /> Ajouter
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                         {!isProrata && (
                           <td className="px-3 py-2">
