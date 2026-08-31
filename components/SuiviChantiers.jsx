@@ -1100,7 +1100,7 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier })
   );
 }
 // ---------- Reglements en attente ----------
-function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgReceived, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
+function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
   const [q, setQ] = useState("");
   const groups = useMemo(() => {
     const qLower = q.trim().toLowerCase();
@@ -1410,10 +1410,31 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
                       {unlocked && (
                         <td className="px-4 py-2">
                           <div className="flex gap-1 justify-end items-center">
-                            {s.isMarcheSoldePending ? null : (s.isADDPending || s.isRgPending) ? (
+                            {s.isMarcheSoldePending ? null : s.isADDPending ? (
                               <Btn size="sm" variant="accent" onClick={() => setPayingSituation(s)}>
                                 <Check size={12} /> Marquer réglée
                               </Btn>
+                            ) : s.isRgPending ? (
+                              confirmDeleteSitId === s.id ? (
+                                <>
+                                  <span className="text-xs" style={{ color: COLORS.red }}>Confirmer ?</span>
+                                  <button title="Oui, supprimer cette ligne de RG" onClick={() => { onDeleteRgEchue(s.rgEchueId); setConfirmDeleteSitId(null); }} className="p-1.5 rounded" style={{ background: COLORS.red }}>
+                                    <Check size={12} color="#fff" />
+                                  </button>
+                                  <button title="Annuler" onClick={() => setConfirmDeleteSitId(null)} className="p-1.5 rounded" style={{ background: "#F0EEE6" }}>
+                                    <X size={12} color={COLORS.inkSoft} />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <Btn size="sm" variant="accent" onClick={() => setPayingSituation(s)}>
+                                    <Check size={12} /> Marquer réglée
+                                  </Btn>
+                                  <button title="Supprimer cette ligne de RG" onClick={() => setConfirmDeleteSitId(s.id)} className="p-1.5 rounded" style={{ background: COLORS.redSoft }}>
+                                    <X size={12} color={COLORS.red} />
+                                  </button>
+                                </>
+                              )
                             ) : confirmDeleteSitId === s.id ? (
                               <>
                                 <span className="text-xs" style={{ color: COLORS.red }}>Confirmer ?</span>
@@ -1457,7 +1478,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
             if (payingSituation.isADDPending) {
               onMarkAddPaid(payingSituation.chantierId, payingSituation.marcheId, date);
             } else if (payingSituation.isRgPending) {
-              onMarkRgReceived(payingSituation.rgEchueId);
+              onMarkRgReceived(payingSituation.rgEchueId, date, montant);
             } else {
               onMarkPaid(payingSituation.chantierId, payingSituation.id, date, montant);
             }
@@ -2283,6 +2304,30 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
         </div>
       </div>
       {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
+
+      {/* Mentions posées automatiquement quand une RG échue reliée à ce chantier
+          (voir "Chantier lié" dans l'onglet Retenues de garantie) est marquée
+          réglée depuis "Règlements en attente" ou l'onglet RG — voir markRgReceived. */}
+      {chantier.rgReglees && chantier.rgReglees.length > 0 && (
+        <div className="flex flex-col gap-1.5 mb-4">
+          {chantier.rgReglees.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-lg" style={{ background: COLORS.greenSoft, border: "1px solid #BFE0CD" }}>
+              <span className="text-xs font-semibold" style={{ color: COLORS.green }}>
+                RETENUE DE GARANTIE DE {fmtEUR(r.montant)} RÉGLÉE LE {fmtDate(r.dateReglee)}
+              </span>
+              {unlocked && (
+                <button
+                  title="Supprimer cette mention"
+                  onClick={() => updateChantier({ ...chantier, rgReglees: chantier.rgReglees.filter((x) => x.id !== r.id) })}
+                >
+                  <X size={13} color={COLORS.inkSoft} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <Card className="p-0 mb-4 overflow-hidden">
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
           {[
@@ -3095,8 +3140,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
   );
 }
 // ---------- RG view ----------
-const emptyRgEchue = () => ({ id: uid("rg-e"), nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEnvoi: "", notes: "", validBet: false });
-const emptyRgVenir = () => ({ id: uid("rg-v"), nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEcheance: "" });
+// chantierId (facultatif) relie une RG échue/à venir à une fiche chantier réelle de
+// l'appli — quand il est renseigné, marquer la RG comme réglée (voir markRgReceived)
+// dépose automatiquement une mention "RETENUE DE GARANTIE ... RÉGLÉE LE ..." sur cette
+// fiche. Laissé vide, la RG reste en saisie libre comme avant (elle disparaît juste des
+// listes une fois réglée, sans mention automatique nulle part).
+const emptyRgEchue = () => ({ id: uid("rg-e"), chantierId: "", nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEnvoi: "", notes: "", validBet: false });
+const emptyRgVenir = () => ({ id: uid("rg-v"), chantierId: "", nChantier: "", nom: "", montantHt: "", montantTtc: "", betMo: "", dateEcheance: "" });
 
 function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChantier, onExtractMarcheRg }) {
   const [showEchue, setShowEchue] = useState(false);
@@ -3186,34 +3236,6 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
       {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
-      {autoRg.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold mb-2" style={{ color: COLORS.green }}>Chantiers soldés (marché principal + TS confondus) — RG cumulée à réclamer ({autoRg.length})</h2>
-          <div className="flex flex-col gap-2">
-            {autoRg.map((item) => (
-              <Card key={item.chantierId} className="p-3" style={{ background: COLORS.greenSoft, border: "1px solid #BFE0CD" }}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <button
-                      className="text-sm font-medium hover:underline text-left"
-                      style={{ color: COLORS.ink }}
-                      onClick={() => { setSelectedChantier(item.chantierId); setTab("chantierDetail"); }}
-                    >
-                      {item.chantierTitre}
-                    </button>
-                    <p className="text-xs" style={{ color: COLORS.inkSoft }}>{item.client || ""} {item.nChantier ? `· ${item.nChantier}` : ""} · détecté automatiquement (chantier soldé à 100 %, réglé)</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold tabular-nums" style={{ color: COLORS.green }}>{fmtEUR(item.totalRg)}</span>
-                    {unlocked && <Btn size="sm" variant="primary" onClick={() => extractAutoRgPdf(item)}>Extraire en PDF</Btn>}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
         {unlocked && <Btn size="sm" variant="primary" onClick={() => setShowEchue(true)}><Plus size={13} /> Ajouter</Btn>}
@@ -3225,6 +3247,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
               <th className="text-left font-medium px-3 py-2">N° chantier</th>
               <th className="text-left font-medium px-2 py-2">Nom</th>
+              <th className="text-left font-medium px-2 py-2">Chantier lié</th>
               <th className="text-right font-medium px-2 py-2">Montant HT</th>
               <th className="text-right font-medium px-2 py-2">Montant TTC</th>
               <th className="text-left font-medium px-2 py-2">BET / MO</th>
@@ -3235,13 +3258,35 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             </tr>
           </thead>
           <tbody>
-            {rgDues.echues.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
+            {rgDues.echues.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
             {rgDues.echues.map((r) => (
               <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
                 {unlocked ? (
                   <>
                     <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateEchue(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
                     <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateEchue(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
+                    <td className="px-1 py-1">
+                      <select
+                        value={r.chantierId || ""}
+                        onChange={(e) => {
+                          const cid = e.target.value;
+                          const ch = chantiers.find((c) => c.id === cid);
+                          updateEchue(r.id, {
+                            chantierId: cid,
+                            nom: ch ? ch.titre : r.nom,
+                            nChantier: ch ? (ch.nChantier || r.nChantier) : r.nChantier,
+                          });
+                        }}
+                        style={{ ...inputStyle, minWidth: 140 }}
+                        className="outline-none focus:ring-2"
+                        title="Relie cette RG à une fiche chantier de l'appli — permet de poser automatiquement la mention 'réglée' dessus une fois la RG reçue"
+                      >
+                        <option value="">— aucun —</option>
+                        {chantiers.filter((c) => !c.isFacturesLibres).map((c) => (
+                          <option key={c.id} value={c.id}>{c.titre}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantHt ?? ""} onChange={(e) => updateEchue(r.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
                     <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantTtc ?? ""} onChange={(e) => updateEchue(r.id, { montantTtc: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
                     <td className="px-1 py-1"><TextInput value={r.betMo || ""} onChange={(e) => updateEchue(r.id, { betMo: e.target.value })} style={{ minWidth: 90 }} /></td>
@@ -3255,6 +3300,13 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                   <>
                     <td className="px-3 py-2">{r.nChantier || "—"}</td>
                     <td className="px-2 py-2 font-medium">{r.nom}</td>
+                    <td className="px-2 py-2">
+                      {r.chantierId ? (
+                        <button className="hover:underline text-left" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier(r.chantierId); setTab("chantierDetail"); }}>
+                          Voir la fiche
+                        </button>
+                      ) : <span style={{ color: COLORS.inkSoft }}>—</span>}
+                    </td>
                     <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
                     <td className="px-2 py-2">{r.betMo || "—"}</td>
@@ -3291,7 +3343,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             </tr>
           </thead>
           <tbody>
-            {rgDues.aVenir.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
+            {rgDues.aVenir.length === 0 && autoRg.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
             {[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
               const d = daysUntil(r.dateEcheance);
               const soon = d !== null && d <= 30;
@@ -3328,6 +3380,37 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                 </tr>
               );
             })}
+            {/* Chantiers soldés à 100 % (marché principal + TS confondus), détectés
+                automatiquement : leur RG cumulée est prête à réclamer. Affichés à la
+                suite des RG à venir saisies à la main plutôt que dans un encadré à
+                part, pour rester dans un seul listing. */}
+            {autoRg.map((item) => (
+              <tr key={item.chantierId} style={{ borderTop: `1px solid ${COLORS.line}`, background: COLORS.greenSoft }}>
+                <td className="px-3 py-2">{item.nChantier || "—"}</td>
+                <td className="px-2 py-2">
+                  <button
+                    className="font-medium hover:underline text-left"
+                    style={{ color: COLORS.ink }}
+                    onClick={() => { setSelectedChantier(item.chantierId); setTab("chantierDetail"); }}
+                  >
+                    {item.chantierTitre}
+                  </button>
+                  <div className="text-xs" style={{ color: COLORS.inkSoft }}>{item.client || ""} · détecté auto (chantier soldé à 100 %, réglé)</div>
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(Math.round((item.totalRg / (1 + (TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085))) * 100) / 100)}</td>
+                <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtEUR(item.totalRg)}</td>
+                <td className="px-2 py-2">—</td>
+                <td className="px-2 py-2">échue</td>
+                <td className="px-2 py-2"><Pill color="green">prête à réclamer</Pill></td>
+                {unlocked && (
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end">
+                      <Btn size="sm" variant="primary" onClick={() => extractAutoRgPdf(item)}>Extraire en PDF</Btn>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
             </div>
@@ -3338,6 +3421,23 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
           <Card className="w-full max-w-lg p-5">
             <div className="flex items-center justify-between mb-4"><h3 className="font-semibold" style={{ color: COLORS.ink }}>Nouvelle RG échue</h3><button onClick={() => setShowEchue(false)}><X size={18} color={COLORS.inkSoft} /></button></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              <Field label="Chantier lié (facultatif)">
+                <select
+                  value={formE.chantierId || ""}
+                  onChange={(e) => {
+                    const cid = e.target.value;
+                    const ch = chantiers.find((c) => c.id === cid);
+                    setFormE({ ...formE, chantierId: cid, nom: ch ? ch.titre : formE.nom, nChantier: ch ? (ch.nChantier || formE.nChantier) : formE.nChantier });
+                  }}
+                  style={inputStyle}
+                  className="outline-none focus:ring-2"
+                >
+                  <option value="">— aucun (saisie libre) —</option>
+                  {chantiers.filter((c) => !c.isFacturesLibres).map((c) => (
+                    <option key={c.id} value={c.id}>{c.titre}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="N° chantier"><TextInput value={formE.nChantier} onChange={(e) => setFormE({ ...formE, nChantier: e.target.value })} /></Field>
               <Field label="Nom"><TextInput value={formE.nom} onChange={(e) => setFormE({ ...formE, nom: e.target.value })} /></Field>
               <Field label="Montant HT"><TextInput type="number" value={formE.montantHt} onChange={(e) => setFormE({ ...formE, montantHt: e.target.value })} /></Field>
@@ -3774,7 +3874,27 @@ export default function App() {
     persistChantiers(next);
   }
 
-  function markRgReceived(rgEchueId) {
+  // Retire la RG échue de la liste (elle disparaît donc à la fois de "RG
+  // échues" et de "Règlements en attente"). Si elle était reliée à une fiche
+  // chantier réelle (chantierId, voir emptyRgEchue), dépose en plus une
+  // mention "RETENUE DE GARANTIE ... RÉGLÉE LE ..." sur cette fiche, pour
+  // qu'elle reste visible même une fois la RG sortie des deux listes.
+  function markRgReceived(rgEchueId, dateStr, montant) {
+    const entry = rgDues.echues.find((r) => r.id === rgEchueId);
+    persistRg({ ...rgDues, echues: rgDues.echues.filter((r) => r.id !== rgEchueId) });
+    if (entry && entry.chantierId) {
+      const montantFinal = montant != null ? montant : (entry.montantTtc || entry.montantHt || 0);
+      const dateFinal = dateStr || new Date().toISOString().slice(0, 10);
+      persistChantiers(chantiers.map((c) => c.id !== entry.chantierId ? c : {
+        ...c,
+        rgReglees: [...(c.rgReglees || []), { id: uid("rg-r"), montant: montantFinal, dateReglee: dateFinal, nom: entry.nom || "" }],
+      }));
+    }
+  }
+
+  // Supprime une ligne de RG échue directement — utilisé depuis "Règlements
+  // en attente" (l'écran RG a déjà son propre bouton de suppression).
+  function deleteRgEchue(rgEchueId) {
     persistRg({ ...rgDues, echues: rgDues.echues.filter((r) => r.id !== rgEchueId) });
   }
 
@@ -3840,7 +3960,7 @@ export default function App() {
         )}
         {tab === "dashboard" && <Dashboard chantiers={chantiers} rgDues={rgDues} computed={computed} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
         {tab === "reglements" && (
-          <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
+          <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} onDeleteRgEchue={deleteRgEchue} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
         )}
         {tab === "chantiers" && (
           <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} />
