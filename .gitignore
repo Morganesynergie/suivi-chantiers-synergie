@@ -5,6 +5,12 @@
 /.next/
 /out/
 
+# Régénérés automatiquement par `next dev`/`next build` (Next.js 16) à
+# chaque lancement — jamais à committer, ça créerait un changement local
+# après chaque `npm run dev` sans rapport avec le travail réel.
+/AGENTS.md
+/CLAUDE.md
+
 # Fichiers d'environnement (secrets) — ne jamais commiter, seul
 # .env.local.example (avec des valeurs factices) doit rester versionné.
 .env
