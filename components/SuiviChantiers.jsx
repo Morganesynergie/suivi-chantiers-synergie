@@ -3538,9 +3538,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                                 {renderSituationDocBubble(s, "ea", "EA")}
                               </>
                             )}
-                            {renderFournisseurFacturesBubble(s)}
+                            {!isProrata && renderFournisseurFacturesBubble(s)}
                           </div>
-                          {openFournisseurFacturesId === s.id && (
+                          {!isProrata && openFournisseurFacturesId === s.id && (
                             <div className="flex flex-col gap-1 mt-1.5 p-1.5 rounded-md" style={{ background: "#F7F5EF", border: `1px solid ${COLORS.line}`, minWidth: 150 }}>
                               {(s.fournisseurFactures || []).map((f) => (
                                 <div key={f.id} className="flex items-center justify-between gap-1.5">
