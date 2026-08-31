@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2 } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive } from "lucide-react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -912,6 +912,7 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
     { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { key: "reglements", label: "Règlements en attente", icon: Clock },
     { key: "chantiers", label: "Chantiers", icon: Building2 },
+    { key: "archives", label: "Archives", icon: Archive },
     { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
     { key: "documents", label: "Documents manquants", icon: FileWarning },
   ];
@@ -1502,12 +1503,16 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
 }
 
 // ---------- Chantiers list ----------
-function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier }) {
+// archivedOnly bascule entre la liste des chantiers actifs (onglet "Chantiers")
+// et celle des chantiers clôturés (onglet "Archives" à part dans le menu de
+// gauche) — les deux réutilisent ce même composant plutôt que de dupliquer le
+// tableau, seul le filtre et les libellés changent.
+function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier, archivedOnly = false }) {
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [newTitre, setNewTitre] = useState("");
   const [newClient, setNewClient] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
+  const showArchived = archivedOnly;
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const facturesLibres = chantiers.find((c) => c.isFacturesLibres);
@@ -1538,7 +1543,7 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
       </div>
       <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
         {showArchived ? (
-          <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => setShowArchived(false)}>← retour aux chantiers actifs</button>
+          <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => setTab("chantiers")}>← retour aux chantiers actifs</button>
         ) : (
           <>
             {filtered.length} chantiers suivis
@@ -1546,7 +1551,7 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               <> · <button className="hover:underline" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier("factures-libres"); setTab("chantierDetail"); }}>voir les {facturesLibres.marches.length} facture(s) ponctuelle(s)</button></>
             )}
             {archivedCount > 0 && (
-              <> · <button className="hover:underline" style={{ color: COLORS.inkSoft }} onClick={() => setShowArchived(true)}>Archives ({archivedCount})</button></>
+              <> · <button className="hover:underline" style={{ color: COLORS.inkSoft }} onClick={() => setTab("archives")}>Archives ({archivedCount})</button></>
             )}
           </>
         )}
@@ -1652,11 +1657,12 @@ const emptySituation = () => ({
   situationDocs: { recap: null, avancement: null },
 });
 
-function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
+function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptySituation());
   const [headerEdit, setHeaderEdit] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const [payingSituation, setPayingSituation] = useState(null);
   const [uploadingDocKey, setUploadingDocKey] = useState(null);
   const [dragOverDocKey, setDragOverDocKey] = useState(null);
@@ -2309,9 +2315,29 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab }) {
           <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>{chantier.titre}</h1>
           <p className="text-sm" style={{ color: COLORS.inkSoft }}>{chantier.client || "Client non renseigné"} {chantier.nChantier ? `— ${chantier.nChantier}` : ""}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <Btn variant="ghost" size="sm" onClick={exportChantierPdf}>Exporter en PDF</Btn>
           {unlocked && <Btn variant="ghost" size="sm" onClick={() => setHeaderEdit(!headerEdit)}>{headerEdit ? "Fermer" : "Modifier les infos"}</Btn>}
+          {unlocked && !chantier.isFacturesLibres && !chantier.archived && (
+            confirmClose ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs" style={{ color: COLORS.red }}>Clôturer ce chantier ?</span>
+                <button
+                  title="Oui, clôturer et archiver ce chantier"
+                  onClick={() => { onArchiveChantier(chantier.id, true); setTab("archives"); }}
+                  className="p-1.5 rounded"
+                  style={{ background: COLORS.red }}
+                >
+                  <Check size={12} color="#fff" />
+                </button>
+                <button title="Annuler" onClick={() => setConfirmClose(false)} className="p-1.5 rounded" style={{ background: "#F0EEE6" }}>
+                  <X size={12} color={COLORS.inkSoft} />
+                </button>
+              </div>
+            ) : (
+              <Btn variant="ghost" size="sm" onClick={() => setConfirmClose(true)}><Archive size={13} /> Chantier clôturé</Btn>
+            )
+          )}
         </div>
       </div>
       {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
@@ -3164,61 +3190,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [showVenir, setShowVenir] = useState(false);
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
-  const [exportPdfError, setExportPdfError] = useState("");
-
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
-
-  function extractAutoRgPdf(item) {
-    const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
-    const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
-    setExportPdfError("");
-    const findMarcheNom = (marcheId) => (item.marches.find((m) => m.id === marcheId) || {}).nom || "—";
-    const rows = item.sits.map((s) => `<tr><td>${findMarcheNom(s.marcheId)}</td><td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td><td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.rg)}</td></tr>`).join("");
-    const html = `
-      <html><head><title>RG à réclamer — ${item.chantierTitre}</title>
-      <style>
-        body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
-        h1{font-size:18px;margin-bottom:4px;} h2{font-size:13px;font-weight:500;color:#5B6779;margin-top:0;}
-        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:12px;}
-        th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
-        th{background:#F7F5EF;}
-        .total{margin-top:16px;font-size:14px;font-weight:600;}
-        .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
-        .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
-        .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
-        .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
-        .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
-        .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
-        @media (max-width:480px){
-          .close-bar{padding:8px 12px;}
-          .close-bar-label{display:none;}
-          .close-bar-brand img{height:20px;}
-          .print-btn,.close-btn{padding:7px 11px;font-size:12px;}
-        }
-        @media print { .close-bar{display:none;} }
-      </style></head><body>
-      <div class="close-bar">
-        <div class="close-bar-brand">
-          <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
-          <span class="close-bar-label">Aperçu avant impression</span>
-        </div>
-        <div class="close-bar-actions">
-          <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
-          <button class="close-btn" onclick="window.close()">✕ Fermer</button>
-        </div>
-      </div>
-      <h1>Retenue de garantie à réclamer</h1>
-      <h2>${item.chantierTitre}${item.client ? " — " + item.client : ""}${item.nChantier ? " (" + item.nChantier + ")" : ""}</h2>
-      <p>Chantier soldé à 100 % (marché principal et TS confondus), entièrement facturé et réglé. Retenue de garantie cumulée :</p>
-      <table><thead><tr><th>Marché/TS</th><th>N° sit.</th><th>N° facture</th><th>Date</th><th>Montant HT</th><th>RG</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="total">Total RG à réclamer (TTC) : ${fmtEUR(item.totalRg)} — soit ${fmtEUR(montantHtRg)} HT</p>
-      </body></html>
-    `;
-    const fileName = `RG_a_reclamer_${sanitizeFileName(item.chantierTitre)}.pdf`;
-    openPrintableDocument(html, { fileName, onError: setExportPdfError });
-    onExtractMarcheRg(item.chantierId);
-  }
 
   function addEchue() {
     updateRg({ ...rgDues, echues: [...rgDues.echues, { ...formE, id: uid("rg-e") }] });
@@ -3239,13 +3211,34 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   function removeVenir(id) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.filter((r) => r.id !== id) }); }
   function updateVenir(id, patch) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
 
+  // Équivalent de moveToEchue/removeVenir pour un chantier soldé détecté
+  // automatiquement (voir computeAutoRgCumulees) : il n'existe pas en tant
+  // qu'entrée dans rgDues.aVenir, donc "réclamée" crée directement une vraie
+  // ligne dans rgDues.echues (chantierId renseigné, pour que la mention sur
+  // la fiche chantier fonctionne une fois réglée — voir markRgReceived), et
+  // dans les deux cas on masque le chantier de la détection auto via
+  // onExtractMarcheRg (rgExtracted) pour qu'il ne réapparaisse pas.
+  function moveAutoRgToEchue(item) {
+    const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
+    const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
+    updateRg({
+      ...rgDues,
+      echues: [...rgDues.echues, {
+        id: uid("rg-e"), chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
+        montantHt: montantHtRg, montantTtc: item.totalRg, betMo: "",
+        dateEnvoi: new Date().toISOString().slice(0, 10), notes: "", validBet: false,
+      }],
+    });
+    onExtractMarcheRg(item.chantierId);
+  }
+  function dismissAutoRg(item) { onExtractMarcheRg(item.chantierId); }
+
   const totalEchues = rgDues.echues.reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0);
 
   return (
     <div className="p-4 max-w-6xl">
       <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Retenues de garantie</h1>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
-      {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
@@ -3355,12 +3348,26 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
           </thead>
           <tbody>
             {rgDues.aVenir.length === 0 && autoRg.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
-            {[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
+            {[
+              ...[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => ({ ...r, isAuto: false })),
+              // Chantiers soldés à 100 % (marché principal + TS confondus), détectés
+              // automatiquement : leur RG cumulée est prête à réclamer. Affichés à la
+              // suite des RG à venir saisies à la main, avec EXACTEMENT la même mise en
+              // page qu'elles (même colonnes, mêmes styles, pas de couleur/pastille à
+              // part) plutôt que dans un encadré séparé — une échéance du jour est
+              // utilisée pour que la colonne "À réclamer ?" les signale bien "oui".
+              ...autoRg.map((item) => ({
+                id: `auto-${item.chantierId}`, isAuto: true, _autoItem: item,
+                chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
+                montantHt: Math.round((item.totalRg / (1 + (TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085))) * 100) / 100,
+                montantTtc: item.totalRg, betMo: "", dateEcheance: new Date().toISOString().slice(0, 10),
+              })),
+            ].map((r) => {
               const d = daysUntil(r.dateEcheance);
               const soon = d !== null && d <= 30;
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                  {unlocked ? (
+                  {unlocked && !r.isAuto ? (
                     <>
                       <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateVenir(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
                       <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateVenir(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
@@ -3372,7 +3379,11 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                   ) : (
                     <>
                       <td className="px-3 py-2">{r.nChantier || "—"}</td>
-                      <td className="px-2 py-2 font-medium">{r.nom}</td>
+                      <td className="px-2 py-2 font-medium">
+                        {r.isAuto ? (
+                          <button className="hover:underline text-left" onClick={() => { setSelectedChantier(r.chantierId); setTab("chantierDetail"); }}>{r.nom}</button>
+                        ) : r.nom}
+                      </td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
                       <td className="px-2 py-2">{r.betMo || "—"}</td>
@@ -3383,45 +3394,23 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                   {unlocked && (
                     <td className="px-3 py-2">
                       <div className="flex gap-2 justify-end">
-                        <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
-                        <button title="Supprimer" onClick={() => removeVenir(r.id)}><X size={13} color={COLORS.red} /></button>
+                        {r.isAuto ? (
+                          <>
+                            <button title="Marquer comme réclamée" onClick={() => moveAutoRgToEchue(r._autoItem)}><Check size={13} color={COLORS.green} /></button>
+                            <button title="Ignorer cette RG détectée automatiquement" onClick={() => dismissAutoRg(r._autoItem)}><X size={13} color={COLORS.red} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
+                            <button title="Supprimer" onClick={() => removeVenir(r.id)}><X size={13} color={COLORS.red} /></button>
+                          </>
+                        )}
                       </div>
                     </td>
                   )}
                 </tr>
               );
             })}
-            {/* Chantiers soldés à 100 % (marché principal + TS confondus), détectés
-                automatiquement : leur RG cumulée est prête à réclamer. Affichés à la
-                suite des RG à venir saisies à la main plutôt que dans un encadré à
-                part, pour rester dans un seul listing. */}
-            {autoRg.map((item) => (
-              <tr key={item.chantierId} style={{ borderTop: `1px solid ${COLORS.line}`, background: COLORS.greenSoft }}>
-                <td className="px-3 py-2">{item.nChantier || "—"}</td>
-                <td className="px-2 py-2">
-                  <button
-                    className="font-medium hover:underline text-left"
-                    style={{ color: COLORS.ink }}
-                    onClick={() => { setSelectedChantier(item.chantierId); setTab("chantierDetail"); }}
-                  >
-                    {item.chantierTitre}
-                  </button>
-                  <div className="text-xs" style={{ color: COLORS.inkSoft }}>{item.client || ""} · détecté auto (chantier soldé à 100 %, réglé)</div>
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(Math.round((item.totalRg / (1 + (TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085))) * 100) / 100)}</td>
-                <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtEUR(item.totalRg)}</td>
-                <td className="px-2 py-2">—</td>
-                <td className="px-2 py-2">échue</td>
-                <td className="px-2 py-2"><Pill color="green">prête à réclamer</Pill></td>
-                {unlocked && (
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end">
-                      <Btn size="sm" variant="primary" onClick={() => extractAutoRgPdf(item)}>Extraire en PDF</Btn>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
           </tbody>
         </table>
             </div>
@@ -3976,8 +3965,11 @@ export default function App() {
         {tab === "chantiers" && (
           <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} />
         )}
+        {tab === "archives" && (
+          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} archivedOnly />
+        )}
         {tab === "chantierDetail" && selectedChantier && (
-          <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} />
+          <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} />
         )}
         {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRg={markMarcheRgExtracted} />}
         {tab === "documents" && <DocumentsView chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
