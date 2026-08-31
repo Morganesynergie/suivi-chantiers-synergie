@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send } from "lucide-react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -737,11 +737,11 @@ function normalizeChantiersData(list) {
       // pour ne pas perdre les fichiers déjà déposés avant l'ajout de la
       // 2e bulle "avancement".
       if (s.situationDoc && !s.situationDocs) {
-        patched.situationDocs = { recap: s.situationDoc, avancement: null };
+        patched.situationDocs = { recap: s.situationDoc, avancement: null, ea: null };
         delete patched.situationDoc;
         sChanged = true;
       } else if (!s.situationDocs) {
-        patched.situationDocs = { recap: null, avancement: null };
+        patched.situationDocs = { recap: null, avancement: null, ea: null };
         sChanged = true;
       }
       if (sChanged) { chantierChanged = true; return patched; }
@@ -1654,7 +1654,7 @@ const emptySituation = () => ({
   // Deux emplacements nommés et bien séparés, pour ne plus jamais qu'un
   // dépôt écrase l'autre — chacun a la même forme que les documents de
   // chantier ({ present, fileName, filePath, uploadedAt }).
-  situationDocs: { recap: null, avancement: null },
+  situationDocs: { recap: null, avancement: null, ea: null },
 });
 
 function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveChantier }) {
@@ -1682,6 +1682,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const [pendingSituationUploadId, setPendingSituationUploadId] = useState(null);
   const situationDocFileInputRef = useRef(null);
   const [exportPdfError, setExportPdfError] = useState("");
+  const [sendingEmailId, setSendingEmailId] = useState(null);
+  const [emailNotice, setEmailNotice] = useState("");
   // Lecture automatique (IA) d'un devis signé / acte d'engagement / contrat
   // de sous-traitance à l'upload, pour proposer un pré-remplissage de la
   // fiche chantier. `docAnalysis` porte le résultat de la dernière lecture
@@ -2171,7 +2173,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   function setSituationDocMeta(situationId, docType, meta) {
     const situations = chantier.situations.map((x) =>
       x.id === situationId
-        ? { ...x, situationDocs: { recap: null, avancement: null, ...x.situationDocs, [docType]: meta } }
+        ? { ...x, situationDocs: { recap: null, avancement: null, ea: null, ...x.situationDocs, [docType]: meta } }
         : x
     );
     updateChantier({ ...chantier, situations });
@@ -2268,6 +2270,82 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       window.open(data.url, "_blank");
     } catch (err) {
       setSituationDocError(err.message || "Impossible d'ouvrir le PDF.");
+    }
+  }
+  // Télécharge le PDF déjà déposé pour cette situation (recap ou avancement)
+  // sous un nom de fichier explicite, prêt à être glissé dans un email. Un
+  // navigateur ne peut pas joindre un fichier à un nouveau message pour des
+  // raisons de sécurité — impossible à contourner depuis une appli web —
+  // donc le geste le plus proche est : télécharger les PDF, puis ouvrir un
+  // brouillon pré-rempli (voir sendSituationByEmail) où il ne reste plus
+  // qu'à glisser les fichiers téléchargés et cliquer sur Envoyer.
+  async function downloadSituationDoc(situationId, docType, downloadName) {
+    const s = chantier.situations.find((x) => x.id === situationId);
+    const meta = situationDocMeta(s, docType);
+    if (!meta?.filePath) return false;
+    const res = await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || "Échec du téléchargement du PDF.");
+    const fileRes = await fetch(data.url);
+    if (!fileRes.ok) throw new Error("Échec du téléchargement du PDF.");
+    const blob = await fileRes.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = downloadName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    return true;
+  }
+  // Les 3 bulles PDF possibles pour une situation (recap/avancement/état
+  // d'acompte) — utilisé à la fois pour vérifier ce qui est déposé et pour
+  // nommer les fichiers téléchargés avant l'envoi par email.
+  const SITUATION_DOC_TYPES = [
+    { key: "recap", label: "récapitulatif", fileLabel: "Recap" },
+    { key: "avancement", label: "avancement", fileLabel: "Avancement" },
+    { key: "ea", label: "état d'acompte", fileLabel: "EtatAcompte" },
+  ];
+  async function sendSituationByEmail(s) {
+    const stateKey = s.id + ":send";
+    setSituationDocError("");
+    setEmailNotice("");
+    setSendingEmailId(stateKey);
+    try {
+      const present = SITUATION_DOC_TYPES.filter((t) => situationDocMeta(s, t.key).present);
+      if (present.length === 0) {
+        setSituationDocError("Dépose d'abord le PDF récapitulatif, avancement et/ou état d'acompte de cette situation (bulles R/A/EA) avant de l'envoyer.");
+        return;
+      }
+      const base = sanitizeFileName(`${chantier.titre}_Situation${s.nSituation ?? ""}`);
+      for (const t of present) {
+        await downloadSituationDoc(s.id, t.key, `${t.fileLabel}_${base}.pdf`);
+      }
+
+      const chantierLabel = `${chantier.titre}${chantier.nChantier ? " (" + chantier.nChantier + ")" : ""}`;
+      const subject = `Situation n°${s.nSituation ?? ""} — ${chantierLabel}`;
+      const piecesJointes = present.map((t) => t.label).join(present.length > 1 ? " et " : "");
+      const pluriel = present.length > 1 ? "s" : "";
+      const body =
+        `Bonjour,\n\n` +
+        `Veuillez trouver ci-joint la situation n°${s.nSituation ?? ""} du chantier ${chantierLabel}, ` +
+        `d'un montant de ${fmtEUR(s.montantHt)} HT (${fmtEUR(s.montantTtc)} TTC).\n\n` +
+        `Merci de nous confirmer sa bonne réception.\n\n` +
+        `Cordialement,\nSYNERGIE BTP`;
+      const to = (chantier.clientEmail || "").trim();
+      const mailto = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      // Impossible de joindre un fichier à un email depuis une appli web
+      // (restriction de sécurité des navigateurs, aucun contournement
+      // possible) — les PDF viennent d'être téléchargés dans le dossier de
+      // téléchargements, il ne reste plus qu'à les glisser dans le nouveau
+      // message qui s'ouvre avec objet/texte déjà pré-remplis.
+      setEmailNotice(`PDF ${piecesJointes} téléchargé${pluriel} — glisse-le${pluriel} dans le nouveau message qui vient de s'ouvrir, puis clique sur Envoyer.${to ? "" : " (Pense à renseigner l'email du client dans « Modifier les infos » pour qu'il soit pré-rempli la prochaine fois.)"}`);
+      window.location.href = mailto;
+    } catch (err) {
+      setSituationDocError(err.message || "Échec de la préparation de l'email.");
+    } finally {
+      setSendingEmailId(null);
     }
   }
   function addAvenant() {
@@ -2572,6 +2650,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           <Card className="p-4 mb-4" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             <Field label="Nom du chantier"><TextInput value={chantier.titre || ""} onChange={(e) => updateHeaderField({ titre: e.target.value })} /></Field>
             <Field label="Client"><TextInput value={chantier.client || ""} onChange={(e) => updateHeaderField({ client: e.target.value })} /></Field>
+            <Field label="Email client"><TextInput type="email" placeholder="contact@client.fr" value={chantier.clientEmail || ""} onChange={(e) => updateHeaderField({ clientEmail: e.target.value })} /></Field>
             <Field label="N° chantier"><TextInput value={chantier.nChantier || ""} onChange={(e) => updateHeaderField({ nChantier: e.target.value })} /></Field>
             <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
             <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
@@ -2746,6 +2825,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Situations ({chantier.situations.length})</h2>
       </div>
       {situationDocError && <p className="text-xs mb-2" style={{ color: COLORS.red }}>{situationDocError}</p>}
+      {emailNotice && <p className="text-xs mb-2" style={{ color: COLORS.accent }}>{emailNotice}</p>}
 
       {(() => {
         // % d'avancement toujours calculé EN DIRECT à partir des situations
@@ -2766,7 +2846,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           const isUploading = uploadingSituationDocId === stateKey;
           const isDragOver = dragOverSituationId === stateKey;
           const clickable = !isUploading && (meta.present || unlocked);
-          const typeLabel = docType === "recap" ? "Récapitulatif" : "Avancement";
+          const typeLabel = docType === "recap" ? "Récapitulatif" : docType === "ea" ? "État d'acompte" : "Avancement";
           return (
             <div
               key={docType}
@@ -2864,11 +2944,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                       <th className="text-left font-medium px-2 py-2">Val. BET</th>
                       <th className="text-left font-medium px-2 py-2">Paiement</th>
                       {unlocked && <th className="px-3 py-2"></th>}
+                      <th className="px-2 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {sits.length === 0 && (
-                      <tr><td colSpan={15} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
+                      <tr><td colSpan={16} className="px-3 py-5 text-center" style={{ color: COLORS.inkSoft }}>Aucune situation sur ce marché</td></tr>
                     )}
                     {sits.map((s) => (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
@@ -2876,6 +2957,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                           <div className="flex items-center gap-1">
                             {renderSituationDocBubble(s, "recap", "R")}
                             {renderSituationDocBubble(s, "avancement", "A")}
+                            {renderSituationDocBubble(s, "ea", "EA")}
                           </div>
                         </td>
                         {!isProrata && (
@@ -2971,6 +3053,21 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             </div>
                           </td>
                         )}
+                        <td className="px-2 py-2">
+                          <button
+                            title="Envoyer cette situation par email (télécharge les PDF puis ouvre un brouillon pré-rempli)"
+                            onClick={() => sendSituationByEmail(s)}
+                            disabled={sendingEmailId === s.id + ":send"}
+                            className="p-1 rounded"
+                            style={{ background: COLORS.accentSoft, opacity: sendingEmailId === s.id + ":send" ? 0.6 : 1 }}
+                          >
+                            {sendingEmailId === s.id + ":send" ? (
+                              <Loader2 size={12} color={COLORS.accent} className="animate-spin" />
+                            ) : (
+                              <Send size={12} color={COLORS.accent} />
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -3762,7 +3859,7 @@ export default function App() {
 
   function createChantier({ titre, client }) {
     const newC = {
-      id: uid("ch"), sheet: titre, titre, client, nChantier: "", dateDemarrage: null,
+      id: uid("ch"), sheet: titre, titre, client, clientEmail: "", nChantier: "", dateDemarrage: null,
       betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [],
       marches: [{
         id: "marche-principal", nom: "Marché principal", montantHt: 0, tauxTva: 0.085,
