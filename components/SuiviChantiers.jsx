@@ -456,10 +456,13 @@ function regrouperFournisseurs(fournisseurs) {
 // texte plus compact) pour ne jamais d\u00e9border sur le texte existant.
 //   - marge gauche du texte : 15,7 pt (m\u00eame alignement que "R\u00e8glement :")
 //   - zone verticale disponible : de 193 \u00e0 243 pt du bas de page
-// La signature reste dans la marge basse de page (bande enti\u00e8rement vierge
-// sur toute la largeur, v\u00e9rifi\u00e9e pixel par pixel, de 24,9 \u00e0 93,9 pt du bas)
-// \u2014 il n'y a pas la place pour elle \u00e0 c\u00f4t\u00e9 du texte dans la zone \u00e9troite
-// ci-dessus.
+// La signature/cachet est positionn\u00e9e en bas \u00e0 droite de la page, dans la
+// marge basse (bande enti\u00e8rement vierge sur toute la largeur, v\u00e9rifi\u00e9e
+// pixel par pixel, de 24,9 \u00e0 93,9 pt du bas) \u2014 loin de la zone de texte
+// ci-dessus pour ne jamais g\u00eaner, m\u00eame quand la ligne "Frais de prorata"
+// s'affiche. Le fond blanc de l'image signature-morgane.png a \u00e9t\u00e9 rendu
+// transparent (seul le trait bleu du tampon/de la signature reste visible)
+// pour qu'elle puisse se superposer sans masquer le texte d\u00e9j\u00e0 pr\u00e9sent.
 // Si un futur document utilise une taille de page l\u00e9g\u00e8rement diff\u00e9rente,
 // tout est remis \u00e0 l'\u00e9chelle proportionnellement plut\u00f4t que cod\u00e9 en dur.
 const REF_PAGE_WIDTH = 595.32;
@@ -469,9 +472,10 @@ const REF_ZONE_TOP_Y = 243; // juste sous "R\u00e8glement : Comptant"
 const REF_ZONE_BOTTOM_Y = 193; // juste au-dessus de "CLAUSE PENALE..."
 const REF_LINE_HEIGHT_MAX = 11;
 const REF_LINE_HEIGHT_MIN = 7.5;
-const REF_SIGNATURE_X = 15.7; // marge basse de page, align\u00e9e sous le texte principal
+const REF_SIGNATURE_WIDTH = 110; // largeur cible de la signature, en pt (plus grande qu'au d\u00e9part)
+const REF_SIGNATURE_MARGIN_RIGHT = 20; // marge depuis le bord droit de la page
 const REF_SIGNATURE_Y = 30; // pt du bas de page, dans la bande vierge basse
-const REF_SIGNATURE_WIDTH = 85; // largeur cible de la signature, en pt
+const REF_SIGNATURE_X = REF_PAGE_WIDTH - REF_SIGNATURE_MARGIN_RIGHT - REF_SIGNATURE_WIDTH; // bas \u00e0 droite
 
 // Superpose (jamais une nouvelle page) sur la DERNI\u00c8RE page du PDF
 // "R\u00e9capitulatif" d\u00e9pos\u00e9 : la r\u00e9partition de r\u00e8glement par fournisseur,
@@ -524,9 +528,9 @@ async function stampRepartitionOnPdf(arrayBuffer, { situation, lignes, net }) {
     drawLine(`Net \u00e0 payer corrig\u00e9 : ${pdfSafeEUR(net)}`, { bold: true, color: navy, size: fontSize + 1 });
   }
 
-  // Signature, dans la marge basse de page (bande enti\u00e8rement vierge \u2014 voir
-  // REF_SIGNATURE_* ci-dessus). Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne
-  // peut pas \u00eatre charg\u00e9e/int\u00e9gr\u00e9e.
+  // Signature/cachet, en bas \u00e0 droite de la page (voir REF_SIGNATURE_*
+  // ci-dessus). Ne bloque jamais le d\u00e9p\u00f4t du PDF si elle ne peut pas \u00eatre
+  // charg\u00e9e/int\u00e9gr\u00e9e.
   try {
     const sigResp = await fetch("/signature-morgane.png");
     if (sigResp.ok) {
