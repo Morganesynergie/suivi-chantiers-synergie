@@ -900,9 +900,9 @@ const SOUS_TRAITANT_PIECE_TYPES = [
 // de péremption (simples pièces d'archive : pas d'alerte dessus), pièce
 // d'identité et titre de séjour si.
 // Pas de "Pièce d'identité" séparée ici : pour un salarié étranger, le
-// titre de séjour en fait déjà office (à la différence du représentant de
-// l'entreprise, qui lui garde les deux pièces au niveau du dossier
-// "entreprise" ci-dessus).
+// titre de séjour en fait déjà office — même principe désormais pour le
+// représentant de l'entreprise au niveau du dossier "entreprise" ci-dessus
+// (voir le filtre sur pieceIdentite/titreSejourApplicable).
 const SALARIE_ETRANGER_PIECE_TYPES = [
   { key: "dpae", label: "DPAE", dateLabel: "Date de la DPAE", validityMonths: null, noAlert: true },
   { key: "contratTravail", label: "Contrat de travail", dateLabel: "Date de signature", validityMonths: null, noAlert: true },
@@ -1012,6 +1012,12 @@ function sousTraitantPieceAlerts(sousTraitant) {
     // représentant n'est pas de nationalité étrangère (case à cocher dans
     // le dossier — voir titreSejourApplicable).
     if (typeDef.key === "titreSejour" && sousTraitant.titreSejourApplicable === false) continue;
+    // Pièce d'identité : à l'inverse, ignorée quand le représentant EST de
+    // nationalité étrangère — le titre de séjour fait alors déjà office de
+    // pièce d'identité (Morgane ne veut plus la voir en double dans ce
+    // cas), exactement comme pour les salariés étrangers (voir
+    // SALARIE_ETRANGER_PIECE_TYPES un peu plus haut).
+    if (typeDef.key === "pieceIdentite" && sousTraitant.titreSejourApplicable !== false) continue;
     // CACES : à l'inverse, ignoré PAR DÉFAUT — ne concerne que les
     // sous-traitants dont Morgane a coché "concerné par le CACES" (voir
     // cacesApplicable). La plupart ne le sont pas.
@@ -5588,6 +5594,7 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
           <div className="flex flex-col gap-2 mb-5">
             {SOUS_TRAITANT_PIECE_TYPES.filter((t) =>
               (t.key !== "titreSejour" || sousTraitant.titreSejourApplicable !== false) &&
+              (t.key !== "pieceIdentite" || sousTraitant.titreSejourApplicable === false) &&
               (t.key !== "caces" || sousTraitant.cacesApplicable === true)
             ).map((typeDef) => {
               const storageKey = sousTraitantPieceDocKey(sousTraitant.id, typeDef.key);
