@@ -845,6 +845,28 @@ function ssTraitanceStatutColor(key) {
 function sousTraitanceDocKey(entryId, type) {
   return "sst-" + entryId + "-" + type;
 }
+// Retrouve l'id de l'entrée sous-traitance à partir d'une clé de document
+// "contrat" (voir sousTraitanceDocKey ci-dessus) — utilisé pour faire
+// passer automatiquement le statut à "Signé Client" dès que ce PDF est
+// déposé (voir setDocMeta plus bas dans ChantierDetail) : en pratique
+// Morgane ne dépose ce document qu'une fois signé par toutes les parties.
+function sousTraitanceContratEntryIdFromDocKey(key) {
+  const m = /^sst-(.+)-contrat$/.exec(key || "");
+  return m ? m[1] : null;
+}
+// Pièces (contrat, et DC4 si marché public) manquantes sur une entrée de
+// sous-traitance active d'un chantier — alerte demandée par Morgane pour ne
+// plus avoir à repenser à vérifier chaque contrat manuellement. Le contrat
+// est toujours requis ; le DC4 ne l'est que sur marché public (voir
+// chantier.marchePublic et le commentaire sur SS_TRAITANCE_STATUTS
+// ci-dessus — sur marché privé le DC4 ne concerne pas le sous-traitant).
+function sousTraitanceEntryMissingDocs(chantier, entry) {
+  const docs = chantier.documents || {};
+  const missing = [];
+  if (!docPresent(docs, sousTraitanceDocKey(entry.id, "contrat"))) missing.push({ type: "contrat", label: "Contrat" });
+  if (chantier.marchePublic === true && !docPresent(docs, sousTraitanceDocKey(entry.id, "dc4"))) missing.push({ type: "dc4", label: "DC4" });
+  return missing;
+}
 function emptySousTraitanceEntry() {
   return { id: uid("sst"), sousTraitantId: "", montant: null, dateDebut: "", dateFin: "", statutDc4: "", statutContrat: "" };
 }
@@ -1583,6 +1605,26 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
       return aPerimee === bPerimee ? 0 : aPerimee ? -1 : 1;
     });
   }, [sousTraitants, chantiers]);
+  // Entrées de sous-traitance déclarées sur un chantier (non annulées) dont
+  // le contrat — et le DC4 si le chantier est un marché public — n'a pas
+  // encore été déposé (voir sousTraitanceEntryMissingDocs/marchePublic plus
+  // haut dans le fichier). Contrairement à l'alerte "pièces à renouveler"
+  // ci-dessus (dossier de l'entreprise, valable tous chantiers confondus),
+  // celle-ci porte sur le contrat propre à CE chantier précis.
+  const sousTraitanceDocsAlertes = useMemo(() => {
+    const out = [];
+    for (const c of chantiers) {
+      if (c.isFacturesLibres || c.archived) continue;
+      for (const e of c.sousTraitance || []) {
+        if (e.statutContrat === "annule") continue;
+        const missing = sousTraitanceEntryMissingDocs(c, e);
+        if (!missing.length) continue;
+        const sst = sousTraitants.find((s) => s.id === e.sousTraitantId);
+        out.push({ chantierId: c.id, chantierTitre: c.titre, sousTraitantNom: sst ? sst.nom : "(sous-traitant non renseigné)", missing });
+      }
+    }
+    return out;
+  }, [chantiers, sousTraitants]);
   return (
     <div className="p-4 max-w-6xl">
       <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Tableau de bord</h1>
@@ -1662,6 +1704,28 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
               {showAllBet ? "Réduire la liste" : `+ ${betARelancer.length - 8} autre(s) situation(s) en attente de validation BET`}
             </button>
           )}
+        </Card>
+      )}
+
+      {sousTraitanceDocsAlertes.length > 0 && (
+        <Card className="p-4 mb-6" style={{ borderColor: COLORS.redSoft, background: COLORS.redSoft }}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} color={COLORS.red} />
+            <span className="text-sm font-semibold" style={{ color: COLORS.red }}>Sous-traitants — contrat manquant sur un chantier</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {sousTraitanceDocsAlertes.map((a, i) => (
+              <button
+                key={i}
+                onClick={() => { setSelectedChantier(a.chantierId); setTab("chantierDetail"); }}
+                className="text-xs flex justify-between text-left hover:underline"
+                style={{ color: COLORS.ink }}
+              >
+                <span className="font-medium">{a.sousTraitantNom} — {a.chantierTitre}</span>
+                <span style={{ color: COLORS.red }}>{a.missing.map((m) => `${m.label} manquant`).join(" · ")}</span>
+              </button>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -2756,6 +2820,22 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
 
   function setDocMeta(key, meta) {
     const docs = chantier.documents || {};
+    // Dépôt du PDF "Contrat" d'une entrée de sous-traitance : Morgane a
+    // demandé que le statut passe automatiquement à "Signé Client" dans ce
+    // cas (elle ne dépose ce document qu'une fois signé par toutes les
+    // parties) — sauf si l'entrée a déjà été marquée "Annulé", qu'on ne
+    // réactive jamais silencieusement. Les deux mises à jour (document +
+    // statut) doivent partir du MÊME appel updateChantier, sinon la
+    // seconde écraserait la première (même principe que setSituationDocMeta/
+    // extraPatch ailleurs dans ce fichier).
+    const entryId = meta && meta.present ? sousTraitanceContratEntryIdFromDocKey(key) : null;
+    if (entryId) {
+      const sousTraitance = (chantier.sousTraitance || []).map((e) =>
+        e.id === entryId && e.statutContrat !== "annule" ? { ...e, statutContrat: "signe_client" } : e
+      );
+      updateChantier({ ...chantier, documents: { ...docs, [key]: meta }, sousTraitance });
+      return;
+    }
     updateChantier({ ...chantier, documents: { ...docs, [key]: meta } });
   }
   function triggerDocUpload(key) {
@@ -3934,6 +4014,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
             <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
             <Field label="Durée prévue"><TextInput value={chantier.dureePrevue || ""} onChange={(e) => updateHeaderField({ dureePrevue: e.target.value })} /></Field>
+            <label className="flex items-center gap-2 text-xs self-end pb-2" style={{ color: COLORS.ink }}>
+              <input type="checkbox" checked={chantier.marchePublic === true} onChange={(e) => updateHeaderField({ marchePublic: e.target.checked })} />
+              Marché public (DC4 requis pour les sous-traitants)
+            </label>
             <div className="flex items-end gap-2">
               <Btn variant="primary" onClick={() => setHeaderEdit(false)}>Terminé</Btn>
             </div>
@@ -5997,7 +6081,7 @@ export default function App() {
   function createChantier({ titre, client }) {
     const newC = {
       id: uid("ch"), sheet: titre, titre, client, clientEmail: "", nChantier: "", dateDemarrage: null,
-      betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [],
+      betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [], marchePublic: false,
       marches: [{
         id: "marche-principal", nom: "Marché principal", montantHt: 0, tauxTva: 0.085,
         rgMode: "5pct", rgPct: 0.05, prorataPct: null,
