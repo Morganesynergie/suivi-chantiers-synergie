@@ -603,7 +603,7 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
           </div>
           <div class="doc-cell doc-cell-dest">${destHtml}</div>
         </div>
-        <div class="doc-title">Facture d'avance de démarrage</div>
+        <div class="doc-title">Appel d'avance de démarrage</div>
         <div class="doc-subtitle">AVANCE DE DEMARRAGE${pct != null ? " (" + pct.toLocaleString("fr-FR") + "%)" : ""}${nDevis ? " du devis " + nDevis : ""}</div>
         <div class="amounts">
           <div class="amount-row"><span class="amount-label">Montant du marché H.T.</span><strong>${fmtEUR(marcheHtNum)}</strong></div>
@@ -618,7 +618,7 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
           </div>
           <div class="lettres">${montantEnLettresFr(ttc)}</div>
           <div class="iban-line">IBAN SYNERGIE BTP : ${SYNERGIE_BTP_COORDS.iban}</div>
-          <div class="clause">CLAUSE PENALE : à défaut de paiement dans les délais prescrits, le montant dû sera majoré de 3 fois le taux d'intérêt légal en vigueur. Aucun escompte accordé pour paiement anticipé.</div>
+          <div class="clause">CLAUSE PENALE : à défaut de paiement dans les délais prescrits, le montant dû sera majoré de 3 fois le taux d'intérêt légal en vigueur. Aucun escompte accordé pour paiement anticipé. Indemnité forfaitaire pour frais de recouvrement de 40 € (art. L441-10 du Code de commerce).</div>
           <div class="company-footer">
             ${SYNERGIE_BTP_COORDS.adresse} - Tél : ${SYNERGIE_BTP_COORDS.tel} - email : ${SYNERGIE_BTP_COORDS.email}<br/>
             SAS au capital de ${SYNERGIE_BTP_COORDS.capital} - SIRET : ${SYNERGIE_BTP_COORDS.siret} - APE ${SYNERGIE_BTP_COORDS.ape}
