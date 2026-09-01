@@ -493,6 +493,18 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [montantMarcheHt, setMontantMarcheHt] = useState(marche && marche.montantHt !== "" && marche.montantHt != null ? String(marche.montantHt) : "");
   const [montantAvanceHt, setMontantAvanceHt] = useState(marche && marche.addMontant !== "" && marche.addMontant != null ? String(marche.addMontant) : "");
+  // % d'avance et montant HT de l'avance restent reliés dans les deux sens :
+  // Morgane peut soit taper le % directement (ex. "40" pour du 40 % comme
+  // sur le modèle CEPAC) et le montant se calcule tout seul depuis le
+  // marché HT, soit taper le montant et le % s'affiche/se recalcule à son
+  // tour. Chaque champ ne recalcule l'autre que sur sa propre saisie — pas
+  // de boucle, et modifier "Montant du marché H.T." ensuite ne touche plus
+  // à un montant d'avance déjà saisi.
+  const initialMarcheHt = marche && marche.montantHt ? Number(marche.montantHt) : 0;
+  const initialAvanceHt = marche && marche.addMontant ? Number(marche.addMontant) : 0;
+  const [pctAvance, setPctAvance] = useState(
+    initialMarcheHt > 0 && initialAvanceHt > 0 ? String(Math.round((initialAvanceHt / initialMarcheHt) * 1000) / 10) : ""
+  );
   const [tvaRegime, setTvaRegime] = useState((marche && marche.tvaRegime) || "085");
   const [genError, setGenError] = useState("");
 
@@ -504,6 +516,21 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
   const ttc = Math.round((ht + tva) * 100) / 100;
   const marcheHtNum = parseFloat(montantMarcheHt) || 0;
   const pct = marcheHtNum > 0 ? Math.round((ht / marcheHtNum) * 1000) / 10 : null;
+
+  function handlePctChange(v) {
+    setPctAvance(v);
+    const p = parseFloat(v);
+    if (!isNaN(p) && marcheHtNum > 0) {
+      setMontantAvanceHt(String(Math.round(marcheHtNum * p / 100 * 100) / 100));
+    }
+  }
+  function handleMontantAvanceChange(v) {
+    setMontantAvanceHt(v);
+    const m = parseFloat(v);
+    if (!isNaN(m) && marcheHtNum > 0) {
+      setPctAvance(String(Math.round((m / marcheHtNum) * 1000) / 10));
+    }
+  }
 
   function generate() {
     setGenError("");
@@ -627,9 +654,10 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
             <Field label="N° de devis (optionnel)"><TextInput value={nDevis} onChange={(e) => setNDevis(e.target.value)} /></Field>
             <Field label="Date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           </div>
+          <Field label="Montant du marché H.T."><TextInput type="number" step="0.01" value={montantMarcheHt} onChange={(e) => setMontantMarcheHt(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Montant du marché H.T."><TextInput type="number" step="0.01" value={montantMarcheHt} onChange={(e) => setMontantMarcheHt(e.target.value)} /></Field>
-            <Field label="Montant H.T. de l'avance"><TextInput type="number" step="0.01" value={montantAvanceHt} onChange={(e) => setMontantAvanceHt(e.target.value)} /></Field>
+            <Field label="% d'avance"><TextInput type="number" step="0.1" value={pctAvance} onChange={(e) => handlePctChange(e.target.value)} placeholder="ex. 40" /></Field>
+            <Field label="Montant H.T. de l'avance"><TextInput type="number" step="0.01" value={montantAvanceHt} onChange={(e) => handleMontantAvanceChange(e.target.value)} /></Field>
           </div>
           <Field label="Régime de TVA">
             <select value={tvaRegime} onChange={(e) => setTvaRegime(e.target.value)} style={inputStyle} className="outline-none focus:ring-2">
