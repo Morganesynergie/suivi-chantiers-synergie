@@ -1,6 +1,6 @@
 "use client";
 import { storage } from "@/lib/kv";
-import { openPrintableDocument } from "@/lib/exportPdf";
+import { openPrintableDocument, generatePdfBlob } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2, HardHat, FolderOpen, Upload, Users, UserPlus, FileText } from "lucide-react";
@@ -287,6 +287,20 @@ function marcheDisplayName(m) {
   return m.description ? `${m.nom} — ${m.description}` : m.nom;
 }
 
+// Récupère le n° de devis directement dans l'intitulé/la description du
+// marché ou TS (ex. "MARCHE PRINCIPAL (devis 0003780)", "Nouvelle
+// facturation devis 0003792", "TS / RESEAUX EP 0003393") — pour l'appel
+// d'avance de démarrage (voir AvanceDemarragePdfModal), Morgane ne veut
+// plus avoir à le retaper alors qu'il figure déjà dans le nom du bloc.
+function extractDevisNumber(m) {
+  if (!m) return "";
+  const text = `${m.nom || ""} ${m.description || ""}`;
+  const withLabel = text.match(/devis\s*n?°?\s*([0-9]{3,})/i);
+  if (withLabel) return withLabel[1];
+  const bareNumber = text.match(/\b([0-9]{5,8})\b/);
+  return bareNumber ? bareNumber[1] : "";
+}
+
 function useIsMobile(breakpoint = 760) {
   const [isMobile, setIsMobile] = useState(() => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false));
   useEffect(() => {
@@ -487,9 +501,12 @@ const SYNERGIE_BTP_COORDS = {
 // ci-dessus). Un seul marché/TS à la fois (celui sur lequel le bouton a été
 // cliqué) : montant du marché, montant de l'avance et régime de TVA sont
 // pré-remplis depuis ce marché mais restent modifiables avant génération.
-function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
+function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
   const [destinataire, setDestinataire] = useState(chantier.client || "");
-  const [nDevis, setNDevis] = useState("");
+  // Pré-rempli depuis l'intitulé/la description du marché quand il contient
+  // déjà un n° de devis (voir extractDevisNumber) — Morgane peut toujours le
+  // corriger à la main si besoin.
+  const [nDevis, setNDevis] = useState(extractDevisNumber(marche));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [montantMarcheHt, setMontantMarcheHt] = useState(marche && marche.montantHt !== "" && marche.montantHt != null ? String(marche.montantHt) : "");
   const [montantAvanceHt, setMontantAvanceHt] = useState(marche && marche.addMontant !== "" && marche.addMontant != null ? String(marche.addMontant) : "");
@@ -507,6 +524,11 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
   );
   const [tvaRegime, setTvaRegime] = useState((marche && marche.tvaRegime) || "085");
   const [genError, setGenError] = useState("");
+  // "idle" | "saving" | "saved" | "error" — conservation du PDF généré dans
+  // les documents du chantier (voir onGenerated, câblé par ChantierDetail
+  // sur le même mécanisme générique que les autres documents de la fiche).
+  const [archiveStatus, setArchiveStatus] = useState("idle");
+  const [archiveErrorMsg, setArchiveErrorMsg] = useState("");
 
   if (!marche) return null;
 
@@ -627,7 +649,29 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
       </div>
       </body></html>
     `;
-    openPrintableDocument(html, { fileName: `Avance_de_demarrage_${sanitizeFileName(chantier.titre)}.pdf`, onError: setGenError });
+    const fileName = `Avance_de_demarrage_${sanitizeFileName(chantier.titre)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setGenError });
+
+    // Conserve aussi une copie dans les documents du chantier, et date
+    // automatiquement l'ADD du jour choisi ci-dessus — "à partir du moment
+    // où je sors ce doc" (voir onGenerated, câblé par ChantierDetail). Ne
+    // bloque jamais l'aperçu/impression ci-dessus si la génération du PDF
+    // réel (html2canvas) échoue pour une raison quelconque.
+    if (onGenerated) {
+      setArchiveStatus("saving");
+      setArchiveErrorMsg("");
+      generatePdfBlob(html)
+        .then((blob) => {
+          const file = new File([blob], fileName, { type: "application/pdf" });
+          return onGenerated({ file, date });
+        })
+        .then(() => setArchiveStatus("saved"))
+        .catch((err) => {
+          console.error("Échec de la conservation de l'appel d'avance de démarrage", err);
+          setArchiveErrorMsg((err && err.message) || "");
+          setArchiveStatus("error");
+        });
+    }
   }
 
   return (
@@ -652,7 +696,7 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="N° de devis (optionnel)"><TextInput value={nDevis} onChange={(e) => setNDevis(e.target.value)} /></Field>
-            <Field label="Date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Date (= date d'envoi enregistrée)"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           </div>
           <Field label="Montant du marché H.T."><TextInput type="number" step="0.01" value={montantMarcheHt} onChange={(e) => setMontantMarcheHt(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -670,9 +714,25 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose }) {
             {pct != null ? `Soit ${pct.toLocaleString("fr-FR")} % du marché · ` : ""}Total TVA comprise : <span className="font-semibold">{fmtEUR(ttc)}</span>
           </p>
           {genError && <p className="text-xs" style={{ color: COLORS.red }}>{genError}</p>}
+          {archiveStatus === "saving" && (
+            <p className="text-xs flex items-center gap-1.5" style={{ color: COLORS.inkSoft }}>
+              <Loader2 size={12} className="animate-spin" /> Conservation du document dans la fiche chantier...
+            </p>
+          )}
+          {archiveStatus === "saved" && (
+            <p className="text-xs flex items-center gap-1.5" style={{ color: COLORS.green }}>
+              <Check size={12} /> Document conservé dans la fiche chantier — date d'envoi enregistrée ({fmtDate(date)}).
+            </p>
+          )}
+          {archiveStatus === "error" && (
+            <p className="text-xs" style={{ color: COLORS.red }}>
+              Le PDF a bien été généré mais n'a pas pu être conservé automatiquement dans la fiche chantier
+              {archiveErrorMsg ? ` (${archiveErrorMsg})` : ""}. Vous pouvez le télécharger/imprimer depuis l'aperçu ouvert.
+            </p>
+          )}
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Btn variant="ghost" onClick={onClose}>Annuler</Btn>
+          <Btn variant="ghost" onClick={onClose}>Fermer</Btn>
           <Btn variant="primary" disabled={!ht} onClick={generate}>Générer le PDF</Btn>
         </div>
       </Card>
@@ -2228,6 +2288,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   // déduction sur la ligne "acompte") : porte l'id du marché concerné
   // pendant que la modale de saisie/génération est ouverte, null sinon.
   const [addPdfMarcheId, setAddPdfMarcheId] = useState(null);
+  // Saisie du "% ADD" dans "Modifier les infos" (voir handleAddPctChange/
+  // handleAddMontantChange ci-dessous) : dict {marcheId: "40"} du texte
+  // tapé dans le champ %, tant qu'il n'a pas été "repris" par une saisie
+  // directe du montant — sinon un simple recalcul depuis m.addMontant
+  // pourrait afficher "40.0" pendant que Morgane tape "40". Plusieurs
+  // marchés pouvant être édités en même temps sur cette page, c'est un
+  // dict par id de marché et non un simple state.
+  const [addPctDraft, setAddPctDraft] = useState({});
 
   function updateHeaderField(patch) {
     updateChantier({ ...chantier, ...patch });
@@ -2421,6 +2489,36 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   }
   function updateMarche(id, patch) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  }
+  // "% ADD" dans "Modifier les infos" — même principe de synchronisation
+  // bidirectionnelle %/montant que dans AvanceDemarragePdfModal
+  // (handlePctChange/handleMontantAvanceChange), mais ici c'est m.addMontant
+  // lui-même qui est mis à jour directement (il n'y a pas de champ % stocké
+  // sur le marché, seulement le montant).
+  function addPctDisplay(m) {
+    if (Object.prototype.hasOwnProperty.call(addPctDraft, m.id)) return addPctDraft[m.id];
+    const marcheHt = parseFloat(m.montantHt) || 0;
+    const add = parseFloat(m.addMontant) || 0;
+    if (!marcheHt || !add) return "";
+    return String(Math.round((add / marcheHt) * 1000) / 10);
+  }
+  function handleAddPctChange(m, v) {
+    setAddPctDraft((prev) => ({ ...prev, [m.id]: v }));
+    const marcheHt = parseFloat(m.montantHt) || 0;
+    const pct = parseFloat(v);
+    if (v === "" || isNaN(pct) || !marcheHt) {
+      updateMarche(m.id, { addMontant: "" });
+      return;
+    }
+    updateMarche(m.id, { addMontant: Math.round(marcheHt * (pct / 100) * 100) / 100 });
+  }
+  function handleAddMontantChange(m, v) {
+    setAddPctDraft((prev) => {
+      const next = { ...prev };
+      delete next[m.id];
+      return next;
+    });
+    updateMarche(m.id, { addMontant: v === "" ? "" : parseFloat(v) });
   }
   function removeMarche(id) {
     if (chantier.marches.length <= 1) return;
@@ -2749,6 +2847,35 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     } catch (err) {
       setDocError(err.message || "Impossible d'ouvrir le document.");
     }
+  }
+
+  // Conserve le PDF "Appel d'avance de démarrage" généré (voir
+  // AvanceDemarragePdfModal) dans les documents du chantier — clé
+  // "avance-<marcheId>", même mécanisme générique que les autres documents
+  // de la fiche (getDocMeta/setDocMeta) — ET date automatiquement l'ADD de
+  // ce marché à la date choisie dans la modale : "à partir du moment où je
+  // sors ce doc" (Morgane). Les deux mises à jour (documents + addDate)
+  // sont appliquées dans UN SEUL appel updateChantier : deux appels
+  // séparés partiraient chacun du même chantier.marches figé et le second
+  // écraserait le premier (même principe que setSituationDocMeta/
+  // extraPatch ci-dessous). Lève une erreur (plutôt que de l'avaler) pour
+  // que le .catch() de la modale puisse afficher le message à Morgane.
+  async function handleAvanceGenerated(marcheId, file, dateStr) {
+    if (!unlocked) throw new Error("mode édition verrouillé");
+    const key = "avance-" + marcheId;
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("chantierId", chantier.id);
+    fd.append("docKey", key);
+    const res = await fetch("/api/documents", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Échec de l'envoi du document.");
+    const docs = chantier.documents || {};
+    updateChantier({
+      ...chantier,
+      documents: { ...docs, [key]: { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt } },
+      marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, addDate: dateStr } : m)),
+    });
   }
 
   // ---------- 2 bulles PDF par situation (Récapitulatif + Avancement) ----------
@@ -3273,6 +3400,51 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     );
   }
 
+  // Bulle de conservation/récupération de "l'appel d'avance de démarrage"
+  // généré pour un marché/TS (voir handleAvanceGenerated) — mêmes
+  // visuel/interactions que renderSousTraitanceDocBubble (clé
+  // "avance-<marcheId>"), mais on ne l'affiche que quand un PDF a
+  // effectivement été conservé : tant qu'aucun appel d'avance n'a été
+  // généré, le bouton "Appel d'avance de démarrage" suffit déjà comme
+  // invite, une bulle vide juste à côté ferait doublon.
+  function renderMarcheAvanceDocBubble(marcheId) {
+    const key = "avance-" + marcheId;
+    const meta = getDocMeta(docs, key);
+    if (!meta.present) return null;
+    const isUploading = uploadingDocKey === key;
+    return (
+      <div
+        key={key}
+        onClick={() => { if (!isUploading) openDocument(key); }}
+        title={`Appel d'avance de démarrage — ${meta.fileName || "cliquer pour ouvrir"}`}
+        className="relative inline-flex items-center justify-center"
+        style={{
+          width: 24, height: 24, borderRadius: 7,
+          border: `1.5px solid ${COLORS.green}`,
+          background: COLORS.greenSoft,
+          cursor: isUploading ? "default" : "pointer",
+          opacity: isUploading ? 0.6 : 1,
+          flexShrink: 0,
+        }}
+      >
+        {unlocked && !isUploading && (
+          <button
+            onClick={(e) => { e.stopPropagation(); removeDocument(key); }}
+            title="Retirer (Appel d'avance de démarrage)"
+            style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+          >
+            <X size={8} color={COLORS.red} />
+          </button>
+        )}
+        {isUploading ? (
+          <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
+        ) : (
+          <FileText size={12} color={COLORS.green} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 max-w-6xl">
       <button onClick={() => setTab("chantiers")} className="flex items-center gap-1 text-xs font-medium mb-3" style={{ color: COLORS.inkSoft }}>
@@ -3771,7 +3943,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                         </select>
                       </Field>
                       <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
-                      <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => updateMarche(m.id, { addMontant: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
+                      <Field label="% ADD"><TextInput type="number" step="0.1" value={addPctDisplay(m)} onChange={(e) => handleAddPctChange(m, e.target.value)} placeholder="ex. 40" /></Field>
+                      <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => handleAddMontantChange(m, e.target.value)} /></Field>
                       <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
                       {m.addMontant ? (() => {
                         const autoRembourse = chantier.situations.filter((s) => s.marcheId === m.id).reduce((a, s) => a + (s.rembAdd || 0), 0);
@@ -4069,9 +4242,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                   )}
                 </span>
                 {!isProrata && m.addMontant ? (
-                  <Btn size="sm" variant="ghost" onClick={() => setAddPdfMarcheId(m.id)}>
-                    <FileText size={13} /> Appel d'avance de démarrage
-                  </Btn>
+                  <>
+                    <Btn size="sm" variant="ghost" onClick={() => setAddPdfMarcheId(m.id)}>
+                      <FileText size={13} /> Appel d'avance de démarrage
+                    </Btn>
+                    {renderMarcheAvanceDocBubble(m.id)}
+                  </>
                 ) : null}
               </div>
               {unlocked && (
@@ -4478,6 +4654,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           chantier={chantier}
           marche={chantier.marches.find((m) => m.id === addPdfMarcheId)}
           onClose={() => setAddPdfMarcheId(null)}
+          onGenerated={({ file, date }) => handleAvanceGenerated(addPdfMarcheId, file, date)}
         />
       )}
     </div>
