@@ -915,7 +915,7 @@ function allSituationsFlat(chantiers) {
       const displayTitre = ch.isFacturesLibres
         ? ((ch.marches.find((m) => m.id === s.marcheId) || {}).nom || ch.titre)
         : ch.titre;
-      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier });
+      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier, isFacturesLibres: !!ch.isFacturesLibres });
     }
   }
   return out;
@@ -1152,6 +1152,10 @@ function Sidebar({ tab, setTab, unlocked, onLockClick, onSettingsClick, isMobile
 function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, sousTraitants, onOpenSousTraitantDossier }) {
   const { totalEnAttente, impayees, enRetard, totalRetard, chartData, rgAReclamerBientot, betARelancer } = computed;
   const chantiersDocsIncomplets = chantiers.filter((c) => missingDocuments(c).length > 0).length;
+  // "Chantiers actifs" : ni le container caché "Factures ponctuelles" (une
+  // facture seule n'est pas un chantier — voir createFactureSeule) ni les
+  // chantiers déjà archivés ne doivent gonfler ce compteur.
+  const chantiersActifsCount = chantiers.filter((c) => !c.isFacturesLibres && !c.archived).length;
   const [showAllBet, setShowAllBet] = useState(false);
   // Sous-traitants actuellement en mission (contrat ni annulé ni déjà
   // terminé) dont au moins une pièce du dossier administratif est périmée
@@ -1197,7 +1201,7 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
         </Card>
         <Card className="p-4">
           <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Chantiers actifs</div>
-          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.ink }}>{chantiers.length}</div>
+          <div className="text-2xl font-semibold tabular-nums" style={{ color: COLORS.ink }}>{chantiersActifsCount}</div>
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>tous clients confondus</div>
         </Card>
         <Card className="p-4" style={{ cursor: "pointer" }} onClick={() => setTab("documents")}>
@@ -1300,7 +1304,7 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
   );
 }
 // ---------- Reglements en attente ----------
-function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
+function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
   const [q, setQ] = useState("");
   const groups = useMemo(() => {
     const qLower = q.trim().toLowerCase();
@@ -1679,6 +1683,11 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkAddPaid, onMarkRgRec
               onMarkAddPaid(payingSituation.chantierId, payingSituation.marcheId, date);
             } else if (payingSituation.isRgPending) {
               onMarkRgReceived(payingSituation.rgEchueId, date, montant);
+            } else if (payingSituation.isFacturesLibres) {
+              // Facture seule : une fois intégralement réglée elle est
+              // retirée directement (voir markFactureSeulePaid) — pas de
+              // fiche à garder/archiver comme pour un vrai chantier.
+              onMarkFactureSeulePaid(payingSituation.id, date, montant);
             } else {
               onMarkPaid(payingSituation.chantierId, payingSituation.id, date, montant);
             }
@@ -3429,18 +3438,25 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                           </Field>
                         );
                       })() : null}
-                      <Field label="Régime de TVA (s'applique à toutes les situations de ce marché/TS)">
-                        <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
-                          {Object.entries(TVA_REGIMES).map(([key, r]) => (
-                            <option key={key} value={key}>{r.label}</option>
-                          ))}
-                        </select>
-                      </Field>
                     </>
                   )}
+                  {/* Le régime de TVA reste toujours réglable, y compris pour un bloc
+                      PRORATA : il continue de s'appliquer à toutes les situations
+                      enregistrées dans ce bloc (seuls Montant HT/RG/Prorata/ADD sont
+                      propres à chaque situation pour un bloc PRORATA). Historiquement
+                      ce sélecteur disparaissait dès que le type passait à "PRORATA",
+                      ce qui bloquait Morgane sur le régime déjà choisi avant (souvent
+                      "Autoliquidée" repris d'un TS) sans moyen de le changer. */}
+                  <Field label={m.type === "prorata" ? "Régime de TVA (s'applique à toutes les situations de ce bloc)" : "Régime de TVA (s'applique à toutes les situations de ce marché/TS)"}>
+                    <select value={m.tvaRegime || "085"} onChange={(e) => updateMarche(m.id, { tvaRegime: e.target.value })} style={inputStyle} className="outline-none focus:ring-2">
+                      {Object.entries(TVA_REGIMES).map(([key, r]) => (
+                        <option key={key} value={key}>{r.label}</option>
+                      ))}
+                    </select>
+                  </Field>
                   {m.type === "prorata" && (
                     <p className="text-xs" style={{ color: COLORS.inkSoft, gridColumn: "1 / -1" }}>
-                      Montant HT, TVA, RG... se renseignent directement sur chaque situation enregistrée dans ce bloc.
+                      Montant HT, RG, Prorata... se renseignent directement sur chaque situation enregistrée dans ce bloc. Seul le régime de TVA ci-dessus est commun à tout le bloc.
                     </p>
                   )}
                 </div>
@@ -3750,7 +3766,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                                 {renderSituationDocBubble(s, "ea", "EA")}
                               </>
                             )}
-                            {!isProrata && renderFournisseurFacturesBubble(s)}
+                            {/* Seulement si cette situation a effectivement une cession
+                                fournisseur (montant saisi dans "Cessions fournisseur" du
+                                formulaire) ou déjà un fichier déposé — sinon la bulle FF
+                                n'a pas d'utilité et ne fait qu'encombrer l'écran. */}
+                            {!isProrata && ((s.fournisseurs || []).length > 0 || (s.fournisseurFactures || []).length > 0) && renderFournisseurFacturesBubble(s)}
                           </div>
                           {!isProrata && openFournisseurFacturesId === s.id && (
                             <div className="flex flex-col gap-1 mt-1.5 p-1.5 rounded-md" style={{ background: "#F7F5EF", border: `1px solid ${COLORS.line}`, minWidth: 150 }}>
@@ -5426,6 +5446,36 @@ export default function App() {
     persistChantiers(next);
   }
 
+  // Marquer réglée une "facture seule" (container "Factures ponctuelles",
+  // voir createFactureSeule) : contrairement aux situations d'un vrai
+  // chantier — qui restent dans la fiche puis sont archivées avec le
+  // chantier — une facture ponctuelle n'a pas de fiche à archiver. Une fois
+  // intégralement réglée, elle est donc retirée directement (situation +
+  // son marché dédié) plutôt que simplement marquée payée, pour qu'elle
+  // disparaisse de "Règlements en attente" sans laisser de trace qui
+  // s'accumulerait indéfiniment dans ce container caché. Un règlement
+  // partiel, lui, reste affiché avec le solde restant — comme pour
+  // n'importe quel chantier.
+  function markFactureSeulePaid(situationId, dateStr, montant) {
+    const c = chantiers.find((c) => c.id === FACTURES_LIBRES_ID);
+    const s = c && c.situations.find((s) => s.id === situationId);
+    if (!c || !s) return;
+    const dejaRecu = s.montantRegle || 0;
+    const montantCePaiement = montant != null ? montant : Math.max(0, (s.totalARecevoir || 0) - dejaRecu);
+    const totalRecu = Math.round((dejaRecu + montantCePaiement) * 100) / 100;
+    const solde = Math.round(((s.totalARecevoir || 0) - totalRecu) * 100) / 100;
+    if (solde <= 0.01) {
+      const next = chantiers.map((ch) => (ch.id !== FACTURES_LIBRES_ID ? ch : {
+        ...ch,
+        situations: ch.situations.filter((x) => x.id !== situationId),
+        marches: ch.marches.filter((m) => m.id !== s.marcheId),
+      }));
+      persistChantiers(next);
+    } else {
+      markPaid(FACTURES_LIBRES_ID, situationId, dateStr, montant);
+    }
+  }
+
   function markAddPaid(chantierId, marcheId, dateStr) {
     const next = chantiers.map((c) => c.id !== chantierId ? c : {
       ...c, marches: c.marches.map((m) => (m.id === marcheId ? { ...m, addDate: dateStr } : m)),
@@ -5519,7 +5569,7 @@ export default function App() {
         )}
         {tab === "dashboard" && <Dashboard chantiers={chantiers} rgDues={rgDues} computed={computed} setTab={setTab} setSelectedChantier={setSelectedChantierId} sousTraitants={sousTraitants} onOpenSousTraitantDossier={openSousTraitantDossier} />}
         {tab === "reglements" && (
-          <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} onDeleteRgEchue={deleteRgEchue} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
+          <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkFactureSeulePaid={markFactureSeulePaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} onDeleteRgEchue={deleteRgEchue} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
         )}
         {tab === "chantiers" && (
           <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} />
