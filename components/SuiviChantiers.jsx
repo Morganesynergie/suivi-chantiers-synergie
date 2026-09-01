@@ -3535,56 +3535,83 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 const sst = sousTraitants.find((s) => s.id === entry.sousTraitantId);
                 return (
                   <div key={entry.id} className="rounded-lg p-3" style={{ border: `1px solid ${COLORS.line}`, background: "#FBFAF6" }}>
-                    <div className="flex flex-wrap items-end gap-2 mb-2.5">
-                      <Field label="Sous-traitant">
-                        <select
-                          value={entry.sousTraitantId || ""}
-                          disabled={!unlocked}
-                          onChange={(e) => {
-                            if (e.target.value === "__new__") { setAddingSousTraitantForEntryId(entry.id); setNewSousTraitantNom(""); return; }
-                            updateSousTraitanceEntry(entry.id, { sousTraitantId: e.target.value });
-                          }}
-                          style={{ ...inputStyle, minWidth: 190 }}
-                          className="outline-none focus:ring-2"
-                        >
-                          <option value="">— Choisir —</option>
-                          {sousTraitants.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
-                          {unlocked && <option value="__new__">+ Nouveau sous-traitant…</option>}
-                        </select>
-                      </Field>
-                      <Field label="Montant HT">
-                        <TextInput
-                          type="number"
-                          value={entry.montant ?? ""}
-                          disabled={!unlocked}
-                          onChange={(e) => updateSousTraitanceEntry(entry.id, { montant: e.target.value === "" ? null : Number(e.target.value) })}
-                          style={{ width: 110 }}
-                        />
-                      </Field>
-                      <Field label="Date début">
-                        <TextInput type="date" value={entry.dateDebut || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateDebut: e.target.value })} style={{ width: 145 }} />
-                      </Field>
-                      <Field label="Date fin">
-                        <TextInput type="date" value={entry.dateFin || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateFin: e.target.value })} style={{ width: 145 }} />
-                      </Field>
-                      <Field label="Statut DC4">
-                        <select value={entry.statutDc4 || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutDc4: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
-                          <option value="">— (non concerné)</option>
-                          {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Statut Contrat">
-                        <select value={entry.statutContrat || ""} disabled={!unlocked} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutContrat: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
-                          <option value="">—</option>
-                          {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
-                      </Field>
-                      {unlocked && (
+                    {unlocked ? (
+                      <div className="flex flex-wrap items-end gap-2 mb-2.5">
+                        <Field label="Sous-traitant">
+                          <select
+                            value={entry.sousTraitantId || ""}
+                            onChange={(e) => {
+                              if (e.target.value === "__new__") { setAddingSousTraitantForEntryId(entry.id); setNewSousTraitantNom(""); return; }
+                              updateSousTraitanceEntry(entry.id, { sousTraitantId: e.target.value });
+                            }}
+                            style={{ ...inputStyle, minWidth: 190 }}
+                            className="outline-none focus:ring-2"
+                          >
+                            <option value="">— Choisir —</option>
+                            {sousTraitants.map((s) => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                            <option value="__new__">+ Nouveau sous-traitant…</option>
+                          </select>
+                        </Field>
+                        <Field label="Montant HT">
+                          <TextInput
+                            type="number"
+                            value={entry.montant ?? ""}
+                            onChange={(e) => updateSousTraitanceEntry(entry.id, { montant: e.target.value === "" ? null : Number(e.target.value) })}
+                            style={{ width: 110 }}
+                          />
+                        </Field>
+                        <Field label="Date début">
+                          <TextInput type="date" value={entry.dateDebut || ""} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateDebut: e.target.value })} style={{ width: 145 }} />
+                        </Field>
+                        <Field label="Date fin">
+                          <TextInput type="date" value={entry.dateFin || ""} onChange={(e) => updateSousTraitanceEntry(entry.id, { dateFin: e.target.value })} style={{ width: 145 }} />
+                        </Field>
+                        <Field label="Statut DC4">
+                          <select value={entry.statutDc4 || ""} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutDc4: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
+                            <option value="">— (non concerné)</option>
+                            {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Statut Contrat">
+                          <select value={entry.statutContrat || ""} onChange={(e) => updateSousTraitanceEntry(entry.id, { statutContrat: e.target.value })} style={{ ...inputStyle, minWidth: 155 }} className="outline-none focus:ring-2">
+                            <option value="">—</option>
+                            {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                        </Field>
                         <button onClick={() => removeSousTraitanceEntry(entry.id)} title="Supprimer ce sous-traitant de ce chantier (et ses pièces jointes)" className="p-1.5 rounded-md h-fit">
                           <Trash2 size={14} color={COLORS.red} />
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      // Consultation seule : simples écritures, pas de cases qui
+                      // laissent croire que c'est modifiable (voir demande de Morgane).
+                      <div className="flex flex-wrap items-end gap-x-5 gap-y-2 mb-2.5">
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Sous-traitant</div>
+                          <div className="text-sm font-medium" style={{ color: COLORS.ink }}>{sst ? sst.nom : "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Montant HT</div>
+                          <div className="text-sm" style={{ color: COLORS.ink }}>{entry.montant != null && entry.montant !== "" ? fmtEUR(entry.montant) : "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Date début</div>
+                          <div className="text-sm" style={{ color: COLORS.ink }}>{fmtDate(entry.dateDebut)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Date fin</div>
+                          <div className="text-sm" style={{ color: COLORS.ink }}>{fmtDate(entry.dateFin)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Statut DC4</div>
+                          {entry.statutDc4 ? <Pill color={ssTraitanceStatutColor(entry.statutDc4)}>{ssTraitanceStatutLabel(entry.statutDc4)}</Pill> : <span className="text-sm" style={{ color: COLORS.inkSoft }}>— (non concerné)</span>}
+                        </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Statut Contrat</div>
+                          {entry.statutContrat ? <Pill color={ssTraitanceStatutColor(entry.statutContrat)}>{ssTraitanceStatutLabel(entry.statutContrat)}</Pill> : <span className="text-sm" style={{ color: COLORS.inkSoft }}>—</span>}
+                        </div>
+                      </div>
+                    )}
                     {addingSousTraitantForEntryId === entry.id && (
                       <div className="flex items-center gap-2 mb-2.5 p-2 rounded-md" style={{ background: COLORS.accentSoft }}>
                         <TextInput
