@@ -740,6 +740,594 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
   );
 }
 
+// ---------- Contrat de sous-traitance (généré à partir des modèles réels de
+// Morgane) ----------
+// Reprend, article par article, le texte de ses 3 modèles réels (marché
+// privé/paiement direct, marché privé/paiement Synergie, marché
+// public/paiement Synergie) — seul l'Article 5 (Facturation et paiement)
+// change selon entry.modePaiement, et le bloc final d'agrément du maître
+// d'ouvrage n'apparaît que lorsqu'un paiement direct est en jeu ou que le
+// marché est public (isDirect || isPublic) : c'est le cas de figure où la
+// loi n°75-1334 impose que le maître d'ouvrage agrée les conditions de
+// paiement du sous-traitant. Le 4e cas (marché public + paiement direct)
+// n'existait pas encore chez Morgane : reconstruit à partir du modèle
+// "marché privé/paiement direct" (même article 5, même bloc d'agrément),
+// simplement avec le sous-titre "Marché Public".
+// Numérotation des articles : le modèle papier saute de l'Article 2 à
+// l'Article 4 (pas d'Article 3) — conservé tel quel. En revanche le modèle
+// papier utilise deux fois "Article 9" (Horaires puis Litiges) : corrigé
+// ici en Article 9 / 10 / 11 (Pièces justificatives).
+const SYNERGIE_REPRESENTANT = "Franck ASSELIN, Président";
+const CONTRAT_ATTESTATION_HONNEUR_HTML = `
+  <p>Le Sous-traitant déclare et atteste sur l'honneur :</p>
+  <ul>
+    <li>être régulièrement immatriculé au Registre du Commerce et des Sociétés (RCS) ou au Répertoire des Métiers (RM), et disposer de la qualification professionnelle requise pour l'exécution des prestations objet du présent contrat ;</li>
+    <li>être à jour de ses obligations d'assurance (responsabilité civile professionnelle, garantie décennale le cas échéant) ;</li>
+    <li>être en règle au regard de sa situation sociale (URSSAF) et fiscale ;</li>
+    <li>respecter les dispositions du Code du travail relatives à la lutte contre le travail dissimulé, notamment les articles L.8221-1 et L.8251-1, et notamment :
+      <ul>
+        <li>ne pas dissimuler tout ou partie de son activité, de son personnel ou de ses heures de travail ;</li>
+        <li>ne pas employer, directement ou indirectement, des salariés étrangers non autorisés à exercer une activité salariée en France ;</li>
+      </ul>
+    </li>
+    <li>s'engager à maintenir cette situation régulière pendant toute la durée d'exécution du présent contrat, et à transmettre à l'Entreprise Principale, sur simple demande, tout justificatif permettant d'en attester.</li>
+  </ul>
+  <p>L'Entreprise Principale se réserve le droit de demander à tout moment les justificatifs correspondants et de procéder à toute vérification utile. Tout manquement constaté à ces engagements pourra entraîner la résiliation immédiate du présent contrat, sans préjudice de tout recours.</p>
+`;
+const CONTRAT_ARTICLE1_HTML = (sst) => `
+  <h3>Article 1 – Déclarations du sous-traitant</h3>
+  <p>${(sst && sst.representant) || "Le représentant du Sous-traitant"} déclare sur l'honneur que l'entreprise ${(sst && sst.nom) || "susvisée"} est en règle avec l'ensemble des dispositions légales et réglementaires en vigueur relatives à l'exercice de son activité, à sa situation sociale et fiscale, et qu'elle dispose des moyens humains, matériels et techniques nécessaires à la bonne exécution de la mission objet du présent contrat.</p>
+`;
+const CONTRAT_ARTICLE2_HTML = `
+  <h3>Article 2 – Mention spéciale sur les Équipements de Protection Individuelle (E.P.I)</h3>
+  <p>SYNERGIE BTP ne fournit plus de matériel aux entreprises sous-traitantes, à l'exception de la scie à sol et de la plaque vibrante-compacteur, prêtées sur demande avec cahier d'enregistrement.</p>
+  <p>Le matériel suivant reste à la charge de chaque entreprise sous-traitante :</p>
+  <ul>
+    <li><strong>Équipements de Protection Individuelle obligatoires</strong> : casque, chaussures de sécurité, gants adaptés, gilet haute visibilité, lunettes de protection, protections auditives selon les postes.</li>
+    <li><strong>Matériel de maçon</strong> : truelle, taloche, niveau, cordeau, bétonnière/malaxeur portatif, brouette, etc.</li>
+    <li><strong>Outillage</strong> : outillage à main et électroportatif nécessaire à l'exécution de sa prestation.</li>
+  </ul>
+  <p>Le Sous-traitant certifie que ses salariés sont équipés d'E.P.I conformes et en bon état, et s'engage à les porter en permanence sur le chantier.</p>
+`;
+const CONTRAT_ARTICLE4_HTML = `
+  <h3>Article 4 – Devis et commande</h3>
+  <p>Toute intervention du Sous-traitant fait l'objet d'un devis écrit préalable, validé par SYNERGIE BTP avant tout démarrage des travaux. Un acompte pourra être versé pour l'achat de matériaux, sur présentation des justificatifs correspondants. Toute modification de la prestation (quantités, nature des travaux, délais) fait l'objet d'un avenant écrit signé des deux parties.</p>
+`;
+function contratArticle5Html({ isDirect, montantHtLabel }) {
+  if (isDirect) {
+    return `
+      <h3>Article 5 – Facturation et paiement</h3>
+      <div class="boxed-warning">⚠ Le présent contrat est conclu dans le cadre d'un marché avec stipulation de paiement direct du sous-traitant par le maître d'ouvrage, conformément à la loi n°75-1334 du 31 décembre 1975 relative à la sous-traitance.</div>
+      <p><strong>Situations mensuelles :</strong> le Sous-traitant établit une situation mensuelle qu'il adresse à SYNERGIE BTP en fin de chaque mois, et jamais directement au Maître d'Ouvrage. SYNERGIE BTP vérifie et valide cette situation, ou formule ses réserves, puis la transmet au Bureau d'Études du Maître d'Ouvrage pour validation technique.</p>
+      <p><strong>Modalités de paiement direct :</strong> conformément à la loi n°75-1334, le paiement est effectué directement par le Maître d'Ouvrage dans un délai de 30 jours à compter de la validation par le Bureau d'Études. Le montant réglé est limité à la part du marché principal correspondant à la prestation sous-traitée, telle qu'elle résulte du présent acte spécial agréé par le Maître d'Ouvrage.</p>
+      ${montantHtLabel}
+    `;
+  }
+  return `
+    <h3>Article 5 – Facturation et paiement</h3>
+    <p>Les factures doivent être transmises dès la fin des travaux ou selon l'échéancier établi. Il est expressément convenu entre les parties que le Sous-traitant ne pourra en aucun cas solliciter ni recevoir de paiement direct de la part du Maître d'Ouvrage, et ce, à quelque titre que ce soit.</p>
+    <p>Le Sous-traitant reconnaît et accepte expressément que l'intégralité de sa rémunération au titre du présent contrat sera exclusivement réglée par la société Synergie BTP, selon les conditions financières et les modalités de paiement définies aux présentes. En conséquence, le Sous-traitant renonce irrévocablement à tout droit au paiement direct par le Maître d'Ouvrage et s'engage à ne formuler aucune réclamation, demande ou action à ce titre.</p>
+    <p>Les paiements seront effectués conformément au montant du devis accepté et sous 30 jours à réception de la facture. La société Synergie BTP s'engage irrévocablement à régler directement le Sous-traitant, conformément aux conditions financières prévues au présent acte et agréées par le maître d'ouvrage, dans le respect des dispositions de la loi n°75-1334 du 31 décembre 1975 relative à la sous-traitance.</p>
+    ${montantHtLabel}
+  `;
+}
+const CONTRAT_ARTICLE6_HTML = `
+  <h3>Article 6 – Responsabilités et assurances</h3>
+  <p>Le Sous-traitant justifie être couvert par une assurance responsabilité civile professionnelle et, le cas échéant, une garantie décennale, dont les attestations sont à jour et communiquées à l'Entreprise Principale.</p>
+`;
+const CONTRAT_ARTICLE7_HTML = `
+  <h3>Article 7 – Sécurité et règles de chantier</h3>
+  <p>Le Sous-traitant s'engage à respecter le Plan Particulier de Sécurité et de Protection de la Santé (PPSPS) ou le Plan de Prévention (PDP) applicable, ainsi que l'ensemble des consignes de sécurité du chantier : port des E.P.I, participation aux causeries sécurité, respect des zones de stockage/circulation/balisage, interdiction de toute consommation d'alcool ou de substances sur le chantier, et signalement immédiat de tout incident. Tout manquement majeur pourra entraîner l'exclusion immédiate du chantier.</p>
+`;
+const CONTRAT_ARTICLE8_HTML = `
+  <h3>Article 8 – Propreté, déchets et fin de journée</h3>
+  <p>Le Sous-traitant maintient sa zone de travail propre, trie ses déchets et les dépose aux points prévus à cet effet, et restitue chaque zone en fin de journée dans un état correct. En cas de non-respect, des frais de remise en état pourront être appliqués.</p>
+`;
+const CONTRAT_ARTICLE9_HORAIRES_HTML = `
+  <h3>Article 9 – Horaires, accès et communication</h3>
+  <p>Le Sous-traitant respecte les horaires de chantier fixés par SYNERGIE BTP et s'engage à l'informer sans délai de tout retard, absence ou aléa. Il se présente au responsable de chantier à son arrivée et respecte les modalités d'accès en vigueur (badge, registre, autorisation).</p>
+`;
+const CONTRAT_ARTICLE10_LITIGES_HTML = `
+  <h3>Article 10 – Litiges</h3>
+  <p>En cas de différend relatif à l'exécution ou à l'interprétation du présent contrat, les parties s'efforceront de trouver une solution amiable. À défaut d'accord amiable, le tribunal compétent du lieu du chantier sera seul compétent.</p>
+`;
+function contratArticle11PiecesHtml(pieces) {
+  const rows = (pieces || []).map((p) => `<li><span class="checkbox">${p.checked ? "☑" : "☐"}</span> ${p.label}</li>`).join("");
+  return `
+    <h3>Article 11 – Pièces justificatives</h3>
+    <p>Le Sous-traitant a remis à l'Entreprise Principale les pièces suivantes (cochées ci-dessous) :</p>
+    <ul class="pieces-list">${rows}</ul>
+  `;
+}
+const CONTRAT_MOA_ACCEPTATION_HTML = `
+  <h3>Acceptation du sous-traitant et agrément des conditions de paiement par le maître d'ouvrage</h3>
+  <p>Conformément à la loi n°75-1334 du 31 décembre 1975 relative à la sous-traitance, le Sous-traitant désigné ci-dessus est présenté par l'Entreprise Principale au maître d'ouvrage. Le maître d'ouvrage accepte le Sous-traitant et agrée les conditions de paiement définies à l'Article 5 ci-dessus, à effet de la date de signature ci-dessous.</p>
+`;
+// Construit le HTML imprimable du contrat, à partir des données du
+// chantier, du sous-traitant et de l'entrée (montant/dates/mode de
+// paiement), plus les champs saisis dans la modale (mission, retenue de
+// garantie, pièces cochées, infos d'agrément MO).
+function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
+  const isDirect = entry.modePaiement === "direct";
+  const isPublic = chantier.marchePublic === true;
+  const showMoaBlock = isDirect || isPublic;
+  const subtitle = isPublic ? "Marché Public" : "Marché Privé";
+  const montantHt = fields.montantHt;
+  const montantHtLabel = "";
+  const piecesHtml = contratArticle11PiecesHtml(fields.pieces);
+  const sstAdresseHtml = (sousTraitant.adresse || "").split("\n").map((l) => `<div>${l}</div>`).join("");
+  return `
+    <html><head><title>Contrat de sous-traitance — ${chantier.titre} — ${sousTraitant.nom || ""}</title>
+    <style>
+      body{font-family:Georgia,'Times New Roman',serif;color:#16233B;padding:0;font-size:12px;line-height:1.55;}
+      .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);font-family:system-ui,sans-serif;}
+      .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
+      .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
+      .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;}
+      .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
+      .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;font-family:system-ui,sans-serif;}
+      .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:system-ui,sans-serif;}
+      @media print { .close-bar{display:none;} .page{page-break-after:always;} .page:last-child{page-break-after:auto;} }
+      .page{padding:34px 40px;max-width:760px;margin:0 auto;}
+      .cover{text-align:center;padding-top:120px;}
+      .cover .title{font-size:24px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;border:2px solid #16233B;display:inline-block;padding:14px 34px;margin-bottom:14px;}
+      .cover .subtitle{font-size:15px;font-weight:600;margin-bottom:60px;}
+      .cover .party{margin:34px 0;}
+      .cover .party .kind{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:6px;}
+      .cover .party .name{font-size:18px;font-weight:700;}
+      h3{font-size:13px;text-transform:uppercase;letter-spacing:0.02em;border-bottom:1px solid #16233B;padding-bottom:4px;margin:20px 0 8px 0;}
+      h3:first-child{margin-top:0;}
+      p{margin:6px 0;text-align:justify;}
+      ul{margin:6px 0 10px 0;padding-left:22px;}
+      li{margin:3px 0;}
+      .boxed-warning{border:1.5px solid #B8720A;background:#FBF1E0;color:#7A4A05;font-weight:700;padding:10px 12px;margin:10px 0;border-radius:4px;font-size:11.5px;}
+      .info-box{border:1.5px solid #16233B;border-radius:6px;padding:14px 16px;margin:16px 0;}
+      .info-box .row{display:flex;gap:8px;margin:3px 0;}
+      .info-box .row .label{width:190px;flex-shrink:0;color:#5A6478;}
+      .info-box .row .val{font-weight:600;}
+      .pieces-list{list-style:none;padding-left:0;}
+      .pieces-list li{display:flex;align-items:flex-start;gap:8px;}
+      .checkbox{font-size:14px;line-height:1.3;}
+      .sig-grid{display:flex;justify-content:space-between;gap:24px;margin-top:26px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:12px 14px;font-size:11px;min-height:120px;}
+      .sig-block .sig-title{font-weight:700;margin-bottom:8px;}
+      .fait{margin:18px 0 6px 0;font-size:12px;}
+      .moa-block{margin-top:28px;padding-top:14px;border-top:1.5px solid #16233B;}
+      .moa-fields{margin:10px 0;}
+      .moa-fields .row{margin:4px 0;}
+      .moa-fields .fill{display:inline-block;border-bottom:1px solid #16233B;min-width:220px;}
+    </style></head><body>
+    <div class="close-bar">
+      <div class="close-bar-brand">
+        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+        <span class="close-bar-label">Aperçu avant impression</span>
+      </div>
+      <div class="close-bar-actions">
+        <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+        <button class="close-btn" onclick="window.close()">✕ Fermer</button>
+      </div>
+    </div>
+
+    <div class="page cover">
+      <div class="title">Contrat de sous-traitance</div>
+      <div class="subtitle">${subtitle}</div>
+      <div class="party">
+        <div class="kind">Entreprise principale</div>
+        <div class="name">SYNERGIE BTP</div>
+      </div>
+      <div class="party">
+        <div class="kind">Entreprise secondaire</div>
+        <div class="name">${sousTraitant.nom || ""}</div>
+      </div>
+    </div>
+
+    <div class="page">
+      <h3>Attestation sur l'honneur</h3>
+      ${CONTRAT_ATTESTATION_HONNEUR_HTML}
+      <div class="sig-grid">
+        <div class="sig-block">
+          <div class="sig-title">Signature et cachet de l'entreprise Sous-Traitante</div>
+          <div>${sousTraitant.nom || ""}</div>
+          ${sstAdresseHtml}
+          ${sousTraitant.siret ? `<div>SIRET : ${sousTraitant.siret}</div>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="page">
+      <p>Entre : La société SYNERGIE BTP (SAS)<br/>
+      Adresse du siège social : ${SYNERGIE_BTP_COORDS.adresse}<br/>
+      SIRET : ${SYNERGIE_BTP_COORDS.siret}<br/>
+      Représentée par : ${SYNERGIE_REPRESENTANT}<br/>
+      Ci-après dénommée l'Entreprise,</p>
+      <p>Et : ${sousTraitant.nom || ""}<br/>
+      Sous-traitant,<br/>
+      Adresse : ${sousTraitant.adresse || ""}<br/>
+      SIRET : ${sousTraitant.siret || ""}<br/>
+      Représenté par : ${sousTraitant.representant || ""}<br/>
+      Ci-après dénommé le Sous-traitant,</p>
+      <div class="info-box">
+        <div class="row"><span class="label">Mission</span><span class="val">${fields.missionDescription || ""}</span></div>
+        <div class="row"><span class="label">Chantier</span><span class="val">${chantier.titre || ""}</span></div>
+        <div class="row"><span class="label">Lieu d'exécution</span><span class="val">${chantier.adresseChantier || ""}</span></div>
+        <div class="row"><span class="label">Date début</span><span class="val">${fmtDate(fields.dateDebut)}</span></div>
+        <div class="row"><span class="label">Date de fin</span><span class="val">${fmtDate(fields.dateFin)}</span></div>
+        <div class="row"><span class="label">Montant H.T. de la prestation</span><span class="val">${fmtEUR(montantHt)}</span></div>
+        <div class="row"><span class="label">TVA</span><span class="val">Autoliquidée</span></div>
+        <div class="row"><span class="label">Retenue de garantie</span><span class="val">${fields.retenueGarantie || "Pas de retenue de garantie"}</span></div>
+      </div>
+      ${CONTRAT_ARTICLE1_HTML(sousTraitant)}
+      ${CONTRAT_ARTICLE2_HTML}
+    </div>
+
+    <div class="page">
+      ${CONTRAT_ARTICLE4_HTML}
+      ${contratArticle5Html({ isDirect, montantHtLabel })}
+      ${CONTRAT_ARTICLE6_HTML}
+    </div>
+
+    <div class="page">
+      ${CONTRAT_ARTICLE7_HTML}
+      ${CONTRAT_ARTICLE8_HTML}
+      ${CONTRAT_ARTICLE9_HORAIRES_HTML}
+      ${CONTRAT_ARTICLE10_LITIGES_HTML}
+      ${piecesHtml}
+    </div>
+
+    <div class="page">
+      <div class="fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
+      <div class="sig-grid">
+        <div class="sig-block">
+          <div class="sig-title">Signature du représentant de SYNERGIE BTP<br/>(précédée de la mention « Lu et approuvé »)</div>
+          <div>SYNERGIE BTP SAS au capital de ${SYNERGIE_BTP_COORDS.capital}</div>
+          <div>${SYNERGIE_BTP_COORDS.adresse}</div>
+          <div>SIRET ${SYNERGIE_BTP_COORDS.siret} - APE ${SYNERGIE_BTP_COORDS.ape}</div>
+          <div>${SYNERGIE_REPRESENTANT}</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-title">Signature et cachet du sous-traitant<br/>(précédée de la mention « Lu et approuvé »)</div>
+          <div>${sousTraitant.nom || ""}</div>
+          ${sstAdresseHtml}
+          ${sousTraitant.siret ? `<div>SIRET : ${sousTraitant.siret}</div>` : ""}
+        </div>
+      </div>
+      ${showMoaBlock ? `
+      <div class="moa-block">
+        ${CONTRAT_MOA_ACCEPTATION_HTML}
+        <div class="moa-fields">
+          <div class="row">Je soussigné(e), Nom/Raison sociale du maître d'ouvrage : <span class="fill">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
+          <div class="row">Représenté par : <span class="fill">${fields.moaRepresentant || ""}</span></div>
+          <div class="row">Fait à : <span class="fill">${fields.moaFaitA || ""}</span> &nbsp; Le : <span class="fill">${fmtDate(fields.moaDate) || ""}</span></div>
+        </div>
+        <div class="sig-block" style="margin-top:10px;">
+          <div class="sig-title">Signature et cachet du maître d'ouvrage</div>
+        </div>
+      </div>
+      ` : ""}
+    </div>
+    </body></html>
+  `;
+}
+
+// Modale de génération du contrat de sous-traitance — même approche que
+// AvanceDemarragePdfModal (champs pré-remplis modifiables, ouverture d'un
+// aperçu imprimable), MAIS sans archivage automatique dans les documents du
+// chantier : le PDF généré ici est un brouillon à faire signer, pas encore
+// le contrat signé — c'est toujours le dépôt manuel du contrat scanné/signé
+// dans la bulle "Contrat" du sous-traitant (déjà en place) qui doit faire
+// passer le statut à "Signé Client" (voir setDocMeta), jamais cette
+// génération. Le mode de paiement et le caractère public du marché ne sont
+// pas modifiables ici : ils viennent de la fiche (champ "Paiement du
+// sous-traitant" de l'entrée, case "Marché public" du chantier) pour rester
+// cohérents avec l'alerte "contrat manquant" et le suivi de statut.
+function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }) {
+  const isDirect = entry.modePaiement === "direct";
+  const isPublic = chantier.marchePublic === true;
+  const [missionDescription, setMissionDescription] = useState(entry.missionDescription || "");
+  const [dateDebut, setDateDebut] = useState(entry.dateDebut || "");
+  const [dateFin, setDateFin] = useState(entry.dateFin || "");
+  const [montantHt, setMontantHt] = useState(entry.montant !== "" && entry.montant != null ? String(entry.montant) : "");
+  const [retenueGarantie, setRetenueGarantie] = useState("Pas de retenue de garantie");
+  const [dateFait, setDateFait] = useState(new Date().toISOString().slice(0, 10));
+  const [moaRaisonSociale, setMoaRaisonSociale] = useState(chantier.client || "");
+  const [moaRepresentant, setMoaRepresentant] = useState("");
+  const [moaFaitA, setMoaFaitA] = useState("");
+  const [moaDate, setMoaDate] = useState("");
+  const [pieces, setPieces] = useState(() => sousTraitancePiecesChecklist(sousTraitant));
+  const [genError, setGenError] = useState("");
+
+  if (!sousTraitant) return null;
+
+  function togglePiece(key) {
+    setPieces((prev) => prev.map((p) => (p.key === key ? { ...p, checked: !p.checked } : p)));
+  }
+
+  function generate() {
+    setGenError("");
+    const html = contratSousTraitanceHtml({
+      chantier,
+      entry,
+      sousTraitant,
+      fields: { missionDescription, dateDebut, dateFin, montantHt: parseFloat(montantHt) || 0, retenueGarantie, dateFait, moaRaisonSociale, moaRepresentant, moaFaitA, moaDate, pieces },
+    });
+    const fileName = `Contrat_sous_traitance_${sanitizeFileName(chantier.titre)}_${sanitizeFileName(sousTraitant.nom)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setGenError });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+      <Card className="w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-semibold text-base" style={{ color: COLORS.ink }}>Générer le contrat de sous-traitance</h3>
+          <button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: COLORS.inkSoft }}>
+          {sousTraitant.nom} — {isPublic ? "Marché Public" : "Marché Privé"}, paiement {isDirect ? "direct par le maître d'ouvrage" : "par Synergie BTP"}.
+          {" "}Pour changer ces deux points, modifie "Paiement du sous-traitant" sur cette entrée ou la case "Marché public" du chantier, puis régénère.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Field label="Mission (description de la prestation sous-traitée)">
+            <TextInput value={missionDescription} onChange={(e) => setMissionDescription(e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date début"><TextInput type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} /></Field>
+            <Field label="Date fin"><TextInput type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Montant H.T. de la prestation"><TextInput type="number" step="0.01" value={montantHt} onChange={(e) => setMontantHt(e.target.value)} /></Field>
+            <Field label="Retenue de garantie"><TextInput value={retenueGarantie} onChange={(e) => setRetenueGarantie(e.target.value)} /></Field>
+          </div>
+          <Field label='Date du contrat ("Fait à Petit-Bourg, le")'><TextInput type="date" value={dateFait} onChange={(e) => setDateFait(e.target.value)} /></Field>
+          {(isDirect || isPublic) && (
+            <div className="p-2.5 rounded-md" style={{ background: COLORS.accentSoft }}>
+              <p className="text-xs font-medium mb-2" style={{ color: COLORS.ink }}>Agrément du maître d'ouvrage (bloc de fin de contrat)</p>
+              <div className="flex flex-col gap-2">
+                <Field label="Nom / raison sociale du maître d'ouvrage"><TextInput value={moaRaisonSociale} onChange={(e) => setMoaRaisonSociale(e.target.value)} /></Field>
+                <Field label="Représenté par"><TextInput value={moaRepresentant} onChange={(e) => setMoaRepresentant(e.target.value)} placeholder="optionnel — peut être complété à la main" /></Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Fait à"><TextInput value={moaFaitA} onChange={(e) => setMoaFaitA(e.target.value)} /></Field>
+                  <Field label="Le"><TextInput type="date" value={moaDate} onChange={(e) => setMoaDate(e.target.value)} /></Field>
+                </div>
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.ink }}>Pièces justificatives (article 11) — pré-cochées depuis le dossier du sous-traitant</p>
+            <div className="flex flex-col gap-1">
+              {pieces.map((p) => (
+                <label key={p.key} className="flex items-center gap-2 text-xs" style={{ color: COLORS.ink }}>
+                  <input type="checkbox" checked={p.checked} onChange={() => togglePiece(p.key)} />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          {genError && <p className="text-xs" style={{ color: COLORS.red }}>{genError}</p>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Fermer</Btn>
+          <Btn variant="primary" onClick={generate}>Générer le PDF</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ---------- DC4 (déclaration de sous-traitance, marché public) ----------
+// Le DC4 officiel n'a PAS de numéro Cerfa et n'existe QUE sous forme de
+// modèle Word éditable (DAJ/Bercy, version "DC4-2023") — il n'y a donc
+// aucun PDF officiel à remplir par-dessus (pas d'AcroForm, pdf-lib ne sert
+// à rien ici). Ce générateur reproduit la structure en rubriques A à K du
+// modèle officiel (notice DC4-2023, economie.gouv.fr/daj) et la remplit
+// avec les données déjà saisies dans l'appli — ce n'est PAS littéralement
+// le fichier Word officiel, seulement un document mis en forme de façon
+// équivalente, à vérifier avant envoi (mention affichée sur le document
+// lui-même). N'est proposé que sur les chantiers marché public.
+function dc4Html({ chantier, entry, sousTraitant, fields }) {
+  const isDirect = entry.modePaiement === "direct";
+  const marchePrincipal = (chantier.marches || []).find((m) => m.type === "principal");
+  const tauxTva = (marchePrincipal && marchePrincipal.tauxTva) || 0.085;
+  const ht = parseFloat(fields.montantHt) || 0;
+  const tva = Math.round(ht * tauxTva * 100) / 100;
+  const ttc = Math.round((ht + tva) * 100) / 100;
+  const droitPaiementDirect = ttc >= 600;
+  const sstAdresseHtml = (sousTraitant.adresse || "").split("\n").map((l) => `<div>${l}</div>`).join("");
+  const piecesHtml = (fields.pieces || []).map((p) => `<li><span class="checkbox">${p.checked ? "☑" : "☐"}</span> ${p.label}</li>`).join("");
+  return `
+    <html><head><title>DC4 — ${chantier.titre} — ${sousTraitant.nom || ""}</title>
+    <style>
+      body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;font-size:11.5px;line-height:1.5;}
+      .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
+      .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
+      .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
+      .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;}
+      .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
+      .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
+      .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+      @media print { .close-bar{display:none;} }
+      .title-bar{text-align:center;border:2px solid #16233B;padding:10px;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:4px;}
+      .disclaimer{font-size:9.5px;color:#8A93A3;text-align:center;margin-bottom:16px;font-style:italic;}
+      .rubrique{border:1px solid #C9C2AE;border-radius:6px;padding:10px 14px;margin-bottom:10px;}
+      .rubrique .letter{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:#16233B;color:#fff;font-weight:700;font-size:11px;margin-right:8px;}
+      .rubrique .rlabel{font-weight:700;text-transform:uppercase;font-size:11px;}
+      .rubrique .rbody{margin-top:6px;}
+      .row{display:flex;gap:8px;margin:2px 0;}
+      .row .label{width:230px;flex-shrink:0;color:#5A6478;}
+      .row .val{font-weight:600;}
+      .pieces-list{list-style:none;padding-left:0;margin:4px 0;}
+      .pieces-list li{display:flex;align-items:flex-start;gap:8px;margin:2px 0;}
+      .checkbox{font-size:13px;}
+      .sig-grid{display:flex;gap:16px;margin-top:16px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:10px 12px;min-height:90px;font-size:10.5px;}
+      .sig-title{font-weight:700;margin-bottom:6px;}
+      p{margin:4px 0;text-align:justify;}
+      .art{font-size:10px;color:#5A6478;}
+    </style></head><body>
+    <div class="close-bar">
+      <div class="close-bar-brand">
+        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+        <span class="close-bar-label">Aperçu avant impression</span>
+      </div>
+      <div class="close-bar-actions">
+        <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+        <button class="close-btn" onclick="window.close()">✕ Fermer</button>
+      </div>
+    </div>
+    <div class="title-bar">DC4 — Déclaration de sous-traitance</div>
+    <div class="disclaimer">Document reconstitué à partir de la structure du modèle officiel DAJ (DC4-2023, economie.gouv.fr) — il n'existe aucun formulaire Cerfa ni PDF officiel pour le DC4 (distribué uniquement en Word éditable) : à relire avant envoi au pouvoir adjudicateur.</div>
+
+    <div class="rubrique">
+      <span class="letter">A</span><span class="rlabel">Pouvoir adjudicateur / maître d'ouvrage</span>
+      <div class="rbody">
+        <div class="row"><span class="label">Nom / raison sociale</span><span class="val">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">B</span><span class="rlabel">Objet du marché</span>
+      <div class="rbody">
+        <div class="row"><span class="label">Chantier</span><span class="val">${chantier.titre || ""}</span></div>
+        <div class="row"><span class="label">Lieu d'exécution</span><span class="val">${chantier.adresseChantier || ""}</span></div>
+        <div class="row"><span class="label">N° chantier</span><span class="val">${chantier.nChantier || ""}</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">C</span><span class="rlabel">Objet de la déclaration</span>
+      <div class="rbody"><p>Déclaration de sous-traitant présentée après la conclusion du marché (acte spécial de sous-traitance).</p></div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">D</span><span class="rlabel">Identification du titulaire du marché</span>
+      <div class="rbody">
+        <div class="row"><span class="label">Dénomination</span><span class="val">SYNERGIE BTP (SAS)</span></div>
+        <div class="row"><span class="label">Adresse</span><span class="val">${SYNERGIE_BTP_COORDS.adresse}</span></div>
+        <div class="row"><span class="label">SIRET</span><span class="val">${SYNERGIE_BTP_COORDS.siret}</span></div>
+        <div class="row"><span class="label">Représenté par</span><span class="val">${SYNERGIE_REPRESENTANT}</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">E</span><span class="rlabel">Identification du sous-traitant proposé</span>
+      <div class="rbody">
+        <div class="row"><span class="label">Dénomination</span><span class="val">${sousTraitant.nom || ""}</span></div>
+        <div class="row"><span class="label">Adresse</span><span class="val">${sstAdresseHtml}</span></div>
+        <div class="row"><span class="label">SIRET</span><span class="val">${sousTraitant.siret || ""}</span></div>
+        <div class="row"><span class="label">Représenté par</span><span class="val">${sousTraitant.representant || ""}</span></div>
+        <div class="row"><span class="label">Droit au paiement direct (≥ 600 € TTC)</span><span class="val">${droitPaiementDirect ? "Oui" : "Non"}</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">F</span><span class="rlabel">Nature et prix des prestations sous-traitées</span>
+      <div class="rbody">
+        <div class="row"><span class="label">Nature de la prestation</span><span class="val">${fields.missionDescription || ""}</span></div>
+        <div class="row"><span class="label">Montant H.T.</span><span class="val">${fmtEUR(ht)}</span></div>
+        <div class="row"><span class="label">TVA (${(tauxTva * 100).toLocaleString("fr-FR")} %)</span><span class="val">${fmtEUR(tva)}</span></div>
+        <div class="row"><span class="label">Montant T.T.C.</span><span class="val">${fmtEUR(ttc)}</span></div>
+        <p class="art">TVA autoliquidée par le preneur, en application de l'article 283-2 nonies du Code général des impôts (sous-traitance BTP).</p>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">G</span><span class="rlabel">Conditions de paiement</span>
+      <div class="rbody">
+        <p>${isDirect
+          ? "Paiement direct du sous-traitant par le pouvoir adjudicateur, conformément à la loi n°75-1334 du 31 décembre 1975, dans un délai de 30 jours à compter de la validation des prestations."
+          : "Paiement du sous-traitant exclusivement par le titulaire (SYNERGIE BTP), le sous-traitant renonçant expressément au paiement direct."}</p>
+        ${sousTraitant.iban ? `<div class="row"><span class="label">IBAN du sous-traitant</span><span class="val">${sousTraitant.iban}</span></div>` : ""}
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">H</span><span class="rlabel">Capacités du sous-traitant — pièces justificatives</span>
+      <div class="rbody"><ul class="pieces-list">${piecesHtml}</ul></div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">I</span><span class="rlabel">Attestations sur l'honneur</span>
+      <div class="rbody">
+        <p>Le sous-traitant déclare sur l'honneur ne pas entrer dans un des cas d'exclusion de la commande publique prévus par le Code de la commande publique (notamment : absence de condamnation pénale incompatible, régularité fiscale et sociale, absence de procédure collective incompatible), et être à jour de ses obligations de déclaration et de paiement des impôts, taxes et cotisations sociales.</p>
+      </div>
+    </div>
+
+    <div class="rubrique">
+      <span class="letter">K</span><span class="rlabel">Acceptation et agrément</span>
+      <div class="rbody">
+        <p>Le silence gardé pendant 21 jours par le pouvoir adjudicateur à compter de la réception de la présente déclaration vaut acceptation du sous-traitant et agrément des conditions de paiement.</p>
+        <div class="sig-grid">
+          <div class="sig-block"><div class="sig-title">Le sous-traitant</div>${sousTraitant.nom || ""}</div>
+          <div class="sig-block"><div class="sig-title">Le titulaire (SYNERGIE BTP)</div>${SYNERGIE_REPRESENTANT}</div>
+          <div class="sig-block"><div class="sig-title">Le pouvoir adjudicateur</div>${fields.moaRaisonSociale || chantier.client || ""}</div>
+        </div>
+      </div>
+    </div>
+    </body></html>
+  `;
+}
+
+// Modale de génération du DC4 — même principe que ContratSousTraitancePdfModal
+// (aucun archivage automatique : c'est toujours le dépôt manuel du DC4
+// signé/tamponné par le pouvoir adjudicateur, dans la bulle "DC4" déjà en
+// place, qui fait foi). N'a de sens que sur les chantiers marché public.
+function Dc4PdfModal({ chantier, entry, sousTraitant, onClose }) {
+  const [missionDescription, setMissionDescription] = useState(entry.missionDescription || "");
+  const [montantHt, setMontantHt] = useState(entry.montant !== "" && entry.montant != null ? String(entry.montant) : "");
+  const [moaRaisonSociale, setMoaRaisonSociale] = useState(chantier.client || "");
+  const [pieces, setPieces] = useState(() => sousTraitancePiecesChecklist(sousTraitant));
+  const [genError, setGenError] = useState("");
+
+  if (!sousTraitant) return null;
+
+  function togglePiece(key) {
+    setPieces((prev) => prev.map((p) => (p.key === key ? { ...p, checked: !p.checked } : p)));
+  }
+
+  function generate() {
+    setGenError("");
+    const html = dc4Html({ chantier, entry, sousTraitant, fields: { missionDescription, montantHt, moaRaisonSociale, pieces } });
+    const fileName = `DC4_${sanitizeFileName(chantier.titre)}_${sanitizeFileName(sousTraitant.nom)}.pdf`;
+    openPrintableDocument(html, { fileName, onError: setGenError });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(22,35,59,0.55)" }}>
+      <Card className="w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-semibold text-base" style={{ color: COLORS.ink }}>Générer le DC4</h3>
+          <button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: COLORS.inkSoft }}>
+          {sousTraitant.nom} — ce document reconstitue la structure du modèle officiel DAJ (DC4-2023) ; il n'existe pas de PDF officiel du DC4 (uniquement un Word éditable) — relis-le avant envoi au maître d'ouvrage.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Field label="Nature de la prestation sous-traitée">
+            <TextInput value={missionDescription} onChange={(e) => setMissionDescription(e.target.value)} />
+          </Field>
+          <Field label="Montant H.T. de la prestation"><TextInput type="number" step="0.01" value={montantHt} onChange={(e) => setMontantHt(e.target.value)} /></Field>
+          <Field label="Nom / raison sociale du pouvoir adjudicateur"><TextInput value={moaRaisonSociale} onChange={(e) => setMoaRaisonSociale(e.target.value)} /></Field>
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.ink }}>Pièces justificatives (rubrique H) — pré-cochées depuis le dossier du sous-traitant</p>
+            <div className="flex flex-col gap-1">
+              {pieces.map((p) => (
+                <label key={p.key} className="flex items-center gap-2 text-xs" style={{ color: COLORS.ink }}>
+                  <input type="checkbox" checked={p.checked} onChange={() => togglePiece(p.key)} />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          {genError && <p className="text-xs" style={{ color: COLORS.red }}>{genError}</p>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Fermer</Btn>
+          <Btn variant="primary" onClick={generate}>Générer le PDF</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- Derived data helpers ----------
 // ---------- Documents helpers ----------
 function hasBetArchi(chantier) {
@@ -868,7 +1456,17 @@ function sousTraitanceEntryMissingDocs(chantier, entry) {
   return missing;
 }
 function emptySousTraitanceEntry() {
-  return { id: uid("sst"), sousTraitantId: "", montant: null, dateDebut: "", dateFin: "", statutDc4: "", statutContrat: "" };
+  return {
+    id: uid("sst"),
+    sousTraitantId: "",
+    montant: null,
+    dateDebut: "",
+    dateFin: "",
+    statutDc4: "",
+    statutContrat: "",
+    modePaiement: "", // "direct" (maître d'ouvrage) | "synergie" (Synergie BTP) — sert à générer le bon contrat de sous-traitance
+    missionDescription: "",
+  };
 }
 
 // ---------- Dossier administratif du sous-traitant (pièces réutilisables
@@ -1043,6 +1641,34 @@ function sousTraitantPieceAlerts(sousTraitant) {
     }
   }
   return out;
+}
+// Les 9 pièces listées en fin des modèles papier de contrat de
+// sous-traitance ("Pièces justificatives", cases à cocher) — pré-cochées
+// automatiquement quand la pièce correspondante est déjà présente dans le
+// dossier administratif du sous-traitant (même logique que
+// sousTraitantPieceAlerts ci-dessus), pour éviter à Morgane de revérifier à
+// la main à chaque génération de contrat. Elle reste éditable dans la
+// modale de génération avant impression. "Certificat de qualification
+// professionnelle" n'a pas d'équivalent suivi dans l'appli : décoché par
+// défaut, à cocher manuellement si besoin.
+function sousTraitancePiecesChecklist(sousTraitant) {
+  const st = sousTraitant || {};
+  const docs = st.documents || {};
+  const has = (key) => !!currentPieceEntry(docs[key] || []);
+  const isForeign = st.titreSejourApplicable !== false;
+  const salaries = st.salariesEtrangers || [];
+  const hasContratsTravail = salaries.length > 0 && salaries.every((s) => currentPieceEntry((s.documents || {}).contratTravail || []));
+  return [
+    { key: "kbis", label: "KBIS / extrait INSEE de moins de 3 mois", checked: has("kbis") },
+    { key: "pieceIdentite", label: "Pièce d'identité", checked: !isForeign && has("pieceIdentite") },
+    { key: "titreSejour", label: "Titre de séjour si de nationalité étrangère", checked: isForeign && has("titreSejour") },
+    { key: "urssaf", label: "Attestation de vigilance URSSAF", checked: has("urssaf") },
+    { key: "fiscale", label: "Attestation de régularité fiscale", checked: has("fiscale") },
+    { key: "assurance", label: "Attestation d'assurance", checked: has("assurance") },
+    { key: "contratsTravail", label: "Contrats de travail des salariés du sous-traitant", checked: hasContratsTravail },
+    { key: "listeSalaries", label: "Liste des salariés du sous-traitant si de nationalité étrangère", checked: salaries.length > 0 && has(LISTE_NOMINATIVE_PIECE_TYPE.key) },
+    { key: "qualifPro", label: "Certificat de qualification professionnelle si nécessaire", checked: false },
+  ];
 }
 // Une entrée du répertoire des sous-traitants (réutilisable d'un chantier à
 // l'autre) — coordonnées + infos bancaires + validité CACES + dossier
@@ -2399,6 +3025,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   // déduction sur la ligne "acompte") : porte l'id du marché concerné
   // pendant que la modale de saisie/génération est ouverte, null sinon.
   const [addPdfMarcheId, setAddPdfMarcheId] = useState(null);
+  // Id de l'entrée de sous-traitance dont la modale "Générer le contrat"
+  // (voir ContratSousTraitancePdfModal) est ouverte, null sinon — même
+  // principe que addPdfMarcheId ci-dessus.
+  const [contratModalEntryId, setContratModalEntryId] = useState(null);
+  // Id de l'entrée de sous-traitance dont la modale "Générer le DC4" (voir
+  // Dc4PdfModal) est ouverte, null sinon — même principe.
+  const [dc4ModalEntryId, setDc4ModalEntryId] = useState(null);
   // Saisie du "% ADD" dans "Modifier les infos" (voir handleAddPctChange/
   // handleAddMontantChange ci-dessous) : dict {marcheId: "40"} du texte
   // tapé dans le champ %, tant qu'il n'a pas été "repris" par une saisie
@@ -3877,6 +4510,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             {SS_TRAITANCE_STATUTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                           </select>
                         </Field>
+                        <Field label="Paiement du sous-traitant">
+                          <select value={entry.modePaiement || ""} onChange={(e) => updateSousTraitanceEntry(entry.id, { modePaiement: e.target.value })} style={{ ...inputStyle, minWidth: 170 }} className="outline-none focus:ring-2">
+                            <option value="">— à préciser</option>
+                            <option value="direct">Direct par le maître d'ouvrage</option>
+                            <option value="synergie">Par Synergie BTP</option>
+                          </select>
+                        </Field>
                         <button onClick={() => removeSousTraitanceEntry(entry.id)} title="Supprimer ce sous-traitant de ce chantier (et ses pièces jointes)" className="p-1.5 rounded-md h-fit">
                           <Trash2 size={14} color={COLORS.red} />
                         </button>
@@ -3909,6 +4549,16 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                           <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Statut Contrat</div>
                           {entry.statutContrat ? <Pill color={ssTraitanceStatutColor(entry.statutContrat)}>{ssTraitanceStatutLabel(entry.statutContrat)}</Pill> : <span className="text-sm" style={{ color: COLORS.inkSoft }}>—</span>}
                         </div>
+                        <div>
+                          <div className="text-xs mb-0.5" style={{ color: COLORS.inkSoft }}>Paiement du sous-traitant</div>
+                          {entry.modePaiement === "direct" ? (
+                            <Pill color="amber">Direct MO</Pill>
+                          ) : entry.modePaiement === "synergie" ? (
+                            <Pill color="green">Synergie BTP</Pill>
+                          ) : (
+                            <span className="text-sm" style={{ color: COLORS.inkSoft }}>— à préciser</span>
+                          )}
+                        </div>
                       </div>
                     )}
                     {addingSousTraitantForEntryId === entry.id && (
@@ -3927,7 +4577,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                     )}
                     <div className="flex flex-wrap items-center gap-2.5">
                       <div className="flex items-center gap-1">
-                        {renderSousTraitanceDocBubble(entry.id, "dc4", "DC4")}
+                        {chantier.marchePublic === true && renderSousTraitanceDocBubble(entry.id, "dc4", "DC4")}
                         {renderSousTraitanceDocBubble(entry.id, "contrat", "Contrat")}
                       </div>
                       {entry.sousTraitantId && (
@@ -3941,6 +4591,28 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                           >
                             <FolderOpen size={12} /> Voir le dossier administratif
                           </button>
+                          <div style={{ width: 1, height: 20, background: COLORS.line }} />
+                          <button
+                            onClick={() => setContratModalEntryId(entry.id)}
+                            className="text-[11px] font-medium hover:underline flex items-center gap-1"
+                            style={{ color: COLORS.accent }}
+                            title="Générer le contrat de sous-traitance pré-rempli (à faire signer) — dépose ensuite le contrat signé dans la bulle « Contrat » ci-dessus"
+                          >
+                            <FileText size={12} /> Générer le contrat
+                          </button>
+                          {chantier.marchePublic === true && (
+                            <>
+                              <div style={{ width: 1, height: 20, background: COLORS.line }} />
+                              <button
+                                onClick={() => setDc4ModalEntryId(entry.id)}
+                                className="text-[11px] font-medium hover:underline flex items-center gap-1"
+                                style={{ color: COLORS.accent }}
+                                title="Générer le DC4 pré-rempli (marché public) — dépose ensuite le DC4 signé dans la bulle « DC4 » ci-dessus"
+                              >
+                                <FileText size={12} /> Générer le DC4
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -4017,6 +4689,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <Field label="Client"><TextInput value={chantier.client || ""} onChange={(e) => updateHeaderField({ client: e.target.value })} /></Field>
             <Field label="Email client"><TextInput type="email" placeholder="contact@client.fr" value={chantier.clientEmail || ""} onChange={(e) => updateHeaderField({ clientEmail: e.target.value })} /></Field>
             <Field label="N° chantier"><TextInput value={chantier.nChantier || ""} onChange={(e) => updateHeaderField({ nChantier: e.target.value })} /></Field>
+            <Field label="Adresse chantier"><TextInput placeholder="Lieu d'exécution des travaux" value={chantier.adresseChantier || ""} onChange={(e) => updateHeaderField({ adresseChantier: e.target.value })} /></Field>
             <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
             <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
             <Field label="Durée prévue"><TextInput value={chantier.dureePrevue || ""} onChange={(e) => updateHeaderField({ dureePrevue: e.target.value })} /></Field>
@@ -4788,6 +5461,32 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           onGenerated={({ file, date }) => handleAvanceGenerated(addPdfMarcheId, file, date)}
         />
       )}
+      {contratModalEntryId && (() => {
+        const entry = (chantier.sousTraitance || []).find((e) => e.id === contratModalEntryId);
+        const sst = entry && sousTraitants.find((s) => s.id === entry.sousTraitantId);
+        if (!entry || !sst) return null;
+        return (
+          <ContratSousTraitancePdfModal
+            chantier={chantier}
+            entry={entry}
+            sousTraitant={sst}
+            onClose={() => setContratModalEntryId(null)}
+          />
+        );
+      })()}
+      {dc4ModalEntryId && (() => {
+        const entry = (chantier.sousTraitance || []).find((e) => e.id === dc4ModalEntryId);
+        const sst = entry && sousTraitants.find((s) => s.id === entry.sousTraitantId);
+        if (!entry || !sst) return null;
+        return (
+          <Dc4PdfModal
+            chantier={chantier}
+            entry={entry}
+            sousTraitant={sst}
+            onClose={() => setDc4ModalEntryId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -6088,6 +6787,7 @@ export default function App() {
   function createChantier({ titre, client }) {
     const newC = {
       id: uid("ch"), sheet: titre, titre, client, clientEmail: "", nChantier: "", dateDemarrage: null,
+      adresseChantier: "",
       betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [], marchePublic: false,
       marches: [{
         id: "marche-principal", nom: "Marché principal", montantHt: 0, tauxTva: 0.085,
