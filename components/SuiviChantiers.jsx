@@ -513,15 +513,19 @@ const SOUS_TRAITANT_PIECE_TYPES = [
   { key: "assurance", label: "Assurance RC Pro", dateLabel: "Date d'expiration", validityMonths: null },
   { key: "pieceIdentite", label: "Pièce d'identité", dateLabel: "Date d'expiration", validityMonths: null },
   { key: "titreSejour", label: "Titre de séjour", dateLabel: "Date d'expiration", validityMonths: null },
+  { key: "caces", label: "CACES", dateLabel: "Date d'expiration", validityMonths: null },
 ];
 // Pièces à réunir pour chaque salarié étranger employé par le sous-traitant
 // (obligation de vigilance) — DPAE et contrat de travail n'ont pas de date
 // de péremption (simples pièces d'archive : pas d'alerte dessus), pièce
 // d'identité et titre de séjour si.
+// Pas de "Pièce d'identité" séparée ici : pour un salarié étranger, le
+// titre de séjour en fait déjà office (à la différence du représentant de
+// l'entreprise, qui lui garde les deux pièces au niveau du dossier
+// "entreprise" ci-dessus).
 const SALARIE_ETRANGER_PIECE_TYPES = [
   { key: "dpae", label: "DPAE", dateLabel: "Date de la DPAE", validityMonths: null, noAlert: true },
   { key: "contratTravail", label: "Contrat de travail", dateLabel: "Date de signature", validityMonths: null, noAlert: true },
-  { key: "pieceIdentite", label: "Pièce d'identité", dateLabel: "Date d'expiration", validityMonths: null },
   { key: "titreSejour", label: "Titre de séjour", dateLabel: "Date d'expiration", validityMonths: null },
 ];
 // Document à part, distinct des pièces individuelles de chaque salarié :
@@ -587,6 +591,10 @@ function sousTraitantPieceAlerts(sousTraitant) {
     // représentant n'est pas de nationalité étrangère (case à cocher dans
     // le dossier — voir titreSejourApplicable).
     if (typeDef.key === "titreSejour" && sousTraitant.titreSejourApplicable === false) continue;
+    // CACES : à l'inverse, ignoré PAR DÉFAUT — ne concerne que les
+    // sous-traitants dont Morgane a coché "concerné par le CACES" (voir
+    // cacesApplicable). La plupart ne le sont pas.
+    if (typeDef.key === "caces" && sousTraitant.cacesApplicable !== true) continue;
     const entries = (sousTraitant.documents || {})[typeDef.key] || [];
     const current = currentPieceEntry(entries);
     if (!current) {
@@ -613,7 +621,7 @@ function sousTraitantPieceAlerts(sousTraitant) {
 // l'autre) — coordonnées + infos bancaires + validité CACES + dossier
 // administratif (pièces à jour, avec historique) + salariés étrangers.
 function emptySousTraitant() {
-  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", caces: "", documents: {}, salariesEtrangers: [], titreSejourApplicable: true };
+  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", documents: {}, salariesEtrangers: [], titreSejourApplicable: true, cacesApplicable: false };
 }
 // Répertoire initial repris du fichier "FICHIER RENSEIGNEMENTS SS
 // TRAITANTS.xlsx" fourni par Morgane — ne sert qu'une seule fois, au tout
@@ -637,7 +645,13 @@ const SEED_SOUS_TRAITANTS_RAW = [
   { id: uid("stt"), nom: "LAMA TP", representant: "LAMA RONY", telephone: "0690641557", email: "lamatp586@gmail.com", banque: "", iban: "", siret: "44120598600041", adresse: "Changy 97130 Capesterre-Belle-Eau", caces: "" },
   { id: uid("stt"), nom: "SASU VIVA BTP", representant: "SIMON Guva", telephone: "", email: "", banque: "", iban: "", siret: "98098881000019", adresse: "ROUTE de Pliane 97190, Le Gosier", caces: "" },
 ];
-const SEED_SOUS_TRAITANTS = SEED_SOUS_TRAITANTS_RAW.map((s) => ({ ...s, documents: {}, salariesEtrangers: [], titreSejourApplicable: true }));
+// normalizeSousTraitants (déclarée plus bas, mais les function declarations
+// sont hissées) applique aussi la migration de l'ancien champ "caces" vers
+// la nouvelle pièce du dossier administratif et les valeurs par défaut de
+// titreSejourApplicable/cacesApplicable, pour que le repli sur les données
+// d'exemple (première ouverture, ou échec réseau) ait exactement la même
+// forme que les données rechargées depuis le serveur.
+const SEED_SOUS_TRAITANTS = normalizeSousTraitants(SEED_SOUS_TRAITANTS_RAW.map((s) => ({ ...s, documents: {}, salariesEtrangers: [] })));
 // Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
 // utilisée par normalizeChantiersData pour initialiser docTypesActifs sur les
 // chantiers existants, afin que les bulles déjà affichées ne disparaissent
@@ -772,15 +786,30 @@ function computeSituationPercentages(situations, marches) {
 // l'ajout du dossier administratif (documents/salariesEtrangers) — même
 // principe que normalizeChantiersData ci-dessous, mais pour le répertoire.
 function normalizeSousTraitants(list) {
-  return (list || []).map((s) => ({
-    ...s,
-    documents: s.documents || {},
-    salariesEtrangers: (s.salariesEtrangers || []).map((sal) => ({ ...sal, documents: sal.documents || {} })),
-    // Par défaut le titre de séjour reste requis (comportement historique
-    // inchangé) — Morgane décoche explicitement, par sous-traitant, quand le
-    // représentant n'est pas de nationalité étrangère.
-    titreSejourApplicable: s.titreSejourApplicable !== false,
-  }));
+  return (list || []).map((s) => {
+    const documents = s.documents || {};
+    // Ancien champ "caces" (simple date de validité saisie dans le
+    // répertoire, retiré du tableau) : repris tel quel comme première
+    // entrée de la pièce CACES du dossier administratif, pour ne pas perdre
+    // ce que Morgane avait déjà renseigné — uniquement si ce n'est pas déjà
+    // migré (pas d'entrée existante) et qu'une date était bien saisie.
+    const cacesEntries = documents.caces || [];
+    const migratedCacesEntries = (!cacesEntries.length && s.caces)
+      ? [{ id: uid("doc"), date: s.caces, fileName: null, filePath: null, uploadedAt: null }]
+      : cacesEntries;
+    return {
+      ...s,
+      documents: { ...documents, caces: migratedCacesEntries },
+      salariesEtrangers: (s.salariesEtrangers || []).map((sal) => ({ ...sal, documents: sal.documents || {} })),
+      // Par défaut le titre de séjour reste requis (comportement historique
+      // inchangé) — Morgane décoche explicitement, par sous-traitant, quand
+      // le représentant n'est pas de nationalité étrangère.
+      titreSejourApplicable: s.titreSejourApplicable !== false,
+      // CACES : à l'inverse non concerné par défaut, sauf ceux qui avaient
+      // déjà une date renseignée dans l'ancien champ, ou déjà cochés.
+      cacesApplicable: s.cacesApplicable === true || !!s.caces,
+    };
+  });
 }
 function normalizeChantiersData(list) {
   let changed = false;
@@ -4435,18 +4464,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                     <th className="text-left font-medium px-2 py-2">IBAN</th>
                     <th className="text-left font-medium px-2 py-2">SIRET</th>
                     <th className="text-left font-medium px-2 py-2">Adresse</th>
-                    <th className="text-left font-medium px-2 py-2">Validité CACES</th>
                     {unlocked && <th className="px-3 py-2"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRepertoire.length === 0 && (
-                    <tr><td colSpan={10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
+                    <tr><td colSpan={unlocked ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
                   )}
                   {filteredRepertoire.map((s) => {
-                    const cacesDaysUntil = s.caces ? daysUntil(s.caces) : null;
-                    const cacesExpired = cacesDaysUntil !== null && cacesDaysUntil < 0;
-                    const cacesBientot = cacesDaysUntil !== null && cacesDaysUntil >= 0 && cacesDaysUntil <= 60;
                     return (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
                         {unlocked ? (
@@ -4459,7 +4484,6 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-1 py-1"><TextInput value={s.iban || ""} onChange={(e) => onUpdateSousTraitant(s.id, { iban: e.target.value })} style={{ minWidth: 170 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.siret || ""} onChange={(e) => onUpdateSousTraitant(s.id, { siret: e.target.value })} style={{ minWidth: 110 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.adresse || ""} onChange={(e) => onUpdateSousTraitant(s.id, { adresse: e.target.value })} style={{ minWidth: 200 }} /></td>
-                            <td className="px-1 py-1"><TextInput type="date" value={s.caces || ""} onChange={(e) => onUpdateSousTraitant(s.id, { caces: e.target.value })} style={{ minWidth: 130 }} /></td>
                             <td className="px-2 py-1 whitespace-nowrap">
                               <button onClick={() => setDossierModalId(s.id)} title="Ouvrir le dossier administratif" className="mr-2"><FolderOpen size={14} color={COLORS.accent} /></button>
                               <button onClick={() => onRemoveSousTraitant(s.id)} title="Supprimer du répertoire"><Trash2 size={13} color={COLORS.red} /></button>
@@ -4477,11 +4501,6 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-2 py-2">{s.iban || "—"}</td>
                             <td className="px-2 py-2">{s.siret || "—"}</td>
                             <td className="px-2 py-2">{s.adresse || "—"}</td>
-                            <td className="px-2 py-2">
-                              {s.caces ? (
-                                <Pill color={cacesExpired ? "red" : cacesBientot ? "amber" : "green"}>{fmtDate(s.caces)}</Pill>
-                              ) : "—"}
-                            </td>
                           </>
                         )}
                       </tr>
@@ -4805,7 +4824,7 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
           )}
 
           <div className="text-sm font-semibold mb-2" style={{ color: COLORS.ink }}>Pièces de l'entreprise</div>
-          <label className="flex items-center gap-2 text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+          <label className="flex items-center gap-2 text-xs mb-2" style={{ color: COLORS.inkSoft }}>
             <input
               type="checkbox"
               disabled={!unlocked}
@@ -4814,8 +4833,20 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
             />
             Le représentant n'est pas de nationalité étrangère (titre de séjour non nécessaire)
           </label>
+          <label className="flex items-center gap-2 text-xs mb-3" style={{ color: COLORS.inkSoft }}>
+            <input
+              type="checkbox"
+              disabled={!unlocked}
+              checked={sousTraitant.cacesApplicable === true}
+              onChange={(e) => onUpdateSousTraitant(sousTraitant.id, { cacesApplicable: e.target.checked })}
+            />
+            Sous-traitant concerné par le CACES (engins, nacelle...)
+          </label>
           <div className="flex flex-col gap-2 mb-5">
-            {SOUS_TRAITANT_PIECE_TYPES.filter((t) => t.key !== "titreSejour" || sousTraitant.titreSejourApplicable !== false).map((typeDef) => {
+            {SOUS_TRAITANT_PIECE_TYPES.filter((t) =>
+              (t.key !== "titreSejour" || sousTraitant.titreSejourApplicable !== false) &&
+              (t.key !== "caces" || sousTraitant.cacesApplicable === true)
+            ).map((typeDef) => {
               const storageKey = sousTraitantPieceDocKey(sousTraitant.id, typeDef.key);
               return (
                 <DossierPieceRow
