@@ -701,7 +701,13 @@ function computeAutoRgCumulees(chantiers) {
   const out = [];
   for (const c of chantiers) {
     if (c.rgExtracted) continue;
-    const nonBanqueMarches = c.marches.filter((m) => m.rgMode !== "banque" && m.rgMode !== "aucune");
+    // Un bloc PRORATA (compte prorata de chantier, budget mutualisé pour les
+    // frais communs de base vie/nettoyage...) n'a rien à voir avec le
+    // montant du marché : on l'exclut de ce total, même s'il lui reste un
+    // ancien montantHt en mémoire (champ masqué dès qu'un bloc passe en
+    // type PRORATA, mais jamais vidé si le bloc avait été créé en TS/
+    // principal avant d'être basculé en PRORATA).
+    const nonBanqueMarches = c.marches.filter((m) => m.type !== "prorata" && m.rgMode !== "banque" && m.rgMode !== "aucune");
     if (nonBanqueMarches.length === 0) continue;
     const totalMarcheHtNonBanque = nonBanqueMarches.reduce((a, m) => a + (m.montantHt || 0), 0);
     if (!totalMarcheHtNonBanque) continue;
@@ -1795,7 +1801,7 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
                   <td className="px-4 py-2.5 font-medium" style={{ color: COLORS.accent }}>{c.titre}</td>
                   <td className="px-2 py-2.5" style={{ color: COLORS.ink }}>{c.client || "—"}</td>
                   <td className="px-2 py-2.5" style={{ color: COLORS.inkSoft }}>{c.nChantier || "—"}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR((c.marches || []).reduce((a, m) => a + (m.montantHt || 0), 0))}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR((c.marches || []).filter((m) => m.type !== "prorata").reduce((a, m) => a + (m.montantHt || 0), 0))}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(facture)}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums font-medium" style={{ color: attente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(attente)}</td>
                   <td className="px-4 py-2.5" style={{ color: COLORS.inkSoft }}>{c.situations.length}</td>
@@ -2203,7 +2209,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   }
 
   function exportChantierPdf() {
-    const totalMarcheHtX = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
+    const totalMarcheHtX = chantier.marches.filter((m) => m.type !== "prorata").reduce((a, m) => a + (m.montantHt || 0), 0);
     const totalFactureX = chantier.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
     const totalAttenteX = soldeAttenteChantier(chantier.situations);
     setExportPdfError("");
@@ -2878,8 +2884,15 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const docsTotalCount = coreDocs.length;
   const docsPresentPct = docsTotalCount ? Math.round((docsPresentCount / docsTotalCount) * 100) : 100;
 
-  const totalMarcheHt = chantier.marches.reduce((a, m) => a + (m.montantHt || 0), 0);
-  const totalMarcheTtc = chantier.marches.reduce((a, m) => a + (m.montantHt || 0) * (1 + (TVA_REGIMES[m.tvaRegime]?.rate ?? 0.085)), 0);
+  // "Marché HT/TTC (total)" = marché principal + TS uniquement. Un bloc
+  // PRORATA (compte prorata de chantier, budget mutualisé pour les frais
+  // communs, sans lien avec la valeur du marché) en est exclu — y compris
+  // s'il lui reste un ancien montantHt en mémoire d'avant son passage en
+  // type PRORATA (le champ Montant HT est masqué mais pas vidé lors du
+  // changement de type).
+  const marchesHorsProrata = chantier.marches.filter((m) => m.type !== "prorata");
+  const totalMarcheHt = marchesHorsProrata.reduce((a, m) => a + (m.montantHt || 0), 0);
+  const totalMarcheTtc = marchesHorsProrata.reduce((a, m) => a + (m.montantHt || 0) * (1 + (TVA_REGIMES[m.tvaRegime]?.rate ?? 0.085)), 0);
   const totalFactureTtc = chantier.situations.reduce((a, s) => a + (s.montantTtc || 0), 0);
   const totalAttente = soldeAttenteChantier(chantier.situations);
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
