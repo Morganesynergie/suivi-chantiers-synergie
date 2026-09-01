@@ -1,6 +1,6 @@
 "use client";
 import { storage } from "@/lib/kv";
-import { openPrintableDocument, generatePdfBlob } from "@/lib/exportPdf";
+import { openPrintableDocument, generatePdfBlob, openGeneratedPdf } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2, HardHat, FolderOpen, Upload, Users, UserPlus, FileText, ExternalLink } from "lucide-react";
@@ -745,14 +745,13 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
 // Reprend, article par article, le texte de ses 3 modèles réels (marché
 // privé/paiement direct, marché privé/paiement Synergie, marché
 // public/paiement Synergie) — seul l'Article 5 (Facturation et paiement)
-// change selon entry.modePaiement, et le bloc final d'agrément du maître
-// d'ouvrage n'apparaît que lorsqu'un paiement direct est en jeu ou que le
-// marché est public (isDirect || isPublic) : c'est le cas de figure où la
-// loi n°75-1334 impose que le maître d'ouvrage agrée les conditions de
-// paiement du sous-traitant. Le 4e cas (marché public + paiement direct)
-// n'existait pas encore chez Morgane : reconstruit à partir du modèle
-// "marché privé/paiement direct" (même article 5, même bloc d'agrément),
-// simplement avec le sous-titre "Marché Public".
+// change selon entry.modePaiement. Le bloc final d'agrément du maître
+// d'ouvrage n'apparaît que sur les marchés privés (!isPublic), quel que
+// soit le mode de paiement : même en cas de paiement par Synergie BTP, le
+// maître d'ouvrage doit donner son accord pour que le sous-traitant
+// intervienne sur son chantier. Sur un marché public, cet agrément est
+// donné via la déclaration DC4 (rubrique K) et non via le contrat : le
+// bloc n'apparaît donc jamais dans ce cas.
 // Numérotation des articles : le modèle papier saute de l'Article 2 à
 // l'Article 4 (pas d'Article 3) — conservé tel quel. En revanche le modèle
 // papier utilise deux fois "Article 9" (Horaires puis Litiges) : corrigé
@@ -850,7 +849,7 @@ const CONTRAT_MOA_ACCEPTATION_HTML = `
 function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
   const isDirect = entry.modePaiement === "direct";
   const isPublic = chantier.marchePublic === true;
-  const showMoaBlock = isDirect || isPublic;
+  const showMoaBlock = !isPublic;
   const subtitle = isPublic ? "Marché Public" : "Marché Privé";
   const montantHt = fields.montantHt;
   const montantHtLabel = "";
@@ -860,21 +859,24 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
     <html><head><title>Contrat de sous-traitance — ${chantier.titre} — ${sousTraitant.nom || ""}</title>
     <style>
       body{font-family:Georgia,'Times New Roman',serif;color:#16233B;padding:0;font-size:12px;line-height:1.55;}
-      .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);font-family:system-ui,sans-serif;}
-      .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
-      .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
-      .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;}
-      .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
-      .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;font-family:system-ui,sans-serif;}
-      .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:system-ui,sans-serif;}
-      @media print { .close-bar{display:none;} .page{page-break-after:always;} .page:last-child{page-break-after:auto;} }
-      .page{padding:34px 40px;max-width:760px;margin:0 auto;}
-      .cover{text-align:center;padding-top:120px;}
-      .cover .title{font-size:24px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;border:2px solid #16233B;display:inline-block;padding:14px 34px;margin-bottom:14px;}
-      .cover .subtitle{font-size:15px;font-weight:600;margin-bottom:60px;}
-      .cover .party{margin:34px 0;}
-      .cover .party .kind{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:6px;}
-      .cover .party .name{font-size:18px;font-weight:700;}
+      .content{padding:0 40px;max-width:760px;margin:0 auto;}
+      /* La page de garde reçoit une hauteur fixe proche d'une page A4
+         (~1123px, voir PAGE_H dans generatePdfBlob) pour que le contrat
+         proprement dit démarre bien en haut de la 2e page du PDF généré —
+         le découpage en pages réel se fait mécaniquement par hauteur de
+         pixels (voir generatePdfBlob), donc c'est cette hauteur qui fixe
+         la coupure, pas un page-break CSS. */
+      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;background:linear-gradient(180deg,#F7F5EF 0%,#FFFFFF 55%);}
+      .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
+      .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
+      .cover .title{font-size:26px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px;margin-bottom:10px;}
+      .cover .subtitle{font-size:15px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#5A6478;margin-bottom:50px;}
+      .cover .chantier-name{font-size:13px;color:#5A6478;margin-bottom:6px;}
+      .cover .party-grid{display:flex;gap:28px;margin-top:20px;}
+      .cover .party{flex:1;border:1px solid #C9C2AE;border-radius:8px;padding:20px 18px;background:#fff;}
+      .cover .party .kind{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:8px;}
+      .cover .party .name{font-size:17px;font-weight:700;}
+      .cover .footer{margin-top:50px;font-size:10px;color:#8A93A3;line-height:1.6;}
       h3{font-size:13px;text-transform:uppercase;letter-spacing:0.02em;border-bottom:1px solid #16233B;padding-bottom:4px;margin:20px 0 8px 0;}
       h3:first-child{margin-top:0;}
       p{margin:6px 0;text-align:justify;}
@@ -889,39 +891,38 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       .pieces-list li{display:flex;align-items:flex-start;gap:8px;}
       .checkbox{font-size:14px;line-height:1.3;}
       .sig-grid{display:flex;justify-content:space-between;gap:24px;margin-top:26px;}
-      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:12px 14px;font-size:11px;min-height:120px;}
-      .sig-block .sig-title{font-weight:700;margin-bottom:8px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:14px 16px;font-size:11px;min-height:210px;}
+      .sig-block .sig-title{font-weight:700;margin-bottom:10px;}
+      .sig-block .sig-space{margin-top:16px;}
       .fait{margin:18px 0 6px 0;font-size:12px;}
       .moa-block{margin-top:28px;padding-top:14px;border-top:1.5px solid #16233B;}
       .moa-fields{margin:10px 0;}
       .moa-fields .row{margin:4px 0;}
-      .moa-fields .fill{display:inline-block;border-bottom:1px solid #16233B;min-width:220px;}
+      .moa-fields .fill{display:inline-block;border-bottom:1px solid #16233B;min-width:220px;padding:0 3px 4px 3px;}
     </style></head><body>
-    <div class="close-bar">
-      <div class="close-bar-brand">
-        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
-        <span class="close-bar-label">Aperçu avant impression</span>
-      </div>
-      <div class="close-bar-actions">
-        <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
-        <button class="close-btn" onclick="window.close()">✕ Fermer</button>
-      </div>
-    </div>
-
-    <div class="page cover">
+    <div class="cover">
+      <img class="logo" src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
       <div class="title">Contrat de sous-traitance</div>
       <div class="subtitle">${subtitle}</div>
-      <div class="party">
-        <div class="kind">Entreprise principale</div>
-        <div class="name">SYNERGIE BTP</div>
+      <div class="band"></div>
+      <div class="chantier-name">Chantier : <strong>${chantier.titre || ""}</strong>${chantier.adresseChantier ? " — " + chantier.adresseChantier : ""}</div>
+      <div class="party-grid">
+        <div class="party">
+          <div class="kind">Entreprise principale</div>
+          <div class="name">SYNERGIE BTP</div>
+        </div>
+        <div class="party">
+          <div class="kind">Entreprise secondaire</div>
+          <div class="name">${sousTraitant.nom || ""}</div>
+        </div>
       </div>
-      <div class="party">
-        <div class="kind">Entreprise secondaire</div>
-        <div class="name">${sousTraitant.nom || ""}</div>
+      <div class="footer">
+        SYNERGIE BTP SAS au capital de ${SYNERGIE_BTP_COORDS.capital} — ${SYNERGIE_BTP_COORDS.adresse}<br/>
+        SIRET ${SYNERGIE_BTP_COORDS.siret} - APE ${SYNERGIE_BTP_COORDS.ape} — Tél. ${SYNERGIE_BTP_COORDS.tel}
       </div>
     </div>
 
-    <div class="page">
+    <div class="content">
       <h3>Attestation sur l'honneur</h3>
       ${CONTRAT_ATTESTATION_HONNEUR_HTML}
       <div class="sig-grid">
@@ -932,9 +933,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
           ${sousTraitant.siret ? `<div>SIRET : ${sousTraitant.siret}</div>` : ""}
         </div>
       </div>
-    </div>
 
-    <div class="page">
       <p>Entre : La société SYNERGIE BTP (SAS)<br/>
       Adresse du siège social : ${SYNERGIE_BTP_COORDS.adresse}<br/>
       SIRET : ${SYNERGIE_BTP_COORDS.siret}<br/>
@@ -958,23 +957,15 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       </div>
       ${CONTRAT_ARTICLE1_HTML(sousTraitant)}
       ${CONTRAT_ARTICLE2_HTML}
-    </div>
-
-    <div class="page">
       ${CONTRAT_ARTICLE4_HTML}
       ${contratArticle5Html({ isDirect, montantHtLabel })}
       ${CONTRAT_ARTICLE6_HTML}
-    </div>
-
-    <div class="page">
       ${CONTRAT_ARTICLE7_HTML}
       ${CONTRAT_ARTICLE8_HTML}
       ${CONTRAT_ARTICLE9_HORAIRES_HTML}
       ${CONTRAT_ARTICLE10_LITIGES_HTML}
       ${piecesHtml}
-    </div>
 
-    <div class="page">
       <div class="fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
       <div class="sig-grid">
         <div class="sig-block">
@@ -983,12 +974,14 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
           <div>${SYNERGIE_BTP_COORDS.adresse}</div>
           <div>SIRET ${SYNERGIE_BTP_COORDS.siret} - APE ${SYNERGIE_BTP_COORDS.ape}</div>
           <div>${SYNERGIE_REPRESENTANT}</div>
+          <div class="sig-space"></div>
         </div>
         <div class="sig-block">
           <div class="sig-title">Signature et cachet du sous-traitant<br/>(précédée de la mention « Lu et approuvé »)</div>
           <div>${sousTraitant.nom || ""}</div>
           ${sstAdresseHtml}
           ${sousTraitant.siret ? `<div>SIRET : ${sousTraitant.siret}</div>` : ""}
+          <div class="sig-space"></div>
         </div>
       </div>
       ${showMoaBlock ? `
@@ -999,8 +992,9 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
           <div class="row">Représenté par : <span class="fill">${fields.moaRepresentant || ""}</span></div>
           <div class="row">Fait à : <span class="fill">${fields.moaFaitA || ""}</span> &nbsp; Le : <span class="fill">${fmtDate(fields.moaDate) || ""}</span></div>
         </div>
-        <div class="sig-block" style="margin-top:10px;">
+        <div class="sig-block" style="margin-top:10px;max-width:340px;">
           <div class="sig-title">Signature et cachet du maître d'ouvrage</div>
+          <div class="sig-space"></div>
         </div>
       </div>
       ` : ""}
@@ -1051,7 +1045,10 @@ function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }
       fields: { missionDescription, dateDebut, dateFin, montantHt: parseFloat(montantHt) || 0, retenueGarantie, dateFait, moaRaisonSociale, moaRepresentant, moaFaitA, moaDate, pieces },
     });
     const fileName = `Contrat_sous_traitance_${sanitizeFileName(chantier.titre)}_${sanitizeFileName(sousTraitant.nom)}.pdf`;
-    openPrintableDocument(html, { fileName, onError: setGenError });
+    // Vrai PDF (pas un aperçu HTML à imprimer) : pagination fiable, plus de
+    // grand blanc entre deux articles, et le visualiseur PDF du navigateur
+    // affiche lui-même "page X / N" (voir openGeneratedPdf).
+    openGeneratedPdf(html, { fileName, onError: setGenError, pageNumbers: true });
   }
 
   return (
@@ -1078,7 +1075,7 @@ function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }
             <Field label="Retenue de garantie"><TextInput value={retenueGarantie} onChange={(e) => setRetenueGarantie(e.target.value)} /></Field>
           </div>
           <Field label='Date du contrat ("Fait à Petit-Bourg, le")'><TextInput type="date" value={dateFait} onChange={(e) => setDateFait(e.target.value)} /></Field>
-          {(isDirect || isPublic) && (
+          {!isPublic && (
             <div className="p-2.5 rounded-md" style={{ background: COLORS.accentSoft }}>
               <p className="text-xs font-medium mb-2" style={{ color: COLORS.ink }}>Agrément du maître d'ouvrage (bloc de fin de contrat)</p>
               <div className="flex flex-col gap-2">
@@ -1137,14 +1134,6 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
     <html><head><title>DC4 — ${chantier.titre} — ${sousTraitant.nom || ""}</title>
     <style>
       body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;font-size:11.5px;line-height:1.5;}
-      .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
-      .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
-      .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
-      .close-bar-label{color:rgba(255,255,255,0.55);font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;}
-      .close-bar-actions{display:flex;gap:8px;flex-shrink:0;margin-left:auto;}
-      .print-btn{display:inline-flex;align-items:center;gap:6px;background:#2B6CB0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(43,108,176,0.45);white-space:nowrap;}
-      .close-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
-      @media print { .close-bar{display:none;} }
       .title-bar{text-align:center;border:2px solid #16233B;padding:10px;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:4px;}
       .disclaimer{font-size:9.5px;color:#8A93A3;text-align:center;margin-bottom:16px;font-style:italic;}
       .rubrique{border:1px solid #C9C2AE;border-radius:6px;padding:10px 14px;margin-bottom:10px;}
@@ -1158,21 +1147,11 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       .pieces-list li{display:flex;align-items:flex-start;gap:8px;margin:2px 0;}
       .checkbox{font-size:13px;}
       .sig-grid{display:flex;gap:16px;margin-top:16px;}
-      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:10px 12px;min-height:90px;font-size:10.5px;}
-      .sig-title{font-weight:700;margin-bottom:6px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:12px 14px;min-height:160px;font-size:10.5px;}
+      .sig-title{font-weight:700;margin-bottom:10px;}
       p{margin:4px 0;text-align:justify;}
       .art{font-size:10px;color:#5A6478;}
     </style></head><body>
-    <div class="close-bar">
-      <div class="close-bar-brand">
-        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
-        <span class="close-bar-label">Aperçu avant impression</span>
-      </div>
-      <div class="close-bar-actions">
-        <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
-        <button class="close-btn" onclick="window.close()">✕ Fermer</button>
-      </div>
-    </div>
     <div class="title-bar">DC4 — Déclaration de sous-traitance</div>
     <div class="disclaimer">Document reconstitué à partir de la structure du modèle officiel DAJ (DC4-2023, economie.gouv.fr) — il n'existe aucun formulaire Cerfa ni PDF officiel pour le DC4 (distribué uniquement en Word éditable) : à relire avant envoi au pouvoir adjudicateur.</div>
 
@@ -1287,7 +1266,7 @@ function Dc4PdfModal({ chantier, entry, sousTraitant, onClose }) {
     setGenError("");
     const html = dc4Html({ chantier, entry, sousTraitant, fields: { missionDescription, montantHt, moaRaisonSociale, pieces } });
     const fileName = `DC4_${sanitizeFileName(chantier.titre)}_${sanitizeFileName(sousTraitant.nom)}.pdf`;
-    openPrintableDocument(html, { fileName, onError: setGenError });
+    openGeneratedPdf(html, { fileName, onError: setGenError, pageNumbers: true });
   }
 
   return (
@@ -2121,7 +2100,7 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
       <div>
         <div className="px-2 mb-6">
           <img src={LOGO_SYNERGIE} alt="SYNERGIE BTP" style={{ height: 38 }} />
-          <div style={{ color: "#8FA3C4" }} className="text-xs mt-2">Suivi situations & règlements</div>
+          <div style={{ color: "#8FA3C4" }} className="text-xs mt-2">Suivi administratif de chantiers</div>
         </div>
         <nav className="flex flex-col gap-1">
           {items.map((it) => {

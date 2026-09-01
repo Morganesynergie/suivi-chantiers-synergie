@@ -1,7 +1,7 @@
 export default function manifest() {
   return {
-    name: "Suivi Chantiers — SYNERGIE BTP",
-    short_name: "Suivi Chantiers",
+    name: "Suivi administratif de chantiers — SYNERGIE BTP",
+    short_name: "Suivi chantiers",
     description: "Suivi des chantiers, situations, règlements et retenues de garantie",
     start_url: "/",
     display: "standalone",

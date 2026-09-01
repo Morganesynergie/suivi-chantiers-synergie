@@ -12,12 +12,12 @@ import KillServiceWorker from "@/components/KillServiceWorker";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Suivi Chantiers — SYNERGIE BTP",
+  title: "Suivi administratif de chantiers — SYNERGIE BTP",
   description: "Suivi des chantiers, situations, règlements et retenues de garantie",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Suivi Chantiers",
+    title: "Suivi chantiers",
   },
 };
 
