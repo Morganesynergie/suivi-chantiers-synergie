@@ -1448,16 +1448,27 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
   const [fClient, setFClient] = useState("");
   const [fNFact, setFNFact] = useState("");
   const [fDate, setFDate] = useState("");
-  const [fMontant, setFMontant] = useState("");
-  const [fTva, setFTva] = useState("085");
+  const [fMontantHt, setFMontantHt] = useState("");
+  const [fMontantTtc, setFMontantTtc] = useState("");
+  const [fDateEnvoi, setFDateEnvoi] = useState("");
+  const [fValidBet, setFValidBet] = useState("");
 
+  // Facture ponctuelle : Morgane saisit directement le HT et le TTC tels
+  // qu'ils figurent sur sa facture (pas de régime de TVA à choisir, pas de
+  // calcul automatique) — c'est tout ce dont elle a besoin pour un petit
+  // travaux facturé en une fois. La création ne l'emmène plus sur la fiche
+  // du chantier caché "Factures ponctuelles" : elle reste sur "Règlements
+  // en attente", où la nouvelle ligne apparaît directement.
   function submitFacture() {
-    if (!fClient.trim() || !fMontant) return;
+    if (!fClient.trim() || !fMontantHt) return;
     onCreateFactureSeule({
       titre: fClient.trim(), client: fClient.trim(), nFact: fNFact.trim(),
-      dateFacture: fDate, montantHt: parseFloat(fMontant) || 0, tvaRegime: fTva,
+      dateFacture: fDate, montantHt: parseFloat(fMontantHt) || 0,
+      montantTtc: fMontantTtc === "" ? null : parseFloat(fMontantTtc) || 0,
+      dateEnvoi: fDateEnvoi, validBet: fValidBet,
     });
-    setFClient(""); setFNFact(""); setFDate(""); setFMontant(""); setFTva("085"); setShowFacture(false);
+    setFClient(""); setFNFact(""); setFDate(""); setFMontantHt(""); setFMontantTtc(""); setFDateEnvoi(""); setFValidBet("");
+    setShowFacture(false);
   }
 
   return (
@@ -1493,14 +1504,10 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
             <Field label="Nom client"><TextInput value={fClient} onChange={(e) => setFClient(e.target.value)} /></Field>
             <Field label="N° facture"><TextInput value={fNFact} onChange={(e) => setFNFact(e.target.value)} /></Field>
             <Field label="Date facture"><TextInput type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} /></Field>
-            <Field label="Montant HT"><TextInput type="number" step="0.01" value={fMontant} onChange={(e) => setFMontant(e.target.value)} /></Field>
-            <Field label="Régime TVA">
-              <select value={fTva} onChange={(e) => setFTva(e.target.value)} style={inputStyle} className="outline-none focus:ring-2">
-                <option value="085">8,5 %</option>
-                <option value="021">2,1 %</option>
-                <option value="autoliq">Autoliquidée (0 %)</option>
-              </select>
-            </Field>
+            <Field label="Montant HT"><TextInput type="number" step="0.01" value={fMontantHt} onChange={(e) => setFMontantHt(e.target.value)} /></Field>
+            <Field label="Montant TTC"><TextInput type="number" step="0.01" value={fMontantTtc} onChange={(e) => setFMontantTtc(e.target.value)} /></Field>
+            <Field label="Date d'envoi"><TextInput type="date" value={fDateEnvoi} onChange={(e) => setFDateEnvoi(e.target.value)} /></Field>
+            <Field label="Validation BET"><TextInput type="date" value={fValidBet} onChange={(e) => setFValidBet(e.target.value)} /></Field>
             <Btn variant="primary" onClick={submitFacture}>Créer la facture</Btn>
             <Btn variant="ghost" onClick={() => setShowFacture(false)}>Annuler</Btn>
           </div>
@@ -1584,6 +1591,11 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
                           <button className="font-medium hover:underline text-left" style={{ color: "#8B5CF6" }} onClick={() => setTab("rg")}>
                             {s.chantierTitre}
                           </button>
+                        ) : s.isFacturesLibres ? (
+                          // Facture ponctuelle : pas de fiche chantier à consulter (le
+                          // conteneur "Factures ponctuelles" est volontairement caché,
+                          // voir createFactureSeule) — le nom n'est donc pas cliquable ici.
+                          <span className="font-medium">{s.chantierTitre}</span>
                         ) : (
                           <button className="font-medium hover:underline text-left" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier(s.chantierId); setTab("chantierDetail"); }}>
                             {s.chantierTitre}
@@ -5406,22 +5418,28 @@ export default function App() {
   // Quick add for one-off small jobs billed in a single invoice — these are NOT chantiers.
   // They all live inside one shared, hidden container so they never clutter the Chantiers
   // list, but they still show up normally in "Règlements en attente" like any situation.
-  function createFactureSeule({ titre, client, nFact, dateFacture, montantHt, tvaRegime }) {
-    const rate = TVA_REGIMES[tvaRegime]?.rate ?? 0.085;
+  // Facture ponctuelle : Morgane saisit le HT et le TTC directement tels
+  // qu'ils figurent sur sa facture (pas de régime de TVA à choisir ni de
+  // calcul automatique — voir le formulaire simplifié dans Reglements). On
+  // ne bascule plus sur la fiche du chantier caché "Factures ponctuelles"
+  // après création : elle n'a pas d'utilité pour une facture ponctuelle et
+  // Morgane ne veut pas de cette interface complète (marché, sous-traitance,
+  // documents contractuels...) pour un simple travaux facturé en une fois.
+  function createFactureSeule({ titre, client, nFact, dateFacture, montantHt, montantTtc, dateEnvoi, validBet }) {
     const ht = montantHt || 0;
-    const tva = Math.round(ht * rate * 100) / 100;
-    const ttc = Math.round((ht + tva) * 100) / 100;
+    const ttc = montantTtc != null ? montantTtc : ht;
+    const tva = Math.round((ttc - ht) * 100) / 100;
     const marcheId = uid("marche");
     const newMarche = {
-      id: marcheId, nom: titre, montantHt: ht, tauxTva: rate,
+      id: marcheId, nom: titre, montantHt: ht, tauxTva: ht ? Math.round((tva / ht) * 1000) / 1000 : 0.085,
       rgMode: "banque", rgPct: 0.05, prorataPct: null,
-      addMontant: null, addDate: null, tvaRegime: tvaRegime || "085", type: "principal",
+      addMontant: null, addDate: null, tvaRegime: "085", type: "principal",
       factureClient: client || "",
     };
     const newSit = {
       id: uid("sit"), nSituation: 1, nFact: nFact || "", dateFacture: dateFacture || "",
       pctAvancement: 1, montantHt: ht, tva, montantTtc: ttc, rg: 0, avanceDeduite: 0, prorata: 0, rembAdd: 0,
-      fournisseurs: [], totalARecevoir: ttc, dateEnvoi: dateFacture || "", validBet: "", validAmo: "", validAutre: "",
+      fournisseurs: [], totalARecevoir: ttc, dateEnvoi: dateEnvoi || dateFacture || "", validBet: validBet || "", validAmo: "", validAutre: "",
       datePaiement: "", montantRegle: null, dateDepotChorus: "", paye: false, note: "", marcheId,
     };
     const existing = chantiers.find((c) => c.id === FACTURES_LIBRES_ID);
@@ -5440,8 +5458,6 @@ export default function App() {
       };
       persistChantiers([...chantiers, newC]);
     }
-    setSelectedChantierId(FACTURES_LIBRES_ID);
-    setTab("chantierDetail");
   }
 
   function markPaid(chantierId, situationId, dateStr, montant) {
