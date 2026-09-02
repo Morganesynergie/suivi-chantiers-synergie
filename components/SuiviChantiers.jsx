@@ -490,6 +490,7 @@ const SYNERGIE_BTP_COORDS = {
   capital: "12 000 €",
   ape: "4312A",
   iban: "FR76 1010 7004 7300 6350 4994 546",
+  formeJuridique: "Société par actions simplifiées",
 };
 
 // "Appel d'avance de démarrage" : ce n'est PAS une facture Batigest (elle ne
@@ -833,9 +834,11 @@ const CONTRAT_ARTICLE10_LITIGES_HTML = `
 function contratArticle11PiecesHtml(pieces) {
   const rows = (pieces || []).map((p) => `<li><span class="checkbox">${p.checked ? "☑" : "☐"}</span> ${p.label}</li>`).join("");
   return `
-    <h3>Article 11 – Pièces justificatives</h3>
-    <p>Le Sous-traitant a remis à l'Entreprise Principale les pièces suivantes (cochées ci-dessous) :</p>
-    <ul class="pieces-list">${rows}</ul>
+    <div class="avoid-break">
+      <h3>Article 11 – Pièces justificatives</h3>
+      <p>Le Sous-traitant a remis à l'Entreprise Principale les pièces suivantes (cochées ci-dessous) :</p>
+      <ul class="pieces-list">${rows}</ul>
+    </div>
   `;
 }
 const CONTRAT_MOA_ACCEPTATION_HTML = `
@@ -923,8 +926,10 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
     </div>
 
     <div class="content">
-      <h3>Attestation sur l'honneur</h3>
-      ${CONTRAT_ATTESTATION_HONNEUR_HTML}
+      <div class="avoid-break">
+        <h3>Attestation sur l'honneur</h3>
+        ${CONTRAT_ATTESTATION_HONNEUR_HTML}
+      </div>
       <div class="sig-grid avoid-break">
         <div class="sig-block">
           <div class="sig-title">Signature et cachet de l'entreprise Sous-Traitante</div>
@@ -945,7 +950,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       SIRET : ${sousTraitant.siret || ""}<br/>
       Représenté par : ${sousTraitant.representant || ""}<br/>
       Ci-après dénommé le Sous-traitant,</p>
-      <div class="info-box">
+      <div class="info-box avoid-break">
         <div class="row"><span class="label">Mission</span><span class="val">${fields.missionDescription || ""}</span></div>
         <div class="row"><span class="label">Chantier</span><span class="val">${chantier.titre || ""}</span></div>
         <div class="row"><span class="label">Lieu d'exécution</span><span class="val">${chantier.adresseChantier || ""}</span></div>
@@ -955,15 +960,15 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
         <div class="row"><span class="label">TVA</span><span class="val">Autoliquidée</span></div>
         <div class="row"><span class="label">Retenue de garantie</span><span class="val">${fields.retenueGarantie || "Pas de retenue de garantie"}</span></div>
       </div>
-      ${CONTRAT_ARTICLE1_HTML(sousTraitant)}
-      ${CONTRAT_ARTICLE2_HTML}
-      ${CONTRAT_ARTICLE4_HTML}
-      ${contratArticle5Html({ isDirect, montantHtLabel })}
-      ${CONTRAT_ARTICLE6_HTML}
-      ${CONTRAT_ARTICLE7_HTML}
-      ${CONTRAT_ARTICLE8_HTML}
-      ${CONTRAT_ARTICLE9_HORAIRES_HTML}
-      ${CONTRAT_ARTICLE10_LITIGES_HTML}
+      <div class="avoid-break">${CONTRAT_ARTICLE1_HTML(sousTraitant)}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE2_HTML}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE4_HTML}</div>
+      <div class="avoid-break">${contratArticle5Html({ isDirect, montantHtLabel })}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE6_HTML}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE7_HTML}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE8_HTML}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE9_HORAIRES_HTML}</div>
+      <div class="avoid-break">${CONTRAT_ARTICLE10_LITIGES_HTML}</div>
       ${piecesHtml}
 
       <div class="fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
@@ -1111,15 +1116,30 @@ function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }
 }
 
 // ---------- DC4 (déclaration de sous-traitance, marché public) ----------
-// Le DC4 officiel n'a PAS de numéro Cerfa et n'existe QUE sous forme de
-// modèle Word éditable (DAJ/Bercy, version "DC4-2023") — il n'y a donc
-// aucun PDF officiel à remplir par-dessus (pas d'AcroForm, pdf-lib ne sert
-// à rien ici). Ce générateur reproduit la structure en rubriques A à K du
-// modèle officiel (notice DC4-2023, economie.gouv.fr/daj) et la remplit
-// avec les données déjà saisies dans l'appli — ce n'est PAS littéralement
-// le fichier Word officiel, seulement un document mis en forme de façon
-// équivalente, à vérifier avant envoi (mention affichée sur le document
-// lui-même). N'est proposé que sur les chantiers marché public.
+// Reproduit fidèlement les 14 rubriques (A à N) du formulaire officiel DC4
+// "Marchés publics — Déclaration de sous-traitance" (Ministère de
+// l'Économie, Direction des Affaires juridiques, version mise à jour du
+// 12/10/2023) — voir le modèle réel fourni par Morgane. Le DC4 officiel
+// n'a pas d'AcroForm exploitable par pdf-lib (uniquement un PDF/Word à
+// remplir à la main) ; ce générateur reproduit sa structure, son texte et
+// sa présentation (bandeaux bleus par rubrique) et le pré-remplit avec les
+// données déjà saisies dans l'appli. Les rubriques qui ne concernent pas le
+// fonctionnement courant de SYNERGIE BTP (L — cession/nantissement de
+// créances, N — notification par courrier) sont reproduites intégralement
+// mais laissées vierges, comme sur le formulaire officiel tant qu'elles ne
+// s'appliquent pas. N'est proposé que sur les chantiers marché public.
+
+// Durée du contrat de sous-traitance en nombre de mois entiers (rubrique
+// I) — arrondie au nombre entier supérieur, comme l'exige la notice
+// officielle ("20 jours = 1 mois, 1 mois et 2 semaines = 2 mois, etc.").
+function dureeContratEnMois(dateDebut, dateFin) {
+  if (!dateDebut || !dateFin) return "";
+  const d1 = new Date(dateDebut + "T00:00:00");
+  const d2 = new Date(dateFin + "T00:00:00");
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) return "";
+  const diffDays = Math.round((d2 - d1) / 86400000) + 1;
+  return Math.max(1, Math.ceil(diffDays / 30));
+}
 function dc4Html({ chantier, entry, sousTraitant, fields }) {
   const isDirect = entry.modePaiement === "direct";
   const marchePrincipal = (chantier.marches || []).find((m) => m.type === "principal");
@@ -1128,118 +1148,201 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
   const tva = Math.round(ht * tauxTva * 100) / 100;
   const ttc = Math.round((ht + tva) * 100) / 100;
   const droitPaiementDirect = ttc >= 600;
+  const dureeMois = dureeContratEnMois(fields.dateDebut, fields.dateFin);
   const sstAdresseHtml = (sousTraitant.adresse || "").split("\n").map((l) => `<div>${l}</div>`).join("");
-  const piecesHtml = (fields.pieces || []).map((p) => `<li><span class="checkbox">${p.checked ? "☑" : "☐"}</span> ${p.label}</li>`).join("");
+  const piecesHtml = (fields.pieces || []).map((p) => `<li><span class="cb">${p.checked ? "☒" : "☐"}</span> ${p.label}</li>`).join("");
+  const cb = (checked) => `<span class="cb">${checked ? "☒" : "☐"}</span>`;
+  const acheteur = fields.moaRaisonSociale || chantier.client || "";
   return `
     <html><head><title>DC4 — ${chantier.titre} — ${sousTraitant.nom || ""}</title>
     <style>
-      body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;font-size:11.5px;line-height:1.5;}
-      .title-bar{text-align:center;border:2px solid #16233B;padding:10px;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:4px;}
-      .disclaimer{font-size:9.5px;color:#8A93A3;text-align:center;margin-bottom:16px;font-style:italic;}
-      .rubrique{border:1px solid #C9C2AE;border-radius:6px;padding:10px 14px;margin-bottom:10px;}
-      .rubrique .letter{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:#16233B;color:#fff;font-weight:700;font-size:11px;margin-right:8px;}
-      .rubrique .rlabel{font-weight:700;text-transform:uppercase;font-size:11px;}
-      .rubrique .rbody{margin-top:6px;}
+      body{font-family:Arial,Helvetica,sans-serif;color:#1A1A1A;padding:0;font-size:10.5px;line-height:1.45;}
+      .content{padding:0 34px;}
+      .title-bar{background:#1E4E79;color:#fff;text-align:center;padding:9px;font-size:13px;font-weight:700;text-transform:uppercase;margin:26px 0 4px 0;}
+      .disclaimer{font-size:9px;color:#6B7280;text-align:center;margin-bottom:18px;font-style:italic;}
+      .rubrique{margin-bottom:12px;}
+      .rubrique-bar{background:#2E6FA3;color:#fff;font-weight:700;font-size:10.5px;padding:5px 9px;margin-bottom:6px;}
+      .rubrique .rbody{padding:0 2px;}
       .row{display:flex;gap:8px;margin:2px 0;}
-      .row .label{width:230px;flex-shrink:0;color:#5A6478;}
+      .row .label{width:250px;flex-shrink:0;color:#5A6478;}
       .row .val{font-weight:600;}
-      .pieces-list{list-style:none;padding-left:0;margin:4px 0;}
-      .pieces-list li{display:flex;align-items:flex-start;gap:8px;margin:2px 0;}
-      .checkbox{font-size:13px;}
-      .sig-grid{display:flex;gap:16px;margin-top:16px;}
-      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:12px 14px;min-height:160px;font-size:10.5px;}
-      .sig-title{font-weight:700;margin-bottom:10px;}
+      .note{font-size:9px;color:#6B7280;font-style:italic;margin:2px 0 6px 0;}
+      .pieces-list,.opt-list{list-style:none;padding-left:0;margin:4px 0;}
+      .pieces-list li,.opt-list li{display:flex;align-items:flex-start;gap:7px;margin:3px 0;}
+      .cb{font-size:12px;flex-shrink:0;}
+      .sig-grid{display:flex;gap:14px;margin-top:10px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:10px 12px;min-height:150px;font-size:10px;}
+      .sig-title{font-weight:700;margin-bottom:8px;}
+      .sig-fait{font-size:10px;margin-bottom:6px;}
+      .box-note{border:1px solid #6B7280;padding:10px 12px;min-height:170px;font-size:10px;margin-top:6px;}
       p{margin:4px 0;text-align:justify;}
-      .art{font-size:10px;color:#5A6478;}
+      .art{font-size:9px;color:#6B7280;}
+      h4{font-size:10.5px;font-weight:700;margin:8px 0 3px 0;}
     </style></head><body>
-    <div class="title-bar">DC4 — Déclaration de sous-traitance</div>
-    <div class="disclaimer">Document reconstitué à partir de la structure du modèle officiel DAJ (DC4-2023, economie.gouv.fr) — il n'existe aucun formulaire Cerfa ni PDF officiel pour le DC4 (distribué uniquement en Word éditable) : à relire avant envoi au pouvoir adjudicateur.</div>
+    <div class="content">
+    <div class="title-bar">Marchés publics — Déclaration de sous-traitance (DC4)</div>
+    <div class="disclaimer">Document reconstitué à partir du formulaire officiel DC4 (Ministère de l'Économie — Direction des Affaires juridiques, mise à jour du 12/10/2023) et pré-rempli à partir des données du dossier — à relire avant envoi au pouvoir adjudicateur.</div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">A</span><span class="rlabel">Pouvoir adjudicateur / maître d'ouvrage</span>
+      <div class="rubrique-bar">A — Identification de l'acheteur</div>
       <div class="rbody">
-        <div class="row"><span class="label">Nom / raison sociale</span><span class="val">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
+        <div class="row"><span class="label">Désignation de l'acheteur</span><span class="val">${acheteur}</span></div>
+        <div class="row"><span class="label">Personne habilitée à donner les renseignements</span><span class="val"></span></div>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">B</span><span class="rlabel">Objet du marché</span>
+      <div class="rubrique-bar">B — Objet du marché public</div>
       <div class="rbody">
-        <div class="row"><span class="label">Chantier</span><span class="val">${chantier.titre || ""}</span></div>
-        <div class="row"><span class="label">Lieu d'exécution</span><span class="val">${chantier.adresseChantier || ""}</span></div>
-        <div class="row"><span class="label">N° chantier</span><span class="val">${chantier.nChantier || ""}</span></div>
+        <div class="row"><span class="label">Objet</span><span class="val">${chantier.titre || ""}${chantier.adresseChantier ? " — " + chantier.adresseChantier : ""}</span></div>
+        <div class="row"><span class="label">N° chantier (référence interne)</span><span class="val">${chantier.nChantier || ""}</span></div>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">C</span><span class="rlabel">Objet de la déclaration</span>
-      <div class="rbody"><p>Déclaration de sous-traitant présentée après la conclusion du marché (acte spécial de sous-traitance).</p></div>
-    </div>
-
-    <div class="rubrique avoid-break">
-      <span class="letter">D</span><span class="rlabel">Identification du titulaire du marché</span>
+      <div class="rubrique-bar">C — Objet de la déclaration du sous-traitant</div>
       <div class="rbody">
-        <div class="row"><span class="label">Dénomination</span><span class="val">SYNERGIE BTP (SAS)</span></div>
-        <div class="row"><span class="label">Adresse</span><span class="val">${SYNERGIE_BTP_COORDS.adresse}</span></div>
-        <div class="row"><span class="label">SIRET</span><span class="val">${SYNERGIE_BTP_COORDS.siret}</span></div>
-        <div class="row"><span class="label">Représenté par</span><span class="val">${SYNERGIE_REPRESENTANT}</span></div>
+        <p class="note">La présente déclaration de sous-traitance constitue :</p>
+        <ul class="opt-list">
+          <li>${cb(false)} un document annexé à l'offre du soumissionnaire</li>
+          <li>${cb(true)} un acte spécial portant acceptation du sous-traitant et agrément de ses conditions de paiement (sous-traitant présenté après attribution du marché)</li>
+          <li>${cb(false)} un acte spécial modificatif ; il annule et remplace la déclaration de sous-traitance du .....................</li>
+        </ul>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">E</span><span class="rlabel">Identification du sous-traitant proposé</span>
+      <div class="rubrique-bar">D — Identification du soumissionnaire ou du titulaire du marché public</div>
       <div class="rbody">
-        <div class="row"><span class="label">Dénomination</span><span class="val">${sousTraitant.nom || ""}</span></div>
-        <div class="row"><span class="label">Adresse</span><span class="val">${sstAdresseHtml}</span></div>
-        <div class="row"><span class="label">SIRET</span><span class="val">${sousTraitant.siret || ""}</span></div>
-        <div class="row"><span class="label">Représenté par</span><span class="val">${sousTraitant.representant || ""}</span></div>
-        <div class="row"><span class="label">Droit au paiement direct (≥ 600 € TTC)</span><span class="val">${droitPaiementDirect ? "Oui" : "Non"}</span></div>
+        <div class="row"><span class="label">Nom commercial et dénomination sociale</span><span class="val">SYNERGIE BTP</span></div>
+        <div class="row"><span class="label">Adresse postale et du siège social</span><span class="val">${SYNERGIE_BTP_COORDS.adresse}</span></div>
+        <div class="row"><span class="label">Adresse électronique</span><span class="val">${SYNERGIE_BTP_COORDS.email}</span></div>
+        <div class="row"><span class="label">Téléphone</span><span class="val">${SYNERGIE_BTP_COORDS.tel}</span></div>
+        <div class="row"><span class="label">Numéro SIRET</span><span class="val">${SYNERGIE_BTP_COORDS.siret}</span></div>
+        <div class="row"><span class="label">Forme juridique</span><span class="val">${SYNERGIE_BTP_COORDS.formeJuridique}</span></div>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">F</span><span class="rlabel">Nature et prix des prestations sous-traitées</span>
+      <div class="rubrique-bar">E — Identification du sous-traitant</div>
       <div class="rbody">
-        <div class="row"><span class="label">Nature de la prestation</span><span class="val">${fields.missionDescription || ""}</span></div>
-        <div class="row"><span class="label">Montant H.T.</span><span class="val">${fmtEUR(ht)}</span></div>
-        <div class="row"><span class="label">TVA (${(tauxTva * 100).toLocaleString("fr-FR")} %)</span><span class="val">${fmtEUR(tva)}</span></div>
-        <div class="row"><span class="label">Montant T.T.C.</span><span class="val">${fmtEUR(ttc)}</span></div>
-        <p class="art">TVA autoliquidée par le preneur, en application de l'article 283-2 nonies du Code général des impôts (sous-traitance BTP).</p>
+        <div class="row"><span class="label">Nom commercial et dénomination sociale</span><span class="val">${sousTraitant.nom || ""}</span></div>
+        <div class="row"><span class="label">Adresse postale et du siège social</span><span class="val">${sstAdresseHtml}</span></div>
+        <div class="row"><span class="label">Adresse électronique</span><span class="val">${sousTraitant.email || ""}</span></div>
+        <div class="row"><span class="label">Téléphone</span><span class="val">${sousTraitant.telephone || ""}</span></div>
+        <div class="row"><span class="label">Numéro SIRET</span><span class="val">${sousTraitant.siret || ""}</span></div>
+        <div class="row"><span class="label">Forme juridique</span><span class="val">${sousTraitant.formeJuridique || ""}</span></div>
+        <div class="row"><span class="label">Personne(s) ayant le pouvoir d'engager le sous-traitant</span><span class="val">${sousTraitant.representant || ""}</span></div>
+        <div class="row"><span class="label">Le sous-traitant est-il une PME ?</span><span class="val">${cb(sousTraitant.pme === "oui")} Oui &nbsp; ${cb(sousTraitant.pme === "non")} Non</span></div>
+        <div class="row"><span class="label">Droit au paiement direct (≥ 600 € TTC)</span><span class="val">${cb(droitPaiementDirect)} Oui &nbsp; ${cb(!droitPaiementDirect)} Non</span></div>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">G</span><span class="rlabel">Conditions de paiement</span>
+      <div class="rubrique-bar">F — Nature des prestations sous-traitées</div>
       <div class="rbody">
-        <p>${isDirect
-          ? "Paiement direct du sous-traitant par le pouvoir adjudicateur, conformément à la loi n°75-1334 du 31 décembre 1975, dans un délai de 30 jours à compter de la validation des prestations."
-          : "Paiement du sous-traitant exclusivement par le titulaire (SYNERGIE BTP), le sous-traitant renonçant expressément au paiement direct."}</p>
-        ${sousTraitant.iban ? `<div class="row"><span class="label">IBAN du sous-traitant</span><span class="val">${sousTraitant.iban}</span></div>` : ""}
+        <div class="row"><span class="label">Nature des prestations sous-traitées</span><span class="val">${fields.missionDescription || ""}</span></div>
+        <p class="note">Sous-traitance de traitement de données à caractère personnel : sans objet pour cette prestation.</p>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">H</span><span class="rlabel">Capacités du sous-traitant — pièces justificatives</span>
-      <div class="rbody"><ul class="pieces-list">${piecesHtml}</ul></div>
-    </div>
-
-    <div class="rubrique avoid-break">
-      <span class="letter">I</span><span class="rlabel">Attestations sur l'honneur</span>
+      <div class="rubrique-bar">G — Prix des prestations sous-traitées</div>
       <div class="rbody">
-        <p>Le sous-traitant déclare sur l'honneur ne pas entrer dans un des cas d'exclusion de la commande publique prévus par le Code de la commande publique (notamment : absence de condamnation pénale incompatible, régularité fiscale et sociale, absence de procédure collective incompatible), et être à jour de ses obligations de déclaration et de paiement des impôts, taxes et cotisations sociales.</p>
+        <div class="row"><span class="label">Montant des prestations sous-traitées</span><span class="val">${fmtEUR(ht)} H.T.</span></div>
+        <div class="row"><span class="label">Taux de la TVA</span><span class="val">Autoliquidée par le preneur (2 nonies de l'art. 283 du CGI)</span></div>
+        <div class="row"><span class="label">Montant hors TVA</span><span class="val">${fmtEUR(ht)}</span></div>
+        <div class="row"><span class="label">Montant T.T.C. (pour information)</span><span class="val">${fmtEUR(ttc)}</span></div>
+        <p class="note">Le titulaire déclare que son sous-traitant remplit les conditions pour avoir droit au paiement direct :</p>
+        <div class="row"><span class="val">${cb(isDirect)} Oui &nbsp; ${cb(!isDirect)} Non</span></div>
       </div>
     </div>
 
     <div class="rubrique avoid-break">
-      <span class="letter">K</span><span class="rlabel">Acceptation et agrément</span>
+      <div class="rubrique-bar">H — Conditions de paiement</div>
       <div class="rbody">
-        <p>Le silence gardé pendant 21 jours par le pouvoir adjudicateur à compter de la réception de la présente déclaration vaut acceptation du sous-traitant et agrément des conditions de paiement.</p>
+        <div class="row"><span class="label">Nom de l'établissement bancaire</span><span class="val">${sousTraitant.banque || ""}</span></div>
+        <div class="row"><span class="label">Numéro de compte (IBAN)</span><span class="val">${sousTraitant.iban || ""}</span></div>
+        <p class="note">Le sous-traitant demande à bénéficier d'une avance :</p>
+        <div class="row"><span class="val">${cb(false)} Oui &nbsp; ${cb(false)} Non</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">I — Durée du contrat de sous-traitance en nombre de mois</div>
+      <div class="rbody">
+        <div class="row"><span class="label">Durée du contrat de sous-traitance</span><span class="val">${dureeMois ? dureeMois + " mois" : ""}</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">J — Capacités du sous-traitant</div>
+      <div class="rbody">
+        <h4>J1 — Pièces justificatives demandées par l'acheteur</h4>
+        <ul class="pieces-list">${piecesHtml}</ul>
+        <h4>J2 — Adresse internet des documents justificatifs, le cas échéant</h4>
+        <div class="row"><span class="label">Adresse internet</span><span class="val"></span></div>
+      </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">K — Attestations sur l'honneur du sous-traitant au regard des exclusions de la procédure</div>
+      <div class="rbody">
+        <p>Le sous-traitant déclare sur l'honneur ne pas entrer dans l'un des cas d'exclusion prévus aux articles L.2141-1 à L.2141-5 ou aux articles L.2141-7 à L.2141-10 du Code de la commande publique.</p>
+        <div class="row"><span class="val">${cb(true)} Le sous-traitant atteste ne pas être dans un cas d'exclusion</span></div>
+      </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">L — Cession ou nantissement des créances résultant du marché public</div>
+      <div class="rbody">
+        <p class="note">1ère hypothèse : ${cb(false)} la présente déclaration constitue un acte spécial.</p>
+        <p>Le titulaire établit qu'aucune cession ni aucun nantissement de créances résultant du marché public ne font obstacle au paiement direct du sous-traitant, dans les conditions prévues à l'article R. 2193-22 ou à l'article R. 2393-40 du code de la commande publique.</p>
+        <p class="note">2ème hypothèse : ${cb(false)} la présente déclaration constitue un acte spécial modificatif.</p>
+        <p>Le titulaire demande la modification de l'exemplaire unique ou du certificat de cessibilité, ou justifie que la cession ou le nantissement de créances ne fait pas obstacle au paiement direct de la partie sous-traitée.</p>
+      </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">M — Acceptation et agrément des conditions de paiement du sous-traitant</div>
+      <div class="rbody">
+        <p class="note">Lorsque le DC4 n'a pas été signé au stade de l'offre, l'acheteur, une fois le marché attribué, renvoie au titulaire le DC4 complété afin que ce dernier le retourne signé de lui-même et de son sous-traitant. L'acheteur notifie ensuite au titulaire le marché, auquel sera annexé ce document, ce qui emportera agrément et acceptation des conditions de paiement du sous-traitant.</p>
         <div class="sig-grid avoid-break">
-          <div class="sig-block"><div class="sig-title">Le sous-traitant</div>${sousTraitant.nom || ""}</div>
-          <div class="sig-block"><div class="sig-title">Le titulaire (SYNERGIE BTP)</div>${SYNERGIE_REPRESENTANT}</div>
-          <div class="sig-block"><div class="sig-title">Le pouvoir adjudicateur</div>${fields.moaRaisonSociale || chantier.client || ""}</div>
+          <div class="sig-block">
+            <div class="sig-fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
+            <div class="sig-title">Le sous-traitant<br/>(personne identifiée rubrique E)</div>
+            <div>${sousTraitant.nom || ""}</div>
+            ${sstAdresseHtml}
+            ${sousTraitant.siret ? `<div>SIRET : ${sousTraitant.siret}</div>` : ""}
+          </div>
+          <div class="sig-block">
+            <div class="sig-fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
+            <div class="sig-title">Le soumissionnaire ou le titulaire<br/>(personne identifiée rubrique D)</div>
+            <div>SYNERGIE BTP SAS au capital de ${SYNERGIE_BTP_COORDS.capital}</div>
+            <div>${SYNERGIE_BTP_COORDS.adresse}</div>
+            <div>SIRET ${SYNERGIE_BTP_COORDS.siret} - APE ${SYNERGIE_BTP_COORDS.ape}</div>
+            <div>${SYNERGIE_REPRESENTANT}</div>
+          </div>
+        </div>
+        <p style="margin-top:14px;">Le représentant de l'acheteur, compétent pour signer le marché public, accepte le sous-traitant et agrée ses conditions de paiement.</p>
+        <div class="sig-grid avoid-break">
+          <div class="sig-block" style="max-width:360px;">
+            <div class="sig-fait">Fait à ${fields.moaFaitA || ""}, le ${fmtDate(fields.moaDate) || ""}</div>
+            <div class="sig-title">Le représentant de l'acheteur</div>
+            <div>${acheteur}</div>
+          </div>
         </div>
       </div>
+    </div>
+
+    <div class="rubrique avoid-break">
+      <div class="rubrique-bar">N — Notification de l'acte spécial au titulaire</div>
+      <div class="rbody">
+        <p class="note">Une copie de l'original du marché ou du certificat de cessibilité, ou le cas échéant de l'acte spécial, doit être remise à chaque sous-traitant bénéficiant du paiement direct par l'acheteur public.</p>
+        <div class="box-note avoid-break">En cas d'envoi en lettre recommandée avec accusé de réception : <em>(coller ici l'avis de réception postal, daté et signé par le titulaire)</em></div>
+        <div class="box-note avoid-break">En cas de remise contre récépissé : le titulaire reçoit à titre de notification une copie du présent acte spécial.<br/><br/>A ......................, le ..................</div>
+      </div>
+    </div>
     </div>
     </body></html>
   `;
@@ -1252,7 +1355,12 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
 function Dc4PdfModal({ chantier, entry, sousTraitant, onClose }) {
   const [missionDescription, setMissionDescription] = useState(entry.missionDescription || "");
   const [montantHt, setMontantHt] = useState(entry.montant !== "" && entry.montant != null ? String(entry.montant) : "");
+  const [dateDebut, setDateDebut] = useState(entry.dateDebut || "");
+  const [dateFin, setDateFin] = useState(entry.dateFin || "");
   const [moaRaisonSociale, setMoaRaisonSociale] = useState(chantier.client || "");
+  const [dateFait, setDateFait] = useState(new Date().toISOString().slice(0, 10));
+  const [moaFaitA, setMoaFaitA] = useState("");
+  const [moaDate, setMoaDate] = useState("");
   const [pieces, setPieces] = useState(() => sousTraitancePiecesChecklist(sousTraitant));
   const [genError, setGenError] = useState("");
 
@@ -1264,7 +1372,7 @@ function Dc4PdfModal({ chantier, entry, sousTraitant, onClose }) {
 
   function generate() {
     setGenError("");
-    const html = dc4Html({ chantier, entry, sousTraitant, fields: { missionDescription, montantHt, moaRaisonSociale, pieces } });
+    const html = dc4Html({ chantier, entry, sousTraitant, fields: { missionDescription, montantHt, dateDebut, dateFin, moaRaisonSociale, dateFait, moaFaitA, moaDate, pieces } });
     const fileName = `DC4_${sanitizeFileName(chantier.titre)}_${sanitizeFileName(sousTraitant.nom)}.pdf`;
     openGeneratedPdf(html, { fileName, onError: setGenError, pageNumbers: true });
   }
@@ -1277,16 +1385,28 @@ function Dc4PdfModal({ chantier, entry, sousTraitant, onClose }) {
           <button onClick={onClose}><X size={18} color={COLORS.inkSoft} /></button>
         </div>
         <p className="text-xs mb-4" style={{ color: COLORS.inkSoft }}>
-          {sousTraitant.nom} — ce document reconstitue la structure du modèle officiel DAJ (DC4-2023) ; il n'existe pas de PDF officiel du DC4 (uniquement un Word éditable) — relis-le avant envoi au maître d'ouvrage.
+          {sousTraitant.nom} — reproduit le formulaire officiel DC4 (Ministère de l'Économie). Les rubriques D et E se pré-remplissent depuis les coordonnées SYNERGIE BTP et la fiche du sous-traitant (dont forme juridique / PME dans le répertoire des sous-traitants).
         </p>
         <div className="flex flex-col gap-3">
           <Field label="Nature de la prestation sous-traitée">
             <TextInput value={missionDescription} onChange={(e) => setMissionDescription(e.target.value)} />
           </Field>
           <Field label="Montant H.T. de la prestation"><TextInput type="number" step="0.01" value={montantHt} onChange={(e) => setMontantHt(e.target.value)} /></Field>
-          <Field label="Nom / raison sociale du pouvoir adjudicateur"><TextInput value={moaRaisonSociale} onChange={(e) => setMoaRaisonSociale(e.target.value)} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date début"><TextInput type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} /></Field>
+            <Field label="Date fin"><TextInput type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} /></Field>
+          </div>
+          <Field label="Nom / raison sociale de l'acheteur (rubrique A)"><TextInput value={moaRaisonSociale} onChange={(e) => setMoaRaisonSociale(e.target.value)} /></Field>
+          <Field label='Date du document ("Fait à Petit-Bourg, le")'><TextInput type="date" value={dateFait} onChange={(e) => setDateFait(e.target.value)} /></Field>
+          <div className="p-2.5 rounded-md" style={{ background: COLORS.accentSoft }}>
+            <p className="text-xs font-medium mb-2" style={{ color: COLORS.ink }}>Signature du représentant de l'acheteur (rubrique M, en fin de document)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Fait à"><TextInput value={moaFaitA} onChange={(e) => setMoaFaitA(e.target.value)} placeholder="optionnel — peut être complété à la main" /></Field>
+              <Field label="Le"><TextInput type="date" value={moaDate} onChange={(e) => setMoaDate(e.target.value)} /></Field>
+            </div>
+          </div>
           <div>
-            <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.ink }}>Pièces justificatives (rubrique H) — pré-cochées depuis le dossier du sous-traitant</p>
+            <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.ink }}>Pièces justificatives (rubrique J1) — pré-cochées depuis le dossier du sous-traitant</p>
             <div className="flex flex-col gap-1">
               {pieces.map((p) => (
                 <label key={p.key} className="flex items-center gap-2 text-xs" style={{ color: COLORS.ink }}>
@@ -1653,7 +1773,26 @@ function sousTraitancePiecesChecklist(sousTraitant) {
 // l'autre) — coordonnées + infos bancaires + validité CACES + dossier
 // administratif (pièces à jour, avec historique) + salariés étrangers.
 function emptySousTraitant() {
-  return { id: uid("stt"), nom: "", representant: "", telephone: "", email: "", banque: "", iban: "", siret: "", adresse: "", documents: {}, salariesEtrangers: [], titreSejourApplicable: true, cacesApplicable: false };
+  return {
+    id: uid("stt"),
+    nom: "",
+    representant: "",
+    telephone: "",
+    email: "",
+    banque: "",
+    iban: "",
+    siret: "",
+    adresse: "",
+    // formeJuridique/pme : utilisés pour pré-remplir le DC4 (rubrique E,
+    // "Identification du sous-traitant" — voir dc4Html) ; pme vaut ""
+    // (non renseigné), "oui" ou "non".
+    formeJuridique: "",
+    pme: "",
+    documents: {},
+    salariesEtrangers: [],
+    titreSejourApplicable: true,
+    cacesApplicable: false,
+  };
 }
 // Répertoire initial repris du fichier "FICHIER RENSEIGNEMENTS SS
 // TRAITANTS.xlsx" fourni par Morgane — ne sert qu'une seule fois, au tout
@@ -5826,7 +5965,7 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
           )}
           <Card className="overflow-x-auto">
             <div style={{ overflowX: "auto" }}>
-              <table className="text-xs" style={{ width: "100%", minWidth: 1080 }}>
+              <table className="text-xs" style={{ width: "100%", minWidth: 1340 }}>
                 <thead>
                   <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
                     <th className="text-left font-medium px-3 py-2">Entreprise</th>
@@ -5837,12 +5976,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                     <th className="text-left font-medium px-2 py-2">IBAN</th>
                     <th className="text-left font-medium px-2 py-2">SIRET</th>
                     <th className="text-left font-medium px-2 py-2">Adresse</th>
+                    <th className="text-left font-medium px-2 py-2">Forme juridique</th>
+                    <th className="text-left font-medium px-2 py-2">PME</th>
                     {unlocked && <th className="px-3 py-2"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRepertoire.length === 0 && (
-                    <tr><td colSpan={unlocked ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
+                    <tr><td colSpan={unlocked ? 11 : 10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
                   )}
                   {filteredRepertoire.map((s) => {
                     return (
@@ -5857,6 +5998,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-1 py-1"><TextInput value={s.iban || ""} onChange={(e) => onUpdateSousTraitant(s.id, { iban: e.target.value })} style={{ minWidth: 170 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.siret || ""} onChange={(e) => onUpdateSousTraitant(s.id, { siret: e.target.value })} style={{ minWidth: 110 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.adresse || ""} onChange={(e) => onUpdateSousTraitant(s.id, { adresse: e.target.value })} style={{ minWidth: 200 }} /></td>
+                            <td className="px-1 py-1"><TextInput placeholder="EURL, SARL, SASU..." value={s.formeJuridique || ""} onChange={(e) => onUpdateSousTraitant(s.id, { formeJuridique: e.target.value })} style={{ minWidth: 130 }} /></td>
+                            <td className="px-1 py-1">
+                              <select className="text-xs rounded border px-1.5 py-1" style={{ borderColor: COLORS.line, minWidth: 80 }} value={s.pme || ""} onChange={(e) => onUpdateSousTraitant(s.id, { pme: e.target.value })}>
+                                <option value="">—</option>
+                                <option value="oui">Oui</option>
+                                <option value="non">Non</option>
+                              </select>
+                            </td>
                             <td className="px-2 py-1 whitespace-nowrap">
                               <button onClick={() => setDossierModalId(s.id)} title="Ouvrir le dossier administratif" className="mr-2"><FolderOpen size={14} color={COLORS.accent} /></button>
                               <button onClick={() => onRemoveSousTraitant(s.id)} title="Supprimer du répertoire"><Trash2 size={13} color={COLORS.red} /></button>
@@ -5874,6 +6023,8 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-2 py-2">{s.iban || "—"}</td>
                             <td className="px-2 py-2">{s.siret || "—"}</td>
                             <td className="px-2 py-2">{s.adresse || "—"}</td>
+                            <td className="px-2 py-2">{s.formeJuridique || "—"}</td>
+                            <td className="px-2 py-2">{s.pme === "oui" ? "Oui" : s.pme === "non" ? "Non" : "—"}</td>
                           </>
                         )}
                       </tr>
