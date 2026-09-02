@@ -2268,7 +2268,7 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
     { key: "chantiers", label: "Chantiers", icon: Building2 },
     { key: "archives", label: "Archives", icon: Archive },
     { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
-    { key: "documents", label: "Documents contractuels", icon: FileWarning },
+    { key: "documents", label: "Documents manquants", icon: FileWarning },
     { key: "soustraitants", label: "Sous-traitants", icon: HardHat },
   ];
   return (
@@ -2439,7 +2439,7 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>tous clients confondus</div>
         </Card>
         <Card className="p-4" style={{ cursor: "pointer" }} onClick={() => setTab("documents")}>
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Documents contractuels</div>
+          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Documents manquants</div>
           <div className="text-2xl font-semibold tabular-nums" style={{ color: chantiersDocsIncomplets > 0 ? COLORS.red : COLORS.green }}>{chantiersDocsIncomplets}</div>
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>chantier(s) incomplet(s)</div>
         </Card>
@@ -4349,7 +4349,27 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const totalFactureTtc = chantier.situations.reduce((a, s) => a + (s.montantTtc || 0), 0);
   const totalAttente = soldeAttenteChantier(chantier.situations);
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
-  const resteAFacturer = Math.round((totalMarcheTtc - totalFactureTtc) * 100) / 100;
+  // "Reste à facturer TTC" doit refléter EXACTEMENT le même "reste" que celui
+  // affiché en HT sur chaque ligne de marché (m.montantHt - facturé HT, voir
+  // renderMarcheBlock plus bas) — juste converti en TTC au taux de TVA
+  // ACTUEL de chaque marché. Un simple totalMarcheTtc - totalFactureTtc (used
+  // avant) ne donne PAS ça : totalFactureTtc additionne le montantTtc figé de
+  // chaque situation au moment où elle a été saisie, alors que totalMarcheTtc
+  // recalcule au taux de TVA actuel du marché — si ce taux a été modifié
+  // après coup (régime de TVA changé dans "Modifier les infos" une fois des
+  // situations déjà enregistrées), les deux se désynchronisent et un
+  // "reste à facturer TTC" fantôme apparaît même quand chaque marché affiche
+  // 0 € de reste en HT. En calculant le reste HT marché par marché puis en le
+  // convertissant au taux actuel, le résultat vaut toujours 0 dès que tout est
+  // facturé en HT, quel que soit le taux utilisé sur les anciennes situations.
+  const resteAFacturer = Math.round(
+    marchesHorsProrata.reduce((a, m) => {
+      const factureHt = chantier.situations.filter((s) => s.marcheId === m.id).reduce((a2, s) => a2 + (s.montantHt || 0), 0);
+      const resteHt = (m.montantHt || 0) - factureHt;
+      const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? 0.085;
+      return a + resteHt * (1 + rate);
+    }, 0) * 100
+  ) / 100;
   const allSupplierNames = Array.from(new Set((chantier.fournisseurs || []).map((f) => f.nom).filter(Boolean)));
 
   // Petite bulle PDF (24x24, comme R/A/EA/F sur les situations) réutilisée
@@ -6789,7 +6809,7 @@ function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
   return (
     <div className="p-4 max-w-6xl">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Documents contractuels</h1>
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Documents manquants</h1>
         <Btn size="sm" variant="ghost" onClick={exportMissingDocsPdf}><FileText size={13} /> Extraire en PDF</Btn>
       </div>
       <p className="text-sm mb-2" style={{ color: COLORS.inkSoft }}>
