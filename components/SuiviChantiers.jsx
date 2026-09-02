@@ -925,7 +925,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
     <div class="content">
       <h3>Attestation sur l'honneur</h3>
       ${CONTRAT_ATTESTATION_HONNEUR_HTML}
-      <div class="sig-grid">
+      <div class="sig-grid avoid-break">
         <div class="sig-block">
           <div class="sig-title">Signature et cachet de l'entreprise Sous-Traitante</div>
           <div>${sousTraitant.nom || ""}</div>
@@ -967,7 +967,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       ${piecesHtml}
 
       <div class="fait">Fait à Petit-Bourg, le ${fmtDate(fields.dateFait)}</div>
-      <div class="sig-grid">
+      <div class="sig-grid avoid-break">
         <div class="sig-block">
           <div class="sig-title">Signature du représentant de SYNERGIE BTP<br/>(précédée de la mention « Lu et approuvé »)</div>
           <div>SYNERGIE BTP SAS au capital de ${SYNERGIE_BTP_COORDS.capital}</div>
@@ -985,7 +985,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
         </div>
       </div>
       ${showMoaBlock ? `
-      <div class="moa-block">
+      <div class="moa-block avoid-break">
         ${CONTRAT_MOA_ACCEPTATION_HTML}
         <div class="moa-fields">
           <div class="row">Je soussigné(e), Nom/Raison sociale du maître d'ouvrage : <span class="fill">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
@@ -1155,14 +1155,14 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
     <div class="title-bar">DC4 — Déclaration de sous-traitance</div>
     <div class="disclaimer">Document reconstitué à partir de la structure du modèle officiel DAJ (DC4-2023, economie.gouv.fr) — il n'existe aucun formulaire Cerfa ni PDF officiel pour le DC4 (distribué uniquement en Word éditable) : à relire avant envoi au pouvoir adjudicateur.</div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">A</span><span class="rlabel">Pouvoir adjudicateur / maître d'ouvrage</span>
       <div class="rbody">
         <div class="row"><span class="label">Nom / raison sociale</span><span class="val">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">B</span><span class="rlabel">Objet du marché</span>
       <div class="rbody">
         <div class="row"><span class="label">Chantier</span><span class="val">${chantier.titre || ""}</span></div>
@@ -1171,12 +1171,12 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">C</span><span class="rlabel">Objet de la déclaration</span>
       <div class="rbody"><p>Déclaration de sous-traitant présentée après la conclusion du marché (acte spécial de sous-traitance).</p></div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">D</span><span class="rlabel">Identification du titulaire du marché</span>
       <div class="rbody">
         <div class="row"><span class="label">Dénomination</span><span class="val">SYNERGIE BTP (SAS)</span></div>
@@ -1186,7 +1186,7 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">E</span><span class="rlabel">Identification du sous-traitant proposé</span>
       <div class="rbody">
         <div class="row"><span class="label">Dénomination</span><span class="val">${sousTraitant.nom || ""}</span></div>
@@ -1197,7 +1197,7 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">F</span><span class="rlabel">Nature et prix des prestations sous-traitées</span>
       <div class="rbody">
         <div class="row"><span class="label">Nature de la prestation</span><span class="val">${fields.missionDescription || ""}</span></div>
@@ -1208,7 +1208,7 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">G</span><span class="rlabel">Conditions de paiement</span>
       <div class="rbody">
         <p>${isDirect
@@ -1218,23 +1218,23 @@ function dc4Html({ chantier, entry, sousTraitant, fields }) {
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">H</span><span class="rlabel">Capacités du sous-traitant — pièces justificatives</span>
       <div class="rbody"><ul class="pieces-list">${piecesHtml}</ul></div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">I</span><span class="rlabel">Attestations sur l'honneur</span>
       <div class="rbody">
         <p>Le sous-traitant déclare sur l'honneur ne pas entrer dans un des cas d'exclusion de la commande publique prévus par le Code de la commande publique (notamment : absence de condamnation pénale incompatible, régularité fiscale et sociale, absence de procédure collective incompatible), et être à jour de ses obligations de déclaration et de paiement des impôts, taxes et cotisations sociales.</p>
       </div>
     </div>
 
-    <div class="rubrique">
+    <div class="rubrique avoid-break">
       <span class="letter">K</span><span class="rlabel">Acceptation et agrément</span>
       <div class="rbody">
         <p>Le silence gardé pendant 21 jours par le pouvoir adjudicateur à compter de la réception de la présente déclaration vaut acceptation du sous-traitant et agrément des conditions de paiement.</p>
-        <div class="sig-grid">
+        <div class="sig-grid avoid-break">
           <div class="sig-block"><div class="sig-title">Le sous-traitant</div>${sousTraitant.nom || ""}</div>
           <div class="sig-block"><div class="sig-title">Le titulaire (SYNERGIE BTP)</div>${SYNERGIE_REPRESENTANT}</div>
           <div class="sig-block"><div class="sig-title">Le pouvoir adjudicateur</div>${fields.moaRaisonSociale || chantier.client || ""}</div>
