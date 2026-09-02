@@ -1909,6 +1909,49 @@ function requiredDocuments(chantier) {
 function missingDocuments(chantier) {
   return requiredDocuments(chantier).filter((d) => !d.present && !d.isPerso);
 }
+// Étend missingDocuments (documents contractuels "fixes" : DC4, CCAP, avenants...)
+// avec les autres bulles de document qui peuvent rester vides sur un chantier :
+// l'acte de caution bancaire de chaque marché en RG "caution banque", le
+// contrat (et le DC4 sur marché public) de chaque sous-traitant actif, et
+// l'acte de cession de chaque fournisseur cessionnaire — demandé par Morgane
+// pour que la vue globale "Documents manquants" (liste + export PDF) les
+// signale aussi, comme les documents contractuels classiques. Volontairement
+// PAS fusionné dans requiredDocuments/missingDocuments elles-mêmes : ces
+// documents ont chacun déjà leur propre bulle à leur emplacement naturel sur
+// la fiche chantier (ligne du marché, bloc Sous-traitance, bloc Cession de
+// paiement) — les ajouter à requiredDocuments les ferait AUSSI apparaître,
+// à tort, dans la grille de bulles "documents contractuels" (avec les
+// mauvais boutons de suppression, prévus pour les FIXED_DOC_TYPES).
+function allMissingDocuments(chantier, sousTraitants) {
+  const missing = missingDocuments(chantier).map((d) => ({ key: d.key, label: d.label }));
+  if (chantier.isFacturesLibres) return missing;
+  const docs = chantier.documents || {};
+  for (const m of chantier.marches || []) {
+    if (m.rgMode === "banque" && !docPresent(docs, "caution-" + m.id)) {
+      missing.push({ key: "caution-" + m.id, label: `Caution bancaire (${marcheDisplayName(m)})` });
+    }
+  }
+  // Même exclusion des contrats annulés que l'alerte du tableau de bord
+  // (sousTraitanceDocsAlertes) : un contrat annulé n'a plus de pièce à
+  // réunir.
+  for (const e of chantier.sousTraitance || []) {
+    if (e.statutContrat === "annule") continue;
+    const sst = (sousTraitants || []).find((s) => s.id === e.sousTraitantId);
+    const nom = sst ? sst.nom : "sous-traitant non renseigné";
+    for (const d of sousTraitanceEntryMissingDocs(chantier, e)) {
+      missing.push({ key: sousTraitanceDocKey(e.id, d.type), label: `${d.label} sous-traitance (${nom})` });
+    }
+  }
+  if (chantier.cessionPaiement === "OUI") {
+    for (const f of chantier.fournisseurs || []) {
+      const key = "fournisseur-cession-" + (f.id || f.nom);
+      if (!docPresent(docs, key)) {
+        missing.push({ key, label: `Acte de cession (${f.nom || "fournisseur"})` });
+      }
+    }
+  }
+  return missing;
+}
 
 // Date d'échéance de la relance "levée de caution" : 1 an (N+1) après la date
 // du PV de réception saisie par Morgane — voir CautionBancaireView. Le
@@ -2415,7 +2458,7 @@ function Sidebar({ tab, setTab, unlocked, onLockClick, onSettingsClick, isMobile
 // ---------- Dashboard ----------
 function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, sousTraitants, onOpenSousTraitantDossier }) {
   const { totalEnAttente, impayees, enRetard, totalRetard, chartData, rgAReclamerBientot, betARelancer } = computed;
-  const chantiersDocsIncomplets = chantiers.filter((c) => missingDocuments(c).length > 0).length;
+  const chantiersDocsIncomplets = chantiers.filter((c) => allMissingDocuments(c, sousTraitants).length > 0).length;
   // Cautions bancaires soldées (marché entièrement facturé, RG en "caution
   // banque") en attente de demande de levée auprès de la banque — voir
   // cautionsBancaires/CautionBancaireView. "À relancer" = échéance N+1 déjà
@@ -6923,10 +6966,10 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
   `;
 }
 
-function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
+function DocumentsView({ chantiers, sousTraitants, setTab, setSelectedChantier }) {
   const [pdfError, setPdfError] = useState("");
   const rows = chantiers
-    .map((c) => ({ chantier: c, missing: missingDocuments(c) }))
+    .map((c) => ({ chantier: c, missing: allMissingDocuments(c, sousTraitants) }))
     .filter((r) => r.missing.length > 0)
     .sort((a, b) => b.missing.length - a.missing.length);
 
@@ -7655,7 +7698,7 @@ export default function App() {
           <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} sousTraitants={sousTraitants} onAddSousTraitant={addSousTraitant} onOpenSousTraitantDossier={openSousTraitantDossier} />
         )}
         {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRgBulk={markMarcheRgExtractedBulk} />}
-        {tab === "documents" && <DocumentsView chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
+        {tab === "documents" && <DocumentsView chantiers={chantiers} sousTraitants={sousTraitants} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
         {tab === "caution" && <CautionBancaireView chantiers={chantiers} updateChantier={updateChantier} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
         {tab === "soustraitants" && (
           <SousTraitantsView
