@@ -2103,9 +2103,17 @@ function computeAddPendingEntries(chantiers) {
   for (const c of chantiers) {
     for (const m of c.marches) {
       if (m.addMontant && !m.addDate) {
+        // m.addMontant est saisi en H.T. (voir AvanceDemarragePdfModal) —
+        // la liste des règlements en attente doit afficher le montant que
+        // le client doit effectivement régler, donc en T.T.C., calculé
+        // avec le régime de TVA du marché (comme sur le PDF d'appel
+        // d'avance généré).
+        const ht = Number(m.addMontant) || 0;
+        const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? TVA_REGIMES["085"].rate;
+        const ttc = Math.round(ht * (1 + rate) * 100) / 100;
         out.push({
           id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: c.dateDemarrage || null,
-          totalARecevoir: m.addMontant, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+          totalARecevoir: ttc, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
           chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
           marcheId: m.id, isADDPending: true,
         });
@@ -3607,26 +3615,39 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   }
   async function uploadDocument(key, file) {
     if (!unlocked) return;
-    const MAX_SIZE = 4 * 1024 * 1024;
+    // Dépôt en 2 temps (URL signée Supabase Storage) : le fichier part
+    // DIRECTEMENT du navigateur vers Supabase, sans repasser par une
+    // fonction Vercel (limitée à 4,5 Mo de requête). La limite réelle
+    // devient celle du bucket côté Supabase (50 Mo sur ce projet).
+    const MAX_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
-      setDocError("Fichier trop volumineux (4 Mo max). Essayez de le compresser.");
+      setDocError("Fichier trop volumineux (50 Mo max). Essayez de le compresser.");
       return;
     }
     setDocError("");
     setUploadingDocKey(key);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("chantierId", chantier.id);
-      fd.append("docKey", key);
-      const res = await fetch("/api/documents", { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Échec de l'envoi du document.");
-      setDocMeta(key, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+      const signRes = await fetch("/api/documents/sign-upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chantierId: chantier.id, docKey: key, fileName: file.name }),
+      });
+      const signData = await signRes.json().catch(() => ({}));
+      if (!signRes.ok) throw new Error(signData.error || "Échec de l'envoi du document.");
+      const putRes = await fetch(signData.signedUrl, {
+        method: "PUT",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Échec de l'envoi du document.");
+      setDocMeta(key, { present: true, fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() });
       // Ces documents contiennent en général le nom du client, le montant du
       // marché... : on tente une lecture automatique pour proposer un
-      // pré-remplissage (jamais appliqué sans validation explicite).
-      if (ANALYZABLE_DOC_KEYS.includes(key)) {
+      // pré-remplissage (jamais appliqué sans validation explicite). Cet
+      // appel repasse lui par une fonction Vercel (/api/analyze-document),
+      // donc on ne le tente que sous la limite de 4,5 Mo de celle-ci — au-delà,
+      // la lecture auto est simplement ignorée, le dépôt du document reste OK.
+      if (ANALYZABLE_DOC_KEYS.includes(key) && file.size <= 4 * 1024 * 1024) {
         analyzeDocument(key, file);
       }
     } catch (err) {
