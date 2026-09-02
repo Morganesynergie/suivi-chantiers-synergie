@@ -1466,12 +1466,21 @@ const MOIS_FR = ["Janvier", "F\u00e9vrier", "Mars", "Avril", "Mai", "Juin", "Jui
 // document pour caler l'encadré correctement quel que soit le nombre de
 // lignes déjà imprimées au-dessus (pdf-lib, utilisé côté navigateur, ne
 // sait qu'écrire, jamais lire une position existante).
-// A document entry can be a legacy plain boolean (old data) or the new
-// { present, fileName, filePath, uploadedAt } shape (uploaded file). This
-// normalizes either form, and also folds in the old tri-state dc4Statut
-// field so previously-collected data keeps its meaning.
+// A document entry can be a legacy plain boolean (old data), the single-file
+// { present, fileName, filePath, uploadedAt } shape, OR (bulles à documents
+// multiples — DC4/CCAP/avenants/bulles personnalisées, voir docEntriesArray/
+// uploadDocument) an ARRAY of { id, fileName, filePath, uploadedAt } entries,
+// jamais écrasés, seulement complétés. This normalizes any of these forms —
+// for an array, "present" reflects the most recently uploaded entry, plus a
+// "count" so bubble UIs can show "N documents" — and also folds in the old
+// tri-state dc4Statut field so previously-collected data keeps its meaning.
 function getDocMeta(docs, key) {
   const v = docs && docs[key];
+  if (Array.isArray(v)) {
+    if (v.length === 0) return { present: false };
+    const latest = [...v].sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || ""))[0];
+    return { present: true, fileName: latest.fileName, filePath: latest.filePath, uploadedAt: latest.uploadedAt, count: v.length };
+  }
   if (v && typeof v === "object") return v;
   if (typeof v === "boolean") return { present: v };
   if (key === "dc4" && docs && docs.dc4Statut === "present") return { present: true };
@@ -1479,6 +1488,19 @@ function getDocMeta(docs, key) {
 }
 function docPresent(docs, key) {
   return !!getDocMeta(docs, key).present;
+}
+// Normalise chantier.documents[key] en tableau d'entrées { id, fileName,
+// filePath, uploadedAt } quelle que soit sa forme de stockage (voir
+// getDocMeta ci-dessus) — utilisé à la fois pour l'affichage complet de
+// l'historique d'une bulle et pour l'ajout ("append") d'un nouveau document
+// sans perdre les précédents.
+function docEntriesArray(docs, key) {
+  const v = docs && docs[key];
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object" && v.present) {
+    return [{ id: key + "-legacy", fileName: v.fileName, filePath: v.filePath, uploadedAt: v.uploadedAt }];
+  }
+  return [];
 }
 // Documents dont le contenu contient en général le client, le montant du
 // marché, etc. — seuls ceux-là déclenchent une tentative de lecture
@@ -1862,10 +1884,17 @@ function requiredDocuments(chantier) {
   // Comme les autres documents, un avenant est "présent" quand un fichier a
   // été déposé dans sa bulle — plus une simple case cochée à la main.
   const avenants = (docs.avenants || []).map((a) => ({ key: a.id, label: a.nom || "Avenant", present: docPresent(docs, a.id), isAvenant: true }));
-  return [...items, ...avenants];
+  // Bulles personnalisées (nom libre, ajoutées à la demande de Morgane) :
+  // affichées dans la même grille et partagent le même mécanisme multi-
+  // documents, mais ne sont volontairement PAS des documents "attendus" —
+  // elles ne comptent jamais comme "manquantes" (voir missingDocuments) ni
+  // dans le pourcentage de complétude (voir coreDocs dans ChantierDetail),
+  // pour rester un simple espace de rangement libre.
+  const bullesPerso = (docs.bullesPerso || []).map((b) => ({ key: b.id, label: b.nom || "Document", present: docPresent(docs, b.id), isPerso: true }));
+  return [...items, ...avenants, ...bullesPerso];
 }
 function missingDocuments(chantier) {
-  return requiredDocuments(chantier).filter((d) => !d.present);
+  return requiredDocuments(chantier).filter((d) => !d.present && !d.isPerso);
 }
 
 function computeAutoRgCumulees(chantiers) {
@@ -3107,6 +3136,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const [payingSituation, setPayingSituation] = useState(null);
   const [uploadingDocKey, setUploadingDocKey] = useState(null);
   const [dragOverDocKey, setDragOverDocKey] = useState(null);
+  // Bulle actuellement dépliée pour afficher tout son historique de
+  // documents (voir docEntriesArray) — une seule à la fois.
+  const [expandedDocKey, setExpandedDocKey] = useState(null);
   const [docError, setDocError] = useState("");
   const [pendingUploadKey, setPendingUploadKey] = useState(null);
   const docFileInputRef = useRef(null);
@@ -3613,6 +3645,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     e.target.value = "";
     if (file && pendingUploadKey) uploadDocument(pendingUploadKey, file);
   }
+  // Bulles à documents multiples : DC4/CCAP/acte d'engagement... (tous les
+  // FIXED_DOC_TYPES), les avenants et les bulles personnalisées acceptent
+  // désormais plusieurs dépôts successifs qui s'AJOUTENT (jamais d'écrasement
+  // — "je puisse ajouter autant de documents en plusieurs fois"), alors que
+  // les bulles de sous-traitance (contrat/DC4 par entrée, voir
+  // renderSousTraitanceDocBubble) et la bulle "avance de démarrage" restent
+  // volontairement à un seul document (remplacé, pas archivé).
+  function isMultiDocKey(key) {
+    const docsCur = chantier.documents || {};
+    if (FIXED_DOC_TYPES.some((t) => t.key === key)) return true;
+    if ((docsCur.avenants || []).some((a) => a.id === key)) return true;
+    if ((docsCur.bullesPerso || []).some((b) => b.id === key)) return true;
+    return false;
+  }
   async function uploadDocument(key, file) {
     if (!unlocked) return;
     // Dépôt en 2 temps (URL signée Supabase Storage) : le fichier part
@@ -3640,7 +3686,13 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
         body: file,
       });
       if (!putRes.ok) throw new Error("Échec de l'envoi du document.");
-      setDocMeta(key, { present: true, fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() });
+      const newEntry = { id: uid("doc"), fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() };
+      if (isMultiDocKey(key)) {
+        const existing = docEntriesArray(chantier.documents || {}, key);
+        setDocMeta(key, [...existing, newEntry]);
+      } else {
+        setDocMeta(key, { present: true, ...newEntry });
+      }
       // Ces documents contiennent en général le nom du client, le montant du
       // marché... : on tente une lecture automatique pour proposer un
       // pré-remplissage (jamais appliqué sans validation explicite). Cet
@@ -3745,6 +3797,42 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       window.open(data.url, "_blank");
     } catch (err) {
       setDocError(err.message || "Impossible d'ouvrir le document.");
+    }
+  }
+  // Ouvre UNE entrée précise d'une bulle à documents multiples (voir
+  // docEntriesArray) — utilisé par le panneau d'historique de chaque bulle,
+  // où chaque document (pas seulement le plus récent) doit rester ouvrable.
+  async function openDocumentEntry(entry) {
+    if (!entry || !entry.filePath) return;
+    setDocError("");
+    try {
+      const res = await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de l'ouverture du document.");
+      window.open(data.url, "_blank");
+    } catch (err) {
+      setDocError(err.message || "Impossible d'ouvrir le document.");
+    }
+  }
+  // Supprime UNE seule entrée d'une bulle à documents multiples (sur le
+  // stockage ET dans chantier.documents), en conservant les autres — jamais
+  // toute la bulle (voir removeDocument, toujours utilisé tel quel par les
+  // bulles restées à un seul document).
+  async function removeDocumentEntry(key, entry) {
+    if (!unlocked || !entry) return;
+    setUploadingDocKey(key);
+    setDocError("");
+    try {
+      if (entry.filePath) {
+        await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`, { method: "DELETE" });
+      }
+      const docsCur = chantier.documents || {};
+      const next = docEntriesArray(docsCur, key).filter((e) => e.id !== entry.id);
+      setDocMeta(key, next);
+    } catch (err) {
+      setDocError(err.message || "Échec de la suppression du document.");
+    } finally {
+      setUploadingDocKey(null);
     }
   }
 
@@ -4116,6 +4204,21 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       setSendingEmailId(null);
     }
   }
+  // Supprime sur le stockage TOUS les fichiers déposés dans une bulle
+  // (qu'elle contienne un seul document — ancienne forme — ou plusieurs —
+  // voir docEntriesArray) : appelé quand la bulle elle-même disparaît
+  // (avenant/bulle personnalisée supprimée, type de document décoché), pour
+  // n'y laisser jamais aucun fichier orphelin sur Supabase Storage.
+  async function deleteAllDocEntryFiles(docs, key) {
+    const entries = docEntriesArray(docs, key);
+    await Promise.all(entries.filter((e) => e.filePath).map(async (e) => {
+      try {
+        await fetch(`/api/documents?path=${encodeURIComponent(e.filePath)}`, { method: "DELETE" });
+      } catch {
+        // On retire quand même la bulle même si une suppression échoue.
+      }
+    }));
+  }
   function addAvenant() {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     const n = (docs.avenants || []).length + 1;
@@ -4125,23 +4228,36 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
     updateChantier({ ...chantier, documents: { ...docs, avenants: docs.avenants.map((a) => (a.id === id ? { ...a, nom } : a)) } });
   }
-  // Supprime l'avenant ET, s'il avait un PDF déposé, ce fichier (sur le
-  // stockage ET dans chantier.documents) — sinon le fichier restait
-  // orphelin indéfiniment (jamais réaffiché nulle part, mais jamais
-  // supprimé du stockage non plus).
+  // Supprime l'avenant ET, s'il avait un ou plusieurs PDF déposés, TOUS ces
+  // fichiers (sur le stockage ET dans chantier.documents) — sinon le(s)
+  // fichier(s) restaient orphelin(s) indéfiniment (jamais réaffichés nulle
+  // part, mais jamais supprimés du stockage non plus).
   async function removeAvenant(id) {
     const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
-    const meta = getDocMeta(docs, id);
-    if (meta.present && meta.filePath) {
-      try {
-        await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
-      } catch {
-        // On retire quand même l'avenant même si la suppression du fichier
-        // sur le stockage échoue (pas de blocage pour Morgane).
-      }
-    }
+    await deleteAllDocEntryFiles(docs, id);
     const { [id]: _removed, ...restDocs } = docs;
     updateChantier({ ...chantier, documents: { ...restDocs, avenants: (docs.avenants || []).filter((a) => a.id !== id) } });
+  }
+  // Bulle personnalisée (nom libre, répétable) : "il faut aussi une bulle
+  // supplémentaire que je peux nommer comme je veux" — même mécanisme que
+  // les avenants (chantier.documents.bullesPerso), mais gardée sémantiquement
+  // séparée (un avenant est un document contractuel, une bulle personnalisée
+  // un simple espace de rangement libre — voir requiredDocuments/
+  // missingDocuments plus haut : elle ne compte jamais comme "manquante").
+  function addBullePerso() {
+    const docs = chantier.documents || { avenants: [], bullesPerso: [] };
+    const n = (docs.bullesPerso || []).length + 1;
+    updateChantier({ ...chantier, documents: { ...docs, bullesPerso: [...(docs.bullesPerso || []), { id: uid("perso"), nom: "Bulle " + String(n).padStart(2, "0") }] } });
+  }
+  function renameBullePerso(id, nom) {
+    const docs = chantier.documents || { avenants: [], bullesPerso: [] };
+    updateChantier({ ...chantier, documents: { ...docs, bullesPerso: (docs.bullesPerso || []).map((b) => (b.id === id ? { ...b, nom } : b)) } });
+  }
+  async function removeBullePerso(id) {
+    const docs = chantier.documents || { avenants: [], bullesPerso: [] };
+    await deleteAllDocEntryFiles(docs, id);
+    const { [id]: _removed, ...restDocs } = docs;
+    updateChantier({ ...chantier, documents: { ...restDocs, bullesPerso: (docs.bullesPerso || []).filter((b) => b.id !== id) } });
   }
   // Décocher un type de document qui a déjà un PDF déposé doit aussi
   // supprimer ce fichier (sur le stockage ET dans chantier.documents) :
@@ -4157,14 +4273,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const docs = chantier.documents || {};
     const meta = getDocMeta(docs, key);
     if (isRemoving && meta.present) {
-      if (meta.filePath) {
-        try {
-          await fetch(`/api/documents?path=${encodeURIComponent(meta.filePath)}`, { method: "DELETE" });
-        } catch {
-          // On décoche quand même la case même si la suppression du fichier
-          // sur le stockage échoue (pas de blocage pour Morgane).
-        }
-      }
+      // Ce type de document pouvant désormais contenir PLUSIEURS fichiers
+      // (voir docEntriesArray), on les supprime tous — pas seulement le plus
+      // récent — pour n'en laisser aucun orphelin sur le stockage.
+      await deleteAllDocEntryFiles(docs, key);
       updateChantier({ ...chantier, docTypesActifs: next, documents: { ...docs, [key]: { present: false, fileName: null, filePath: null, uploadedAt: null } } });
       return;
     }
@@ -4220,7 +4332,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const docs = chantier.documents || { acteEngagement: false, ccap: false, devisSigne: false, avenants: [] };
   const reqDocs = requiredDocuments(chantier);
   const missingDocs = reqDocs.filter((d) => !d.present);
-  const coreDocs = reqDocs.filter((d) => !d.isAvenant);
+  const coreDocs = reqDocs.filter((d) => !d.isAvenant && !d.isPerso);
   const docsPresentCount = coreDocs.filter((d) => d.present).length;
   const docsTotalCount = coreDocs.length;
   const docsPresentPct = docsTotalCount ? Math.round((docsPresentCount / docsTotalCount) * 100) : 100;
@@ -4485,75 +4597,135 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             const isUploading = uploadingDocKey === d.key;
             const isDragOver = dragOverDocKey === d.key;
             const clickable = !isUploading && (meta.present || unlocked);
+            // DC4/CCAP/acte d'engagement..., avenants et bulles personnalisées
+            // acceptent plusieurs dépôts qui s'ajoutent (voir uploadDocument/
+            // isMultiDocKey) — d'où le panneau d'historique déplié par le
+            // chevron plutôt qu'un simple "1 fichier = 1 bulle".
+            const multiKey = d.isAvenant || d.isPerso || FIXED_DOC_TYPES.some((t) => t.key === d.key);
+            const entries = multiKey ? docEntriesArray(docs, d.key) : [];
+            const isExpanded = expandedDocKey === d.key;
             return (
-              <div
-                key={d.key}
-                onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverDocKey(d.key); }}
-                onDragLeave={() => setDragOverDocKey((k) => (k === d.key ? null : k))}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverDocKey((k) => (k === d.key ? null : k));
-                  if (!unlocked || isUploading) return;
-                  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-                  if (f) uploadDocument(d.key, f);
-                }}
-                onClick={() => {
-                  if (isUploading) return;
-                  if (meta.present) { openDocument(d.key); return; }
-                  if (unlocked) triggerDocUpload(d.key);
-                }}
-                title={meta.present ? (meta.fileName || "Document réuni — cliquer pour ouvrir") : (unlocked ? "Cliquer ou glisser-déposer un fichier ici" : "Document manquant")}
-                className="relative flex flex-col items-center justify-center text-center gap-1"
-                style={{
-                  width: 118,
-                  minHeight: 92,
-                  borderRadius: 16,
-                  padding: "10px 8px",
-                  border: `2px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.red}`,
-                  background: meta.present ? "#fff" : isDragOver ? COLORS.accentSoft : "#fff",
-                  cursor: clickable ? "pointer" : "default",
-                  opacity: isUploading ? 0.6 : 1,
-                  transition: "background 0.15s, border-color 0.15s",
-                }}
-              >
-                {unlocked && !isUploading && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); d.isAvenant ? removeAvenant(d.key) : toggleDocTypeActif(d.key); }}
-                    title={d.isAvenant ? "Supprimer cet avenant (et son PDF)" : "Retirer ce type de document de la liste (et son PDF)"}
-                    style={{ position: "absolute", top: 4, left: 4 }}
-                  >
-                    <Trash2 size={11} color={COLORS.inkSoft} />
-                  </button>
-                )}
-                {unlocked && meta.present && !isUploading && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeDocument(d.key); }}
-                    title="Retirer le document"
-                    style={{ position: "absolute", top: 4, right: 4 }}
-                  >
-                    <X size={11} color={COLORS.red} />
-                  </button>
-                )}
-                {isUploading ? (
-                  <Loader2 size={20} color={COLORS.accent} className="animate-spin" />
-                ) : (
-                  <FileWarning size={20} color={meta.present ? COLORS.green : COLORS.red} />
-                )}
-                {d.isAvenant && unlocked ? (
-                  <input
-                    value={d.label}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => renameAvenant(d.key, e.target.value)}
-                    className="text-[11px] font-medium text-center"
-                    style={{ color: COLORS.ink, border: "none", background: "transparent", width: "100%", padding: 0 }}
-                  />
-                ) : (
-                  <span className="text-[11px] font-medium leading-tight" style={{ color: COLORS.ink }}>{d.label}</span>
-                )}
-                {meta.present ? (
-                  <span className="text-[10px] truncate" style={{ color: COLORS.inkSoft, maxWidth: 100 }}>{meta.fileName || "Réuni"}</span>
-                ) : (
-                  <span className="text-[10px]" style={{ color: COLORS.inkSoft }}>{isUploading ? "Envoi..." : unlocked ? "glisser un fichier" : "manquant"}</span>
+              <div key={d.key} className="relative">
+                <div
+                  onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverDocKey(d.key); }}
+                  onDragLeave={() => setDragOverDocKey((k) => (k === d.key ? null : k))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverDocKey((k) => (k === d.key ? null : k));
+                    if (!unlocked || isUploading) return;
+                    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (f) uploadDocument(d.key, f);
+                  }}
+                  onClick={() => {
+                    if (isUploading) return;
+                    if (meta.present) { openDocument(d.key); return; }
+                    if (unlocked) triggerDocUpload(d.key);
+                  }}
+                  title={meta.present ? (meta.fileName || "Document réuni — cliquer pour ouvrir") : (unlocked ? "Cliquer ou glisser-déposer un fichier ici" : "Document manquant")}
+                  className="relative flex flex-col items-center justify-center text-center gap-1"
+                  style={{
+                    width: 118,
+                    minHeight: 92,
+                    borderRadius: 16,
+                    padding: "10px 8px",
+                    border: `2px ${meta.present ? "solid" : "dashed"} ${meta.present ? COLORS.green : isDragOver ? COLORS.accent : COLORS.red}`,
+                    background: meta.present ? "#fff" : isDragOver ? COLORS.accentSoft : "#fff",
+                    cursor: clickable ? "pointer" : "default",
+                    opacity: isUploading ? 0.6 : 1,
+                    transition: "background 0.15s, border-color 0.15s",
+                  }}
+                >
+                  {unlocked && !isUploading && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); d.isAvenant ? removeAvenant(d.key) : d.isPerso ? removeBullePerso(d.key) : toggleDocTypeActif(d.key); }}
+                      title={d.isAvenant ? "Supprimer cet avenant (et ses PDF)" : d.isPerso ? "Supprimer cette bulle (et ses PDF)" : "Retirer ce type de document de la liste (et ses PDF)"}
+                      style={{ position: "absolute", top: 4, left: 4 }}
+                    >
+                      <Trash2 size={11} color={COLORS.inkSoft} />
+                    </button>
+                  )}
+                  {unlocked && meta.present && !isUploading && !multiKey && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeDocument(d.key); }}
+                      title="Retirer le document"
+                      style={{ position: "absolute", top: 4, right: 4 }}
+                    >
+                      <X size={11} color={COLORS.red} />
+                    </button>
+                  )}
+                  {isUploading ? (
+                    <Loader2 size={20} color={COLORS.accent} className="animate-spin" />
+                  ) : (
+                    <FileWarning size={20} color={meta.present ? COLORS.green : COLORS.red} />
+                  )}
+                  {(d.isAvenant || d.isPerso) && unlocked ? (
+                    <input
+                      value={d.label}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => (d.isAvenant ? renameAvenant : renameBullePerso)(d.key, e.target.value)}
+                      className="text-[11px] font-medium text-center"
+                      style={{ color: COLORS.ink, border: "none", background: "transparent", width: "100%", padding: 0 }}
+                    />
+                  ) : (
+                    <span className="text-[11px] font-medium leading-tight" style={{ color: COLORS.ink }}>{d.label}</span>
+                  )}
+                  {meta.present ? (
+                    <span className="text-[10px] truncate" style={{ color: COLORS.inkSoft, maxWidth: 100 }}>
+                      {multiKey && entries.length > 1 ? `${entries.length} documents` : (meta.fileName || "Réuni")}
+                    </span>
+                  ) : (
+                    <span className="text-[10px]" style={{ color: COLORS.inkSoft }}>{isUploading ? "Envoi..." : unlocked ? "glisser un fichier" : "manquant"}</span>
+                  )}
+                  {multiKey && meta.present && !isUploading && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setExpandedDocKey(isExpanded ? null : d.key); }}
+                      title="Voir tous les documents de cette bulle"
+                      style={{ position: "absolute", bottom: 4, right: 4 }}
+                    >
+                      <ChevronDown size={13} color={COLORS.inkSoft} style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                    </button>
+                  )}
+                </div>
+                {isExpanded && (
+                  <>
+                    <div onClick={() => setExpandedDocKey(null)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
+                    <div
+                      className="text-left"
+                      style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 230, background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(22,35,59,0.16)", padding: 10, zIndex: 31 }}
+                    >
+                      <div className="text-[11px] font-semibold mb-1.5" style={{ color: COLORS.ink }}>
+                        {d.label} — {entries.length} document{entries.length > 1 ? "s" : ""}
+                      </div>
+                      <div className="flex flex-col gap-1.5" style={{ maxHeight: 190, overflowY: "auto" }}>
+                        {[...entries].sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || "")).map((entry) => (
+                          <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px]">
+                            <button
+                              onClick={() => openDocumentEntry(entry)}
+                              className="truncate text-left hover:underline"
+                              style={{ color: COLORS.accent, maxWidth: unlocked ? 155 : 180 }}
+                              title={entry.fileName}
+                            >
+                              {entry.fileName || "Document"}
+                            </button>
+                            {unlocked && (
+                              <button onClick={() => removeDocumentEntry(d.key, entry)} title="Supprimer définitivement ce document">
+                                <Trash2 size={11} color={COLORS.red} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {unlocked && (
+                        <button
+                          onClick={() => { setExpandedDocKey(null); triggerDocUpload(d.key); }}
+                          className="mt-2 flex items-center gap-1 text-[11px] font-medium hover:underline"
+                          style={{ color: COLORS.accent }}
+                        >
+                          <Plus size={11} /> Ajouter un document
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -4571,6 +4743,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           {unlocked && (
             <button onClick={addAvenant} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium h-fit" style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>
               <Plus size={12} /> Avenant
+            </button>
+          )}
+          {unlocked && (
+            <button onClick={addBullePerso} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium h-fit" style={{ color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>
+              <Plus size={12} /> Bulle personnalisée
             </button>
           )}
         </div>
@@ -6549,7 +6726,53 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
 
 // ---------- Settings panel ----------
 // ---------- Documents contractuels ----------
+// Génère le PDF "vue globale" des documents manquants, chantier par
+// chantier — même contenu que la liste affichée à l'écran ci-dessous
+// (`rows`), pour que Morgane retrouve exactement ce qu'elle vient de
+// consulter une fois imprimé/partagé. Un vrai PDF (voir openGeneratedPdf),
+// pas un simple "imprimer la page", pour une pagination propre si la liste
+// est longue.
+function missingDocumentsPdfHtml(rows, totalMissing) {
+  const blocks = rows.map(({ chantier, missing }) => `
+    <div class="chantier-block avoid-break">
+      <div class="chantier-titre">${chantier.titre || "(sans titre)"}</div>
+      <div class="chantier-meta">${[chantier.client, chantier.nChantier].filter(Boolean).join(" · ") || "&nbsp;"}</div>
+      <div class="tags">
+        ${missing.map((d) => `<span class="tag">${d.label}</span>`).join("")}
+      </div>
+    </div>
+  `).join("");
+  return `
+    <html><head><title>Documents manquants — SYNERGIE BTP</title>
+    <style>
+      body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
+      h1{font-size:20px;margin:0 0 2px 0;color:#16233B;}
+      .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
+      .subtitle{font-size:12.5px;color:#5B6779;margin:0 0 20px 0;}
+      .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:22px;}
+      .header img{height:32px;}
+      .header .meta{text-align:right;font-size:11px;color:#5B6472;}
+      .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
+      .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
+      .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
+      .tags{display:flex;flex-wrap:wrap;gap:5px;}
+      .tag{display:inline-block;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;}
+      .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
+    </style></head><body>
+    <div class="header">
+      <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+      <div class="meta">Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
+    </div>
+    <div class="eyebrow">Vue globale — tous les chantiers</div>
+    <h1>Documents manquants</h1>
+    <p class="subtitle">${rows.length ? `${rows.length} chantier(s) — ${totalMissing} document(s) manquant(s)` : "Aucun document manquant"}</p>
+    ${rows.length ? blocks : '<div class="empty">Tous les chantiers ont leurs documents essentiels.</div>'}
+    </body></html>
+  `;
+}
+
 function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
+  const [pdfError, setPdfError] = useState("");
   const rows = chantiers
     .map((c) => ({ chantier: c, missing: missingDocuments(c) }))
     .filter((r) => r.missing.length > 0)
@@ -6557,12 +6780,22 @@ function DocumentsView({ chantiers, setTab, setSelectedChantier }) {
 
   const totalMissing = rows.reduce((a, r) => a + r.missing.length, 0);
 
+  function exportMissingDocsPdf() {
+    setPdfError("");
+    const html = missingDocumentsPdfHtml(rows, totalMissing);
+    openGeneratedPdf(html, { fileName: "Documents_manquants_SYNERGIE_BTP.pdf", onError: setPdfError, pageNumbers: true });
+  }
+
   return (
     <div className="p-4 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Documents contractuels</h1>
-      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Documents contractuels</h1>
+        <Btn size="sm" variant="ghost" onClick={exportMissingDocsPdf}><FileText size={13} /> Extraire en PDF</Btn>
+      </div>
+      <p className="text-sm mb-2" style={{ color: COLORS.inkSoft }}>
         Documents cochés comme attendus (dans "Modifier les infos" de chaque chantier) mais pas encore déposés.
       </p>
+      {pdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{pdfError}</p>}
 
       {rows.length === 0 ? (
         <Card className="p-8 text-center text-sm" style={{ color: COLORS.inkSoft }}>Tous les chantiers ont leurs documents essentiels 🎉</Card>
