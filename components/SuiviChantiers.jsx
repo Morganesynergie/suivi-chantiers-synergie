@@ -1959,17 +1959,22 @@ function allMissingDocuments(chantier, sousTraitants) {
   return missing;
 }
 
-// Date d'échéance de la relance "levée de caution" : 1 an (N+1) après la date
-// du PV de réception saisie par Morgane — voir CautionBancaireView. Le
-// décalage d'un an sur une chaîne ISO "YYYY-MM-DD" se fait proprement via
-// Date (pas de simple manipulation de texte, pour gérer correctement les 29
-// février par exemple).
-function cautionAlerteIso(pvDateIso) {
-  if (!pvDateIso) return null;
-  const d = new Date(pvDateIso + "T00:00:00");
+// Décale une date ISO "YYYY-MM-DD" de N années, proprement via Date (pas de
+// simple manipulation de texte, pour gérer correctement les 29 février par
+// exemple). Utilisé à la fois pour l'échéance des RG et la levée des
+// cautions bancaires, toutes deux calculées comme "date de réception du
+// chantier + 1 an" (voir chantier.dateReception, "Modifier les infos").
+function addYearsIso(dateIso, years) {
+  if (!dateIso) return null;
+  const d = new Date(dateIso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
-  d.setFullYear(d.getFullYear() + 1);
+  d.setFullYear(d.getFullYear() + years);
   return d.toISOString().slice(0, 10);
+}
+// Date d'échéance de la relance "levée de caution" : 1 an (N+1) après la date
+// du PV de réception — voir CautionBancaireView.
+function cautionAlerteIso(pvDateIso) {
+  return addYearsIso(pvDateIso, 1);
 }
 // Liste, sur tous les chantiers actifs (ni "Factures ponctuelles" ni
 // archivés), chaque marché/TS dont le mode de retenue de garantie est
@@ -1988,8 +1993,23 @@ function cautionsBancaires(chantiers) {
       const factureHt = c.situations.filter((s) => s.marcheId === m.id).reduce((a, s) => a + (s.montantHt || 0), 0);
       const resteHt = Math.round(((m.montantHt || 0) - factureHt) * 100) / 100;
       const soldee = !!m.montantHt && resteHt <= 0;
-      const alerteIso = cautionAlerteIso(m.cautionPvDate);
-      out.push({ chantier: c, marche: m, resteHt, soldee, alerteIso, alerteJours: alerteIso ? daysUntil(alerteIso) : null });
+      // Date du PV de réception de CE marché : saisie propre au marché si
+      // renseignée (utile quand la caution de ce bloc a été reçue à une date
+      // différente du reste du chantier), sinon reprise automatiquement de
+      // la date de réception globale du chantier ("Modifier les infos").
+      const pvDateEffective = m.cautionPvDate || c.dateReception || null;
+      const pvDateHerited = !m.cautionPvDate && !!c.dateReception;
+      const alerteIso = cautionAlerteIso(pvDateEffective);
+      // Date de levée réelle à demander à la banque : modifiable à la main
+      // (utile si la date calculée automatiquement est fausse) ; la
+      // suggestion calculée ci-dessus (PV + 1 an) sert de valeur par défaut
+      // tant que rien n'a été saisi.
+      const leveeIso = m.dateLevee || alerteIso;
+      out.push({
+        chantier: c, marche: m, resteHt, soldee,
+        pvDateEffective, pvDateHerited, alerteIso, leveeIso,
+        alerteJours: leveeIso ? daysUntil(leveeIso) : null,
+      });
     }
   }
   return out;
@@ -5258,6 +5278,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
             <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
             <Field label="Durée prévue"><TextInput value={chantier.dureePrevue || ""} onChange={(e) => updateHeaderField({ dureePrevue: e.target.value })} /></Field>
+            <Field label="Date de réception du chantier">
+              <TextInput type="date" value={chantier.dateReception || ""} onChange={(e) => updateHeaderField({ dateReception: e.target.value })} />
+              <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
+                Sert de point de départ (+ 1 an) pour l'échéance des retenues de garantie et la levée des cautions bancaires.
+              </p>
+            </Field>
             <label className="flex items-center gap-2 text-xs self-end pb-2" style={{ color: COLORS.ink }}>
               <input type="checkbox" checked={chantier.marchePublic === true} onChange={(e) => updateHeaderField({ marchePublic: e.target.checked })} />
               Marché public (DC4 requis pour les sous-traitants)
@@ -5311,6 +5337,19 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                           <option value="aucune">Pas de RG</option>
                         </select>
                       </Field>
+                      {m.rgMode === "banque" && (
+                        <Field label="Montant de la RG cautionnée">
+                          <TextInput
+                            type="number" step="0.01"
+                            value={m.montantCaution ?? ""}
+                            placeholder="ex. montant de la caution bancaire"
+                            onChange={(e) => updateMarche(m.id, { montantCaution: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                          />
+                          <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
+                            À renseigner si la caution ne couvre que ce marché/TS précisément (montant repris tel quel dans l'onglet "Caution bancaire").
+                          </p>
+                        </Field>
+                      )}
                       <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
                       <Field label="% ADD"><TextInput type="number" step="0.1" value={addPctDisplay(m)} onChange={(e) => handleAddPctChange(m, e.target.value)} placeholder="ex. 40" /></Field>
                       <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => handleAddMontantChange(m, e.target.value)} /></Field>
@@ -6105,20 +6144,48 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
     const newEntries = autoRg.map((item) => {
       const rate = TVA_REGIMES[item.tvaRegime]?.rate ?? 0.085;
       const montantHtRg = Math.round((item.totalRg / (1 + rate)) * 100) / 100;
+      const chantier = chantiers.find((c) => c.id === item.chantierId);
       return {
         id: uid("rg-v"), chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
         montantHt: montantHtRg, montantTtc: item.totalRg, betMo: "",
-        // Pas de date d'échéance auto : le PV de réception (point de départ du
-        // délai de RG) n'est en général pas obtenu tout de suite après le
-        // soldé à 100 % — la date reste à saisir à la main dès qu'elle est
-        // connue (champ modifiable ci-dessous, voir updateVenir).
-        dateEcheance: "",
+        // Échéance = date de réception du chantier + 1 an ("Modifier les
+        // infos"), point de départ légal du délai de RG. Si cette date n'est
+        // pas encore connue, on laisse le champ vide (voir l'effet de
+        // rattrapage ci-dessous) — reste modifiable à la main dans tous les
+        // cas (champ éditable ci-dessous, voir updateVenir).
+        dateEcheance: chantier?.dateReception ? addYearsIso(chantier.dateReception, 1) : "",
       };
     });
     updateRg({ ...rgDues, aVenir: [...rgDues.aVenir, ...newEntries] });
     onExtractMarcheRgBulk(autoRg.map((item) => item.chantierId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRg]);
+
+  // Rattrapage : une ligne "RG à venir" déjà créée avec une échéance vide
+  // (date de réception pas encore connue à l'époque) se voit proposer
+  // l'échéance calculée dès que la date de réception du chantier lié est
+  // renseignée par la suite ("Modifier les infos"). N'écrase jamais une
+  // échéance déjà saisie, même fausse — Morgane la corrige alors à la main
+  // (champ toujours modifiable) plutôt que de la voir recalculée sous ses yeux.
+  useEffect(() => {
+    const patches = [];
+    for (const r of rgDues.aVenir) {
+      if (r.dateEcheance || !r.chantierId) continue;
+      const chantier = chantiers.find((c) => c.id === r.chantierId);
+      if (!chantier?.dateReception) continue;
+      const computed = addYearsIso(chantier.dateReception, 1);
+      if (computed) patches.push({ id: r.id, dateEcheance: computed });
+    }
+    if (patches.length === 0) return;
+    updateRg({
+      ...rgDues,
+      aVenir: rgDues.aVenir.map((r) => {
+        const p = patches.find((x) => x.id === r.id);
+        return p ? { ...r, dateEcheance: p.dateEcheance } : r;
+      }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chantiers]);
 
   function addEchue() {
     updateRg({ ...rgDues, echues: [...rgDues.echues, { ...formE, id: uid("rg-e") }] });
@@ -7119,6 +7186,12 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
   function setCautionPvDate(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, cautionPvDate: value || null } : m)) });
   }
+  function setDateLevee(chantier, marcheId, value) {
+    updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, dateLevee: value || null } : m)) });
+  }
+  function setMontantCaution(chantier, marcheId, value) {
+    updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, montantCaution: value === "" ? "" : parseFloat(value) } : m)) });
+  }
 
   return (
     <div className="p-4 max-w-6xl">
@@ -7134,15 +7207,15 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
         <div className="flex flex-col gap-2 mb-6">
           {aAnnuler.map((entry) => {
             const j = entry.alerteJours;
-            const pillColor = !entry.marche.cautionPvDate ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
-            const pillLabel = !entry.marche.cautionPvDate
+            const pillColor = !entry.pvDateEffective ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
+            const pillLabel = !entry.pvDateEffective
               ? "Date du PV à renseigner"
               : j < 0
               ? `À demander à la banque (échue depuis ${Math.abs(j)} j)`
               : j <= 30
               ? `Échéance dans ${j} j`
-              : `Levée prévue le ${fmtDate(entry.alerteIso)}`;
-            const cardBg = !entry.marche.cautionPvDate || j < 0 ? COLORS.redSoft : j <= 30 ? COLORS.amberSoft : "#fff";
+              : `Levée prévue le ${fmtDate(entry.leveeIso)}`;
+            const cardBg = !entry.pvDateEffective || j < 0 ? COLORS.redSoft : j <= 30 ? COLORS.amberSoft : "#fff";
             return (
               <Card key={entry.marche.id} className="p-3" style={{ background: cardBg }}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -7154,24 +7227,48 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                     >
                       {entry.chantier.titre}
                     </button>
-                    <div className="text-xs" style={{ color: COLORS.inkSoft }}>{marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — soldé</div>
+                    <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                      {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT marché — soldé
+                      {entry.marche.montantCaution !== "" && entry.marche.montantCaution != null && (
+                        <> — RG cautionnée : <span className="font-medium">{fmtEUR(entry.marche.montantCaution)}</span></>
+                      )}
+                    </div>
                   </div>
                   <Pill color={pillColor}>{pillLabel}</Pill>
                 </div>
-                <div className="flex items-end gap-2 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                  <Field label="Montant de la RG cautionnée">
+                    <TextInput
+                      type="number" step="0.01"
+                      value={entry.marche.montantCaution ?? ""}
+                      placeholder={fmtEUR(entry.marche.montantHt)}
+                      onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                      style={{ width: 140 }}
+                    />
+                  </Field>
                   <Field label="Date du PV de réception">
                     <TextInput
                       type="date"
-                      value={entry.marche.cautionPvDate || ""}
+                      value={entry.pvDateEffective || ""}
                       onChange={(e) => setCautionPvDate(entry.chantier, entry.marche.id, e.target.value)}
                       style={{ width: 150 }}
                     />
+                    {entry.pvDateHerited && (
+                      <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Reprise de la date de réception du chantier</p>
+                    )}
                   </Field>
-                  {entry.marche.cautionPvDate && (
-                    <span className="text-[11px]" style={{ color: COLORS.inkSoft }}>
-                      Levée à demander à la banque le {fmtDate(entry.alerteIso)} (1 an après le PV)
-                    </span>
-                  )}
+                  <Field label="Date de levée à demander">
+                    <TextInput
+                      type="date"
+                      value={entry.marche.dateLevee || ""}
+                      placeholder={entry.alerteIso || ""}
+                      onChange={(e) => setDateLevee(entry.chantier, entry.marche.id, e.target.value)}
+                      style={{ width: 150 }}
+                    />
+                    {!entry.marche.dateLevee && entry.alerteIso && (
+                      <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Calculée : {fmtDate(entry.alerteIso)} (PV + 1 an)</p>
+                    )}
+                  </Field>
                 </div>
               </Card>
             );
@@ -7195,9 +7292,25 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                   >
                     {entry.chantier.titre}
                   </button>
-                  <div className="text-xs" style={{ color: COLORS.inkSoft }}>{marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}</div>
+                  <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                    {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}
+                    {entry.marche.montantCaution !== "" && entry.marche.montantCaution != null && (
+                      <> — RG cautionnée : <span className="font-medium">{fmtEUR(entry.marche.montantCaution)}</span></>
+                    )}
+                  </div>
                 </div>
                 <Pill color="accent">En cours</Pill>
+              </div>
+              <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                <Field label="Montant de la RG cautionnée">
+                  <TextInput
+                    type="number" step="0.01"
+                    value={entry.marche.montantCaution ?? ""}
+                    placeholder={fmtEUR(entry.marche.montantHt)}
+                    onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                    style={{ width: 140 }}
+                  />
+                </Field>
               </div>
             </Card>
           ))}
@@ -7554,7 +7667,7 @@ export default function App() {
     const newC = {
       id: uid("ch"), sheet: titre, titre, client, clientEmail: "", nChantier: "", dateDemarrage: null,
       adresseChantier: "",
-      betArchi: null, dureePrevue: null, cessionPaiement: "NON", fournisseurs: [], marchePublic: false,
+      betArchi: null, dureePrevue: null, dateReception: null, cessionPaiement: "NON", fournisseurs: [], marchePublic: false,
       marches: [{
         id: "marche-principal", nom: "Marché principal", montantHt: 0, tauxTva: 0.085,
         rgMode: "5pct", rgPct: 0.05, prorataPct: null,
