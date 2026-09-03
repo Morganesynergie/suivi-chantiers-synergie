@@ -1943,10 +1943,11 @@ function allMissingDocuments(chantier, sousTraitants) {
     }
   }
   if (chantier.cessionPaiement === "OUI") {
-    // Les lignes rattachées à un sous-traitant en paiement direct fournisseur
-    // (f.sourceEntryId) n'ont pas de bulle "acte de cession" propre — leur
-    // contrat est déjà suivi via la pièce "Contrat" du sous-traitant
-    // (sousTraitanceDocKey ci-dessus) — donc pas de faux "manquant" ici.
+    // Les lignes rattachées à un sous-traitant en paiement direct par le
+    // maître d'ouvrage (f.sourceEntryId) n'ont pas de bulle "acte de
+    // cession" propre — leur contrat est déjà suivi via la pièce "Contrat"
+    // du sous-traitant (sousTraitanceDocKey ci-dessus) — donc pas de faux
+    // "manquant" ici.
     for (const f of chantier.fournisseurs || []) {
       if (f.sourceEntryId) continue;
       const key = "fournisseur-cession-" + (f.id || f.nom);
@@ -2114,7 +2115,30 @@ function normalizeSousTraitants(list) {
     };
   });
 }
-function normalizeChantiersData(list) {
+// Calcule, pour un chantier donné, la liste chantier.fournisseurs "synchronisée" :
+// une ligne automatique par sous-traitant en paiement direct par le maître
+// d'ouvrage (entry.modePaiement === "direct" — nom + montant de son
+// contrat), en plus des fournisseurs ajoutés à la main (matériaux etc.,
+// jamais touchés ici, reconnus par l'absence de sourceEntryId). Partagée
+// entre normalizeChantiersData (migration silencieuse au chargement, pour
+// les entrées déjà enregistrées sans que Morgane retouche la fiche) et
+// ChantierDetail.syncFournisseurCessionsFromSousTraitance (resynchronisation
+// à chaud à chaque modification de la sous-traitance) — une seule règle,
+// jamais deux implémentations qui pourraient diverger.
+function computeSyncedFournisseurs(existingFournisseurs, sousTraitance, sousTraitantsList) {
+  const existing = existingFournisseurs || [];
+  const manual = existing.filter((f) => !f.sourceEntryId);
+  const linkedByEntryId = new Map(existing.filter((f) => f.sourceEntryId).map((f) => [f.sourceEntryId, f]));
+  const autoRows = (sousTraitance || [])
+    .filter((e) => e.modePaiement === "direct")
+    .map((e) => {
+      const sst = (sousTraitantsList || []).find((s) => s.id === e.sousTraitantId);
+      const prev = linkedByEntryId.get(e.id);
+      return { id: prev ? prev.id : uid("fourn"), sourceEntryId: e.id, nom: sst ? sst.nom : "", enveloppe: e.montant ?? "" };
+    });
+  return { fournisseurs: [...manual, ...autoRows], hasAutoRows: autoRows.length > 0 };
+}
+function normalizeChantiersData(list, sousTraitantsList) {
   let changed = false;
   const next = list.map((c) => {
     let chantierChanged = false;
@@ -2168,7 +2192,7 @@ function normalizeChantiersData(list) {
     // bien associé au bon fournisseur même si la liste est réordonnée/un
     // fournisseur supprimé entre-temps.
     let fournisseursChanged = false;
-    const fournisseurs = (c.fournisseurs || []).map((f) => {
+    const fournisseursIdFixed = (c.fournisseurs || []).map((f) => {
       if (f.id) return f;
       fournisseursChanged = true;
       return { ...f, id: uid("fourn") };
@@ -2196,12 +2220,25 @@ function normalizeChantiersData(list) {
     })();
     if (sousTraitanceChanged) chantierChanged = true;
 
+    // Migration silencieuse : un sous-traitant en paiement direct par le
+    // maître d'ouvrage doit avoir une ligne de cession fournisseur
+    // automatiquement synchronisée (voir computeSyncedFournisseurs, et
+    // ChantierDetail.syncFournisseurCessionsFromSousTraitance qui applique
+    // la même règle à chaud à chaque modification) — recalculé ici aussi au
+    // chargement pour les chantiers déjà enregistrés avant cette
+    // fonctionnalité, sans attendre que Morgane retouche la fiche.
+    const syncedFournisseursResult = computeSyncedFournisseurs(fournisseursIdFixed, sousTraitance, sousTraitantsList);
+    const fournisseursListChanged = JSON.stringify(syncedFournisseursResult.fournisseurs) !== JSON.stringify(fournisseursIdFixed);
+    const cessionPaiementChanged = syncedFournisseursResult.hasAutoRows && c.cessionPaiement !== "OUI";
+    if (fournisseursListChanged || cessionPaiementChanged) chantierChanged = true;
+
     if (chantierChanged) {
       changed = true;
       return {
         ...c,
         situations,
-        ...(fournisseursChanged ? { fournisseurs } : {}),
+        ...(fournisseursChanged || fournisseursListChanged ? { fournisseurs: syncedFournisseursResult.fournisseurs } : {}),
+        ...(cessionPaiementChanged ? { cessionPaiement: "OUI" } : {}),
         ...(docTypesActifsChanged ? { docTypesActifs } : {}),
         ...(sousTraitanceChanged ? { sousTraitance } : {}),
       };
@@ -4402,33 +4439,24 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   // assurance...) sont désormais gérées au niveau du sous-traitant lui-même
   // (dossier dans l'onglet "Sous-traitants"), pas ici — voir
   // SOUS_TRAITANT_PIECE_TYPES.
-  // Un sous-traitant en "Paiement direct fournisseur" (entry.modePaiement
-  // === "fournisseur") est réglé exactement comme une cession fournisseur
-  // classique (voir bloc "Cession de paiement fournisseur" / fournisseurs[]
-  // / montantUtiliseFournisseur ci-dessous) : son montant de contrat sert
-  // d'enveloppe, entamée au fil des situations. On maintient donc pour lui
-  // une ligne dans chantier.fournisseurs, automatiquement synchronisée (nom
-  // du sous-traitant choisi, montant du contrat) et repérée par
-  // sourceEntryId — jamais éditée à la main, et SANS bulle PDF "acte de
-  // cession" à côté puisque le contrat signé est déjà déposé dans la bulle
-  // "Contrat" de ce sous-traitant (voir renderFournisseurCessionBubble /
-  // le filtre sur f.sourceEntryId plus bas). Les fournisseurs ajoutés à la
-  // main (matériaux etc., sans sourceEntryId) ne sont jamais touchés ici.
+  // Un sous-traitant en "Direct par le maître d'ouvrage" (entry.modePaiement
+  // === "direct", paiement direct au sens de la loi 75-1334) est réglé
+  // systématiquement comme une cession fournisseur classique aussi (voir
+  // bloc "Cession de paiement fournisseur" / fournisseurs[] /
+  // montantUtiliseFournisseur ci-dessous), pour que Morgane suive son
+  // enveloppe et ses paiements au même endroit que les autres cessions :
+  // son montant de contrat sert d'enveloppe, entamée au fil des situations.
+  // On maintient donc pour lui une ligne dans chantier.fournisseurs,
+  // automatiquement synchronisée (nom du sous-traitant choisi, montant du
+  // contrat) et repérée par sourceEntryId — jamais éditée à la main, et
+  // SANS bulle PDF "acte de cession" à côté puisque le contrat signé est
+  // déjà déposé dans la bulle "Contrat" de ce sous-traitant (voir
+  // renderFournisseurCessionBubble / le filtre sur f.sourceEntryId plus
+  // bas). Les fournisseurs ajoutés à la main (matériaux etc., sans
+  // sourceEntryId) ne sont jamais touchés ici.
   function syncFournisseurCessionsFromSousTraitance(nextSousTraitance) {
-    const existing = chantier.fournisseurs || [];
-    const manual = existing.filter((f) => !f.sourceEntryId);
-    const linkedByEntryId = new Map(existing.filter((f) => f.sourceEntryId).map((f) => [f.sourceEntryId, f]));
-    const autoRows = (nextSousTraitance || [])
-      .filter((e) => e.modePaiement === "fournisseur")
-      .map((e) => {
-        const sst = sousTraitants.find((s) => s.id === e.sousTraitantId);
-        const prev = linkedByEntryId.get(e.id);
-        return { id: prev ? prev.id : uid("fourn"), sourceEntryId: e.id, nom: sst ? sst.nom : "", enveloppe: e.montant ?? "" };
-      });
-    return {
-      fournisseurs: [...manual, ...autoRows],
-      cessionPaiement: autoRows.length > 0 ? "OUI" : chantier.cessionPaiement,
-    };
+    const { fournisseurs, hasAutoRows } = computeSyncedFournisseurs(chantier.fournisseurs, nextSousTraitance, sousTraitants);
+    return { fournisseurs, cessionPaiement: hasAutoRows ? "OUI" : chantier.cessionPaiement };
   }
   function addSousTraitanceEntry() {
     updateChantier({ ...chantier, sousTraitance: [...(chantier.sousTraitance || []), emptySousTraitanceEntry()] });
@@ -5052,7 +5080,6 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             <option value="">— à préciser</option>
                             <option value="direct">Direct par le maître d'ouvrage</option>
                             <option value="synergie">Par Synergie BTP</option>
-                            <option value="fournisseur">Direct fournisseur (cession)</option>
                           </select>
                         </Field>
                         <button onClick={() => removeSousTraitanceEntry(entry.id)} title="Supprimer ce sous-traitant de ce chantier (et ses pièces jointes)" className="p-1.5 rounded-md h-fit">
@@ -5093,8 +5120,6 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             <Pill color="amber">Direct MO</Pill>
                           ) : entry.modePaiement === "synergie" ? (
                             <Pill color="green">Synergie BTP</Pill>
-                          ) : entry.modePaiement === "fournisseur" ? (
-                            <Pill color="purple">Direct fournisseur</Pill>
                           ) : (
                             <span className="text-sm" style={{ color: COLORS.inkSoft }}>— à préciser</span>
                           )}
@@ -5366,7 +5391,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                       </div>
                       {linked && (
                         <p className="text-[11px] mt-0.5" style={{ color: COLORS.inkSoft }}>
-                          Sous-traitant en paiement direct fournisseur — nom et enveloppe suivent automatiquement son contrat (bloc Sous-traitance ci-dessus). Le contrat signé se dépose dans la bulle « Contrat » de ce sous-traitant.
+                          Sous-traitant en paiement direct par le maître d'ouvrage — nom et enveloppe suivent automatiquement son contrat (bloc Sous-traitance ci-dessus). Le contrat signé se dépose dans la bulle « Contrat » de ce sous-traitant.
                         </p>
                       )}
                       {restant !== null && (
@@ -7298,13 +7323,18 @@ export default function App() {
         try { stt = await storage.get("sous-traitants", true); } catch { stt = null; }
 
         const parsedSettings = settings && settings.value ? JSON.parse(settings.value) : {};
+        // Sous-traitants analysés en premier : normalizeChantiersData en a
+        // besoin (nom du sous-traitant pour la ligne de cession fournisseur
+        // auto-synchronisée d'un paiement direct MO, voir
+        // computeSyncedFournisseurs) avant même de traiter les chantiers.
+        const parsedSousTraitants = stt && stt.value ? normalizeSousTraitants(JSON.parse(stt.value)) : SEED_SOUS_TRAITANTS;
         // Once real data exists in storage, it always wins — never auto-overwrite it again.
         // (Earlier builds force-reseeded on every version bump, which silently wiped out
         // anything the person had already entered. Seeding now only ever happens once,
         // on a genuine first-ever load when nothing is stored yet.)
         if (ch && ch.value) {
           const parsedChantiers = JSON.parse(ch.value);
-          const { changed, chantiers: fixedChantiers } = normalizeChantiersData(parsedChantiers);
+          const { changed, chantiers: fixedChantiers } = normalizeChantiersData(parsedChantiers, parsedSousTraitants);
           setChantiers(fixedChantiers);
           if (changed) {
             // Auto-réparation silencieuse de données déjà enregistrées avec
@@ -7327,7 +7357,7 @@ export default function App() {
           await storage.set("settings", JSON.stringify({ editCode: parsedSettings.editCode || DEFAULT_EDIT_CODE }), true);
         }
         if (stt && stt.value) {
-          setSousTraitants(normalizeSousTraitants(JSON.parse(stt.value)));
+          setSousTraitants(parsedSousTraitants);
         } else {
           setSousTraitants(SEED_SOUS_TRAITANTS);
           await storage.set("sous-traitants", JSON.stringify(SEED_SOUS_TRAITANTS), true);
@@ -7464,15 +7494,16 @@ export default function App() {
         storage.get("rg-dues", true).catch(() => null),
         storage.get("sous-traitants", true).catch(() => null),
       ]);
+      const parsedSousTraitants = stt && stt.value ? normalizeSousTraitants(JSON.parse(stt.value)) : null;
       if (ch && ch.value) {
-        const { chantiers: fixedChantiers } = normalizeChantiersData(JSON.parse(ch.value));
+        const { chantiers: fixedChantiers } = normalizeChantiersData(JSON.parse(ch.value), parsedSousTraitants);
         setChantiers(fixedChantiers);
       }
       if (rg && rg.value) {
         setRgDues(JSON.parse(rg.value));
       }
-      if (stt && stt.value) {
-        setSousTraitants(normalizeSousTraitants(JSON.parse(stt.value)));
+      if (parsedSousTraitants) {
+        setSousTraitants(parsedSousTraitants);
       }
     } catch (e) {
       console.error("Erreur de resynchronisation", e);
