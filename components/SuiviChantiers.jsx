@@ -7078,7 +7078,7 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       <div class="chantier-titre">${chantier.titre || "(sans titre)"}</div>
       <div class="chantier-meta">${[chantier.client, chantier.nChantier].filter(Boolean).join(" · ") || "&nbsp;"}</div>
       <div class="tags">
-        ${missing.map((d) => `<span class="tag">${d.label}</span>`).join("")}
+        ${missing.map((d) => `<span class="tag"><span>${d.label}</span></span>`).join("")}
       </div>
     </div>
   `).join("");
@@ -7105,21 +7105,23 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
       .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
-      /* Centrage vertical du texte dans chaque bulle — 3e tentative.
-         Les deux précédentes (inline-flex + align-items:center, puis
-         hauteur/line-height fixes + align-items:flex-start sur .tags) sont
-         restées sans effet visible en production : preuve que .tags en
-         display:flex étire quand même toutes les bulles d'une rangée à la
-         hauteur de la plus grande (ex. un libellé long qui passe sur 2
-         lignes), MALGRÉ align-items:flex-start — html2canvas n'honore
-         visiblement pas cette propriété. On abandonne donc flexbox pour
-         .tags : les bulles redeviennent de simples éléments inline-block qui
-         s'enchaînent et passent à la ligne tout seuls (comportement inline
-         natif, pas de "gap" donc espacement via margin), chacune gardant
-         alors sa PROPRE hauteur (height = line-height, aucun padding
-         vertical) sans jamais être étirée par une voisine. */
+      /* Centrage vertical du texte dans chaque bulle — 4e tentative, cette
+         fois vérifiée directement contre le vrai rendu html2canvas (et non
+         plus devinée) : en inspectant pixel par pixel une bulle rendue, le
+         texte est en fait dessiné ~10-11px (échelle 1x) EN DESSOUS du haut
+         de la zone de contenu, quels que soient padding/height/line-height
+         — html2canvas ignore ces propriétés pour positionner le texte et se
+         cale sur sa propre estimation de la police, jamais sur la vraie
+         boîte CSS. Aucune combinaison de padding ne peut donc centrer le
+         texte : plus on agrandit la bulle, plus le vide s'accumule
+         au-dessus, jamais en dessous. La seule prise qui fonctionne
+         (vérifié empiriquement) est de décaler le texte lui-même vers le
+         haut avec position:relative + top négatif sur un span interne —
+         ça, html2canvas le respecte. -7px recentre exactement le texte
+         dans une bulle compacte (padding 2px 7px) quel que soit le libellé. */
       .tags{font-size:0;}
-      .tag{display:inline-block;vertical-align:top;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:0 7px;height:16px;line-height:16px;font-size:10.5px;margin:0 5px 5px 0;}
+      .tag{display:inline-block;vertical-align:top;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;margin:0 5px 5px 0;overflow:hidden;}
+      .tag span{display:inline-block;position:relative;top:-7px;}
       .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
     </style></head><body>
     <div class="header">
