@@ -7105,8 +7105,20 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
       .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
-      .tags{display:flex;flex-wrap:wrap;gap:5px;}
-      .tag{display:inline-flex;align-items:center;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;line-height:1.35;}
+      /* Centrage vertical du texte : la 1re tentative (inline-flex +
+         align-items:center) ne suffisait pas — html2canvas ne recalcule pas
+         vraiment l'alignement flex du texte à l'intérieur d'une bulle, il se
+         contente de dessiner la ligne de texte à une hauteur dépendant du
+         line-height. On utilise donc la technique la plus basique et la
+         plus fiable, indépendante de tout support flexbox : hauteur ET
+         line-height fixés à LA MÊME valeur, sans padding vertical — le
+         texte n'a alors physiquement qu'une seule position possible, au
+         centre exact de la bulle, quel que soit le moteur de rendu.
+         align-items:flex-start sur .tags empêche en plus une bulle voisine
+         plus grande (libellé long passant sur 2 lignes) d'étirer les autres
+         bulles de la même rangée et de casser ce centrage. */
+      .tags{display:flex;flex-wrap:wrap;align-items:flex-start;gap:5px;}
+      .tag{display:inline-block;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:0 7px;height:16px;line-height:16px;font-size:10.5px;}
       .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
     </style></head><body>
     <div class="header">
