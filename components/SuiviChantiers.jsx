@@ -6108,7 +6108,11 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
       return {
         id: uid("rg-v"), chantierId: item.chantierId, nChantier: item.nChantier || "", nom: item.chantierTitre,
         montantHt: montantHtRg, montantTtc: item.totalRg, betMo: "",
-        dateEcheance: new Date().toISOString().slice(0, 10),
+        // Pas de date d'échéance auto : le PV de réception (point de départ du
+        // délai de RG) n'est en général pas obtenu tout de suite après le
+        // soldé à 100 % — la date reste à saisir à la main dès qu'elle est
+        // connue (champ modifiable ci-dessous, voir updateVenir).
+        dateEcheance: "",
       };
     });
     updateRg({ ...rgDues, aVenir: [...rgDues.aVenir, ...newEntries] });
