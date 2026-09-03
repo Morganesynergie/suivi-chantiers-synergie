@@ -882,7 +882,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
          le découpage en pages réel se fait mécaniquement par hauteur de
          pixels (voir generatePdfBlob), donc c'est cette hauteur qui fixe
          la coupure, pas un page-break CSS. */
-      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;background:linear-gradient(180deg,#F7F5EF 0%,#FFFFFF 55%);}
+      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;background:#FFFFFF;}
       .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
       .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
       .cover .title{font-size:26px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px;margin-bottom:10px;}
