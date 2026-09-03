@@ -7178,10 +7178,26 @@ function DocumentsView({ chantiers, sousTraitants, setTab, setSelectedChantier }
 // annuler" dès qu'il l'est (voir cautionsBancaires) — Morgane y saisit alors
 // la date du PV de réception, et une alerte se déclenche 1 an plus tard
 // (N+1, voir cautionAlerteIso) pour penser à demander la levée à la banque.
-function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedChantier }) {
+// Caution bancaire ajoutée à la main, pour un ancien chantier qui n'aura
+// jamais de fiche dans l'appli mais dont la caution doit quand même être
+// suivie jusqu'à sa levée (voir addCautionManuelle dans CautionBancaireView).
+const emptyCautionManuelle = () => ({ id: uid("caution-m"), nChantier: "", nom: "", montantHt: "", pvDate: "", dateLevee: "" });
+
+function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedChantier, rgDues, updateRg, unlocked }) {
   const all = cautionsBancaires(chantiers);
   const actives = all.filter((c) => !c.soldee);
-  const aAnnuler = all.filter((c) => c.soldee).sort((a, b) => (a.alerteJours ?? -Infinity) - (b.alerteJours ?? -Infinity));
+  const aAnnuler = all.filter((c) => c.soldee);
+  const manuelles = rgDues.cautionsManuelles || [];
+  // Mêmes champs dérivés que les cautions automatiques (alerteIso/leveeIso/
+  // alerteJours, voir cautionsBancaires) pour pouvoir mélanger les deux dans
+  // une seule liste "à annuler", triée par échéance.
+  const manuellesComputed = manuelles.map((m) => {
+    const alerteIso = addYearsIso(m.pvDate, 1);
+    const leveeIso = m.dateLevee || alerteIso;
+    return { kind: "manual", manuelle: m, pvDateEffective: m.pvDate || null, alerteIso, leveeIso, alerteJours: leveeIso ? daysUntil(leveeIso) : null };
+  });
+  const aAnnulerAll = [...aAnnuler.map((e) => ({ kind: "auto", ...e })), ...manuellesComputed]
+    .sort((a, b) => (a.alerteJours ?? -Infinity) - (b.alerteJours ?? -Infinity));
 
   function setCautionPvDate(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, cautionPvDate: value || null } : m)) });
@@ -7192,20 +7208,32 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
   function setMontantCaution(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, montantCaution: value === "" ? "" : parseFloat(value) } : m)) });
   }
+  function addCautionManuelle() {
+    updateRg({ ...rgDues, cautionsManuelles: [...manuelles, emptyCautionManuelle()] });
+  }
+  function updateCautionManuelle(id, patch) {
+    updateRg({ ...rgDues, cautionsManuelles: manuelles.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  }
+  function removeCautionManuelle(id) {
+    updateRg({ ...rgDues, cautionsManuelles: manuelles.filter((m) => m.id !== id) });
+  }
 
   return (
     <div className="p-4 max-w-6xl">
       <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Caution bancaire</h1>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
-        Marchés/TS dont la retenue de garantie est une caution bancaire (réglage "Modifier les infos" de chaque chantier).
+        Marchés/TS dont la retenue de garantie est une caution bancaire (réglage "Modifier les infos" de chaque chantier), plus les cautions ajoutées à la main pour d'anciens chantiers sans fiche.
       </p>
 
-      <h2 className="text-sm font-semibold mb-2" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnuler.length})</h2>
-      {aAnnuler.length === 0 ? (
-        <Card className="p-4 text-sm mb-6" style={{ color: COLORS.inkSoft }}>Aucun chantier soldé avec caution bancaire pour l'instant.</Card>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnulerAll.length})</h2>
+        {unlocked && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter un ancien chantier</Btn>}
+      </div>
+      {aAnnulerAll.length === 0 ? (
+        <Card className="p-4 text-sm mb-6" style={{ color: COLORS.inkSoft }}>Aucune caution bancaire à annuler pour l'instant.</Card>
       ) : (
         <div className="flex flex-col gap-2 mb-6">
-          {aAnnuler.map((entry) => {
+          {aAnnulerAll.map((entry) => {
             const j = entry.alerteJours;
             const pillColor = !entry.pvDateEffective ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
             const pillLabel = !entry.pvDateEffective
@@ -7216,6 +7244,68 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
               ? `Échéance dans ${j} j`
               : `Levée prévue le ${fmtDate(entry.leveeIso)}`;
             const cardBg = !entry.pvDateEffective || j < 0 ? COLORS.redSoft : j <= 30 ? COLORS.amberSoft : "#fff";
+            if (entry.kind === "manual") {
+              const m = entry.manuelle;
+              return (
+                <Card key={m.id} className="p-3" style={{ background: cardBg }}>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex-1" style={{ minWidth: 220 }}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <TextInput
+                          value={m.nom || ""}
+                          placeholder="Nom du chantier"
+                          onChange={(e) => updateCautionManuelle(m.id, { nom: e.target.value })}
+                          style={{ fontWeight: 500, minWidth: 180 }}
+                        />
+                        <TextInput
+                          value={m.nChantier || ""}
+                          placeholder="N° chantier (facultatif)"
+                          onChange={(e) => updateCautionManuelle(m.id, { nChantier: e.target.value })}
+                          style={{ minWidth: 140, fontSize: 12 }}
+                        />
+                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: COLORS.line, color: COLORS.inkSoft }}>ajoutée à la main</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Pill color={pillColor}>{pillLabel}</Pill>
+                      {unlocked && (
+                        <button title="Supprimer cette caution" onClick={() => removeCautionManuelle(m.id)}><Trash2 size={14} color={COLORS.red} /></button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                    <Field label="Montant de la RG cautionnée">
+                      <TextInput
+                        type="number" step="0.01"
+                        value={m.montantHt ?? ""}
+                        onChange={(e) => updateCautionManuelle(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                        style={{ width: 140 }}
+                      />
+                    </Field>
+                    <Field label="Date du PV de réception">
+                      <TextInput
+                        type="date"
+                        value={m.pvDate || ""}
+                        onChange={(e) => updateCautionManuelle(m.id, { pvDate: e.target.value || "" })}
+                        style={{ width: 150 }}
+                      />
+                    </Field>
+                    <Field label="Date de levée à demander">
+                      <TextInput
+                        type="date"
+                        value={m.dateLevee || ""}
+                        placeholder={entry.alerteIso || ""}
+                        onChange={(e) => updateCautionManuelle(m.id, { dateLevee: e.target.value || "" })}
+                        style={{ width: 150 }}
+                      />
+                      {!m.dateLevee && entry.alerteIso && (
+                        <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Calculée : {fmtDate(entry.alerteIso)} (PV + 1 an)</p>
+                      )}
+                    </Field>
+                  </div>
+                </Card>
+              );
+            }
             return (
               <Card key={entry.marche.id} className="p-3" style={{ background: cardBg }}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -7382,7 +7472,7 @@ const DATA_VERSION = "2026-08-05-21";
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [chantiers, setChantiers] = useState([]);
-  const [rgDues, setRgDues] = useState({ echues: [], aVenir: [] });
+  const [rgDues, setRgDues] = useState({ echues: [], aVenir: [], cautionsManuelles: [] });
   // Répertoire global des sous-traitants (réutilisable d'un chantier à
   // l'autre) — les contrats/DC4/attestations, eux, restent rattachés à
   // chaque chantier (chantier.sousTraitance, voir ChantierDetail).
@@ -7420,7 +7510,7 @@ export default function App() {
   // vrai "refaire" : une fois qu'on a annulé, on ne peut pas re-avancer.
   const MAX_UNDO = 8;
   const chantiersRef = useRef([]);
-  const rgDuesRef = useRef({ echues: [], aVenir: [] });
+  const rgDuesRef = useRef({ echues: [], aVenir: [], cautionsManuelles: [] });
   const undoStackRef = useRef([]);
   const [undoCount, setUndoCount] = useState(0);
   useEffect(() => { chantiersRef.current = chantiers; }, [chantiers]);
@@ -7896,7 +7986,7 @@ export default function App() {
         )}
         {tab === "rg" && <RgView rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} onExtractMarcheRgBulk={markMarcheRgExtractedBulk} />}
         {tab === "documents" && <DocumentsView chantiers={chantiers} sousTraitants={sousTraitants} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
-        {tab === "caution" && <CautionBancaireView chantiers={chantiers} updateChantier={updateChantier} setTab={setTab} setSelectedChantier={setSelectedChantierId} />}
+        {tab === "caution" && <CautionBancaireView chantiers={chantiers} updateChantier={updateChantier} setTab={setTab} setSelectedChantier={setSelectedChantierId} rgDues={rgDues} updateRg={persistRg} unlocked={unlocked} />}
         {tab === "soustraitants" && (
           <SousTraitantsView
             chantiers={chantiers}
