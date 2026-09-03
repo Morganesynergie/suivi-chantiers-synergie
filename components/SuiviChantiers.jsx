@@ -1943,7 +1943,12 @@ function allMissingDocuments(chantier, sousTraitants) {
     }
   }
   if (chantier.cessionPaiement === "OUI") {
+    // Les lignes rattachées à un sous-traitant en paiement direct fournisseur
+    // (f.sourceEntryId) n'ont pas de bulle "acte de cession" propre — leur
+    // contrat est déjà suivi via la pièce "Contrat" du sous-traitant
+    // (sousTraitanceDocKey ci-dessus) — donc pas de faux "manquant" ici.
     for (const f of chantier.fournisseurs || []) {
+      if (f.sourceEntryId) continue;
       const key = "fournisseur-cession-" + (f.id || f.nom);
       if (!docPresent(docs, key)) {
         missing.push({ key, label: `Acte de cession (${f.nom || "fournisseur"})` });
@@ -4397,11 +4402,41 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   // assurance...) sont désormais gérées au niveau du sous-traitant lui-même
   // (dossier dans l'onglet "Sous-traitants"), pas ici — voir
   // SOUS_TRAITANT_PIECE_TYPES.
+  // Un sous-traitant en "Paiement direct fournisseur" (entry.modePaiement
+  // === "fournisseur") est réglé exactement comme une cession fournisseur
+  // classique (voir bloc "Cession de paiement fournisseur" / fournisseurs[]
+  // / montantUtiliseFournisseur ci-dessous) : son montant de contrat sert
+  // d'enveloppe, entamée au fil des situations. On maintient donc pour lui
+  // une ligne dans chantier.fournisseurs, automatiquement synchronisée (nom
+  // du sous-traitant choisi, montant du contrat) et repérée par
+  // sourceEntryId — jamais éditée à la main, et SANS bulle PDF "acte de
+  // cession" à côté puisque le contrat signé est déjà déposé dans la bulle
+  // "Contrat" de ce sous-traitant (voir renderFournisseurCessionBubble /
+  // le filtre sur f.sourceEntryId plus bas). Les fournisseurs ajoutés à la
+  // main (matériaux etc., sans sourceEntryId) ne sont jamais touchés ici.
+  function syncFournisseurCessionsFromSousTraitance(nextSousTraitance) {
+    const existing = chantier.fournisseurs || [];
+    const manual = existing.filter((f) => !f.sourceEntryId);
+    const linkedByEntryId = new Map(existing.filter((f) => f.sourceEntryId).map((f) => [f.sourceEntryId, f]));
+    const autoRows = (nextSousTraitance || [])
+      .filter((e) => e.modePaiement === "fournisseur")
+      .map((e) => {
+        const sst = sousTraitants.find((s) => s.id === e.sousTraitantId);
+        const prev = linkedByEntryId.get(e.id);
+        return { id: prev ? prev.id : uid("fourn"), sourceEntryId: e.id, nom: sst ? sst.nom : "", enveloppe: e.montant ?? "" };
+      });
+    return {
+      fournisseurs: [...manual, ...autoRows],
+      cessionPaiement: autoRows.length > 0 ? "OUI" : chantier.cessionPaiement,
+    };
+  }
   function addSousTraitanceEntry() {
     updateChantier({ ...chantier, sousTraitance: [...(chantier.sousTraitance || []), emptySousTraitanceEntry()] });
   }
   function updateSousTraitanceEntry(id, patch) {
-    updateChantier({ ...chantier, sousTraitance: (chantier.sousTraitance || []).map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+    const nextSousTraitance = (chantier.sousTraitance || []).map((e) => (e.id === id ? { ...e, ...patch } : e));
+    const { fournisseurs, cessionPaiement } = syncFournisseurCessionsFromSousTraitance(nextSousTraitance);
+    updateChantier({ ...chantier, sousTraitance: nextSousTraitance, fournisseurs, cessionPaiement });
   }
   // Supprime l'entrée ET les pièces déjà déposées dessus (DC4, contrat) —
   // même logique que removeAvenant/toggleDocTypeActif : jamais de fichier
@@ -4421,7 +4456,9 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     }));
     const restDocs = { ...docsCur };
     for (const k of pieceKeys) delete restDocs[k];
-    updateChantier({ ...chantier, documents: restDocs, sousTraitance: (chantier.sousTraitance || []).filter((e) => e.id !== id) });
+    const nextSousTraitance = (chantier.sousTraitance || []).filter((e) => e.id !== id);
+    const { fournisseurs, cessionPaiement } = syncFournisseurCessionsFromSousTraitance(nextSousTraitance);
+    updateChantier({ ...chantier, documents: restDocs, sousTraitance: nextSousTraitance, fournisseurs, cessionPaiement });
   }
   // Crée une nouvelle entreprise dans le répertoire global des sous-traitants
   // (réutilisable sur tous les chantiers) et l'affecte aussitôt à l'entrée en
@@ -5015,6 +5052,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             <option value="">— à préciser</option>
                             <option value="direct">Direct par le maître d'ouvrage</option>
                             <option value="synergie">Par Synergie BTP</option>
+                            <option value="fournisseur">Direct fournisseur (cession)</option>
                           </select>
                         </Field>
                         <button onClick={() => removeSousTraitanceEntry(entry.id)} title="Supprimer ce sous-traitant de ce chantier (et ses pièces jointes)" className="p-1.5 rounded-md h-fit">
@@ -5055,6 +5093,8 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                             <Pill color="amber">Direct MO</Pill>
                           ) : entry.modePaiement === "synergie" ? (
                             <Pill color="green">Synergie BTP</Pill>
+                          ) : entry.modePaiement === "fournisseur" ? (
+                            <Pill color="purple">Direct fournisseur</Pill>
                           ) : (
                             <span className="text-sm" style={{ color: COLORS.inkSoft }}>— à préciser</span>
                           )}
@@ -5313,14 +5353,22 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 {(chantier.fournisseurs || []).map((f, idx) => {
                   const utilise = montantUtiliseFournisseur(f.nom);
                   const restant = f.enveloppe !== "" && f.enveloppe != null ? Math.round((f.enveloppe - utilise) * 100) / 100 : null;
+                  const linked = !!f.sourceEntryId;
                   return (
                     <div key={idx} className="mt-1.5">
                       <div className="flex items-center gap-2">
-                        <TextInput value={f.nom} onChange={(e) => updateChantierFournisseur(idx, "nom", e.target.value)} placeholder="Nom du fournisseur" style={{ flex: 2 }} />
-                        <TextInput type="number" step="0.01" value={f.enveloppe ?? ""} onChange={(e) => updateChantierFournisseur(idx, "enveloppe", e.target.value === "" ? "" : parseFloat(e.target.value))} placeholder="Enveloppe totale" style={{ flex: 1 }} />
-                        {renderFournisseurCessionBubble(f)}
-                        <button onClick={() => removeChantierFournisseur(idx)} title="Supprimer"><X size={13} color={COLORS.red} /></button>
+                        <TextInput value={f.nom} onChange={(e) => updateChantierFournisseur(idx, "nom", e.target.value)} placeholder="Nom du fournisseur" style={{ flex: 2 }} disabled={linked} />
+                        <TextInput type="number" step="0.01" value={f.enveloppe ?? ""} onChange={(e) => updateChantierFournisseur(idx, "enveloppe", e.target.value === "" ? "" : parseFloat(e.target.value))} placeholder="Enveloppe totale" style={{ flex: 1 }} disabled={linked} />
+                        {!linked && renderFournisseurCessionBubble(f)}
+                        {!linked && (
+                          <button onClick={() => removeChantierFournisseur(idx)} title="Supprimer"><X size={13} color={COLORS.red} /></button>
+                        )}
                       </div>
+                      {linked && (
+                        <p className="text-[11px] mt-0.5" style={{ color: COLORS.inkSoft }}>
+                          Sous-traitant en paiement direct fournisseur — nom et enveloppe suivent automatiquement son contrat (bloc Sous-traitance ci-dessus). Le contrat signé se dépose dans la bulle « Contrat » de ce sous-traitant.
+                        </p>
+                      )}
                       {restant !== null && (
                         <p className="text-xs mt-0.5" style={{ color: restant < 0 ? COLORS.red : COLORS.inkSoft }}>
                           {fmtEUR(utilise)} déjà cédés sur les situations — reste {fmtEUR(restant)} disponible
@@ -5356,6 +5404,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                     <div key={idx} className="flex items-center justify-between text-xs gap-2">
                       <span style={{ color: COLORS.ink }}>
                         <span className="font-medium">{f.nom}</span>
+                        {f.sourceEntryId && <span style={{ color: COLORS.inkSoft }}> (sous-traitant)</span>}
                       </span>
                       <div className="flex items-center gap-2">
                         {hasEnveloppe ? (
@@ -5365,7 +5414,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                         ) : (
                           <span className="tabular-nums" style={{ color: COLORS.inkSoft }}>{fmtEUR(utilise)} cédés (pas d'enveloppe définie)</span>
                         )}
-                        {renderFournisseurCessionBubble(f)}
+                        {!f.sourceEntryId && renderFournisseurCessionBubble(f)}
                       </div>
                     </div>
                   );
