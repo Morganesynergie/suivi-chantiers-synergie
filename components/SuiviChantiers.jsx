@@ -7085,7 +7085,17 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
   return `
     <html><head><title>Documents manquants — SYNERGIE BTP</title>
     <style>
-      body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
+      /* Police explicite (pas "system-ui") : ce HTML est transformé en image
+         (html2canvas, voir generatePdfBlob dans lib/exportPdf.js) avant
+         d'être assemblé en PDF. Un mot-clé de police générique comme
+         "system-ui" peut être résolu différemment entre la mise en page
+         réelle (qui sait que "system-ui" = Segoe UI sur Windows) et le
+         moteur de dessin de texte d'html2canvas (qui ne le reconnaît pas
+         toujours) — décalage qui se voyait surtout dans les petites bulles
+         de tags ci-dessous, texte collé en bas avec un blanc au-dessus.
+         Arial est nativement présent sur Windows et rendu de façon fiable
+         par html2canvas. */
+      body{font-family:Arial,Helvetica,sans-serif;color:#16233B;padding:32px;}
       h1{font-size:20px;margin:0 0 2px 0;color:#16233B;}
       .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
       .subtitle{font-size:12.5px;color:#5B6779;margin:0 0 20px 0;}
@@ -7096,7 +7106,7 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
       .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
       .tags{display:flex;flex-wrap:wrap;gap:5px;}
-      .tag{display:inline-block;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;}
+      .tag{display:inline-flex;align-items:center;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;line-height:1.35;}
       .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
     </style></head><body>
     <div class="header">
