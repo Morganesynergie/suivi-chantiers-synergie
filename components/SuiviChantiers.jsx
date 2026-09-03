@@ -7105,20 +7105,21 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
       .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
-      /* Centrage vertical du texte : la 1re tentative (inline-flex +
-         align-items:center) ne suffisait pas — html2canvas ne recalcule pas
-         vraiment l'alignement flex du texte à l'intérieur d'une bulle, il se
-         contente de dessiner la ligne de texte à une hauteur dépendant du
-         line-height. On utilise donc la technique la plus basique et la
-         plus fiable, indépendante de tout support flexbox : hauteur ET
-         line-height fixés à LA MÊME valeur, sans padding vertical — le
-         texte n'a alors physiquement qu'une seule position possible, au
-         centre exact de la bulle, quel que soit le moteur de rendu.
-         align-items:flex-start sur .tags empêche en plus une bulle voisine
-         plus grande (libellé long passant sur 2 lignes) d'étirer les autres
-         bulles de la même rangée et de casser ce centrage. */
-      .tags{display:flex;flex-wrap:wrap;align-items:flex-start;gap:5px;}
-      .tag{display:inline-block;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:0 7px;height:16px;line-height:16px;font-size:10.5px;}
+      /* Centrage vertical du texte dans chaque bulle — 3e tentative.
+         Les deux précédentes (inline-flex + align-items:center, puis
+         hauteur/line-height fixes + align-items:flex-start sur .tags) sont
+         restées sans effet visible en production : preuve que .tags en
+         display:flex étire quand même toutes les bulles d'une rangée à la
+         hauteur de la plus grande (ex. un libellé long qui passe sur 2
+         lignes), MALGRÉ align-items:flex-start — html2canvas n'honore
+         visiblement pas cette propriété. On abandonne donc flexbox pour
+         .tags : les bulles redeviennent de simples éléments inline-block qui
+         s'enchaînent et passent à la ligne tout seuls (comportement inline
+         natif, pas de "gap" donc espacement via margin), chacune gardant
+         alors sa PROPRE hauteur (height = line-height, aucun padding
+         vertical) sans jamais être étirée par une voisine. */
+      .tags{font-size:0;}
+      .tag{display:inline-block;vertical-align:top;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:0 7px;height:16px;line-height:16px;font-size:10.5px;margin:0 5px 5px 0;}
       .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
     </style></head><body>
     <div class="header">
