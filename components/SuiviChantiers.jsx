@@ -1994,11 +1994,15 @@ function cautionsBancaires(chantiers) {
       const factureHt = sitsMarche.reduce((a, s) => a + (s.montantHt || 0), 0);
       const resteHt = Math.round(((m.montantHt || 0) - factureHt) * 100) / 100;
       const soldee = !!m.montantHt && resteHt <= 0;
-      // Total des RG effectivement comptabilisées situation par situation sur
-      // ce marché/TS (toutes situations confondues) — sert de comparatif avec
-      // le montant de caution bancaire saisi à la main juste en dessous, qui
-      // peut légitimement différer (Morgane l'ajuste parfois à la main).
-      const rgTotalMarche = Math.round(sitsMarche.reduce((a, s) => a + (s.rg || 0), 0) * 100) / 100;
+      // Total des RG effectivement comptabilisées, TOUTES situations de la
+      // fiche chantier confondues (marché principal, TS, avenants...) — pas
+      // seulement celles de ce marché/TS précis : une RG peut avoir été
+      // retenue sur une situation d'un autre bloc (ex. un avenant passé
+      // depuis en "aucune retenue") sans que ce bloc-ci, en caution banque,
+      // en tienne compte autrement. Sert de comparatif avec le montant de
+      // caution bancaire saisi à la main juste en dessous, qui peut
+      // légitimement différer (Morgane l'ajuste parfois à la main).
+      const rgTotalChantier = Math.round(c.situations.reduce((a, s) => a + (s.rg || 0), 0) * 100) / 100;
       // Date du PV de réception de CE marché : saisie propre au marché si
       // renseignée (utile quand la caution de ce bloc a été reçue à une date
       // différente du reste du chantier), sinon reprise automatiquement de
@@ -2012,7 +2016,7 @@ function cautionsBancaires(chantiers) {
       // tant que rien n'a été saisi.
       const leveeIso = m.dateLevee || alerteIso;
       out.push({
-        chantier: c, marche: m, resteHt, soldee, rgTotalMarche,
+        chantier: c, marche: m, resteHt, soldee, rgTotalChantier,
         pvDateEffective, pvDateHerited, alerteIso, leveeIso,
         alerteJours: leveeIso ? daysUntil(leveeIso) : null,
       });
@@ -3417,7 +3421,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const ttc = Math.round((ht + tva) * 100) / 100;
     const rgOff = marche.rgMode === "banque" || marche.rgMode === "aucune";
     const rgPct = typeof marche.rgPct === "number" ? marche.rgPct : 0.05;
-    const rg = rgOff ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    // RG auto-renseignée selon le réglage du marché/TS (0 % si caution
+    // banque/aucune RG, sinon rgPct — 5 % par défaut) mais reste modifiable :
+    // dès que Morgane a saisi quelque chose dans le champ, ça prime toujours
+    // sur l'auto, même en mode "banque"/"aucune" (cas rare mais possible
+    // d'une RG malgré tout retenue en plus de la caution).
+    const rg = f.rg !== "" ? num(f.rg) : (rgOff ? 0 : Math.round(ttc * rgPct * 100) / 100);
     const prorata = num(f.prorata);
     const remb = num(f.rembAdd);
     const fournisseurs = (f.fournisseurs || []).map((x) => ({ nom: x.nom || "", montant: num(x.montant) })).filter((x) => x.nom || x.montant);
@@ -3493,7 +3502,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const ttc = Math.round((ht + ht * rate) * 100) / 100;
     const rgOff = selMarcheCalc.rgMode === "banque" || selMarcheCalc.rgMode === "aucune";
     const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
-    const rg = rgOff ? 0 : (f.rg !== "" ? num(f.rg) : Math.round(ttc * rgPct * 100) / 100);
+    const rg = f.rg !== "" ? num(f.rg) : (rgOff ? 0 : Math.round(ttc * rgPct * 100) / 100);
     const prorata = num(f.prorata);
     const fournisseurTotal = (f.fournisseurs || []).reduce((a, x) => a + (num(x.montant) || 0), 0);
     const remb = num(f.rembAdd);
@@ -5988,14 +5997,11 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 const selMarche = getMarche(form.marcheId || chantier.marches[0]?.id);
                 const selRgMode = selMarche && selMarche.rgMode;
                 const rgOff = selRgMode === "banque" || selRgMode === "aucune";
-                const rgOffLabel = selRgMode === "banque" ? "RG (couverte par caution banque)" : selRgMode === "aucune" ? "RG (aucune retenue de garantie)" : "RG (auto si vide, 5 %)";
+                const rgPctLabel = selMarche && typeof selMarche.rgPct === "number" ? Math.round(selMarche.rgPct * 1000) / 10 : 5;
+                const rgOffLabel = selRgMode === "banque" ? "RG (auto 0 % — couverte par caution banque)" : selRgMode === "aucune" ? "RG (auto 0 % — aucune retenue de garantie)" : `RG (auto si vide, ${rgPctLabel} %)`;
                 return (
                   <Field label={rgOffLabel}>
-                    {rgOff ? (
-                      <div style={{ ...inputStyle, background: "#F0EEE6", color: COLORS.inkSoft }}>0,00 €</div>
-                    ) : (
-                      <TextInput type="number" step="0.01" value={form.rg} onChange={(e) => setFormAuto({ rg: e.target.value })} />
-                    )}
+                    <TextInput type="number" step="0.01" value={form.rg} placeholder="0,00" onChange={(e) => setFormAuto({ rg: e.target.value })} />
                   </Field>
                 );
               })()}
@@ -6013,7 +6019,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 const ttc = Math.round((ht + ht * rate) * 100) / 100;
                 const rgOff = selMarcheCalc.rgMode === "banque" || selMarcheCalc.rgMode === "aucune";
                 const rgPct = typeof selMarcheCalc.rgPct === "number" ? selMarcheCalc.rgPct : 0.05;
-                const rg = isProrataForm ? 0 : rgOff ? 0 : (form.rg !== "" ? num(form.rg) : Math.round(ttc * rgPct * 100) / 100);
+                const rg = isProrataForm ? 0 : (form.rg !== "" ? num(form.rg) : (rgOff ? 0 : Math.round(ttc * rgPct * 100) / 100));
                 const prorata = isProrataForm ? 0 : num(form.prorata);
                 const fournisseurTotal = isProrataForm ? 0 : (form.fournisseurs || []).reduce((a, f) => a + (num(f.montant) || 0), 0);
                 const remb = isProrataForm ? 0 : num(form.rembAdd);
@@ -7301,6 +7307,16 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
   const aAnnulerAll = [...aAnnuler.map((e) => ({ kind: "auto", ...e })), ...manuellesComputed]
     .sort((a, b) => (a.alerteJours ?? -Infinity) - (b.alerteJours ?? -Infinity));
 
+  // Montant de caution effectivement affiché sur chaque carte (voir
+  // MoneyRow) : le montant saisi à la main, sinon le montant HT du marché
+  // comme repli — sert de base aux totaux des deux sections ci-dessous.
+  function effectiveCautionMontant(entry) {
+    if (entry.kind === "manual") return entry.manuelle.montantHt || 0;
+    return entry.marche.montantCaution !== "" && entry.marche.montantCaution != null ? entry.marche.montantCaution : (entry.marche.montantHt || 0);
+  }
+  const activesTotal = Math.round(actives.reduce((a, e) => a + effectiveCautionMontant({ kind: "auto", ...e }), 0) * 100) / 100;
+  const aAnnulerTotal = Math.round(aAnnulerAll.reduce((a, e) => a + effectiveCautionMontant(e), 0) * 100) / 100;
+
   function setCautionPvDate(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, cautionPvDate: value || null } : m)) });
   }
@@ -7331,8 +7347,11 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
         Marchés/TS dont la retenue de garantie est une caution bancaire (réglage "Modifier les infos" de chaque chantier), plus les cautions ajoutées à la main pour d'anciens chantiers sans fiche.
       </p>
 
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnulerAll.length})</h2>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnulerAll.length})</h2>
+          <span className="text-xs" style={{ color: COLORS.inkSoft }}>Total : <span className="font-medium" style={{ color: COLORS.ink }}>{fmtEUR(aAnnulerTotal)}</span></span>
+        </div>
         {editable && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter</Btn>}
       </div>
       {aAnnulerAll.length === 0 ? (
@@ -7413,7 +7432,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                     </button>
                     <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                       {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT marché — soldé
-                      {" — RG Total marché : "}<span className="font-medium">{fmtEUR(entry.rgTotalMarche)}</span>
+                      {" — RG Total chantier : "}<span className="font-medium">{fmtEUR(entry.rgTotalChantier)}</span>
                     </div>
                   </div>
                   <Pill color={pillColor}>{pillLabel}</Pill>
@@ -7440,7 +7459,10 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
         </div>
       )}
 
-      <h2 className="text-sm font-semibold mb-2" style={{ color: COLORS.ink }}>Cautions actives ({actives.length})</h2>
+      <div className="flex items-center gap-2 mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions actives ({actives.length})</h2>
+        <span className="text-xs" style={{ color: COLORS.inkSoft }}>Total : <span className="font-medium" style={{ color: COLORS.ink }}>{fmtEUR(activesTotal)}</span></span>
+      </div>
       {actives.length === 0 ? (
         <Card className="p-4 text-sm" style={{ color: COLORS.inkSoft }}>Aucune caution bancaire active.</Card>
       ) : (
@@ -7458,7 +7480,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                   </button>
                   <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                     {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}
-                    {" — RG Total marché : "}<span className="font-medium">{fmtEUR(entry.rgTotalMarche)}</span>
+                    {" — RG Total chantier : "}<span className="font-medium">{fmtEUR(entry.rgTotalChantier)}</span>
                   </div>
                 </div>
                 <Pill color="accent">En cours</Pill>
