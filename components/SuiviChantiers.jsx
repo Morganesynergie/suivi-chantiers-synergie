@@ -7279,7 +7279,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnulerAll.length})</h2>
-        {unlocked && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter un ancien chantier</Btn>}
+        {unlocked && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter</Btn>}
       </div>
       {aAnnulerAll.length === 0 ? (
         <Card className="p-4 text-sm mb-6" style={{ color: COLORS.inkSoft }}>Aucune caution bancaire à annuler pour l'instant.</Card>
@@ -7315,7 +7315,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                           onChange={(e) => updateCautionManuelle(m.id, { nChantier: e.target.value })}
                           style={{ minWidth: 140, fontSize: 12 }}
                         />
-                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: COLORS.line, color: COLORS.inkSoft }}>ajoutée à la main</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
