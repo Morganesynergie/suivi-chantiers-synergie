@@ -6248,7 +6248,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
         {editable && <Btn size="sm" variant="primary" onClick={() => setShowEchue(true)}><Plus size={13} /> Ajouter</Btn>}
       </div>
-      <Card className="overflow-x-auto mb-6">
+      <Card className="overflow-x-auto mb-6" style={{ background: COLORS.greenSoft }}>
         <div style={{ overflowX: "auto" }}>
         <table className="text-xs" style={{ width: "100%", minWidth: 760 }}>
           <thead>
@@ -6314,7 +6314,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG à venir — {fmtEUR(totalAVenir)}</h2>
         {editable && <Btn size="sm" variant="primary" onClick={() => setShowVenir(true)}><Plus size={13} /> Ajouter</Btn>}
       </div>
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto" style={{ background: COLORS.amberSoft }}>
         <div style={{ overflowX: "auto" }}>
         <table className="text-xs" style={{ width: "100%", minWidth: 700 }}>
           <thead>
