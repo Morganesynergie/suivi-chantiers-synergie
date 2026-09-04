@@ -7072,13 +7072,48 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
 // consulter une fois imprimé/partagé. Un vrai PDF (voir openGeneratedPdf),
 // pas un simple "imprimer la page", pour une pagination propre si la liste
 // est longue.
+// Bulle "document manquant" dessinée en SVG natif (rect + text) plutôt qu'en
+// HTML/CSS classique — 5e tentative de centrage, cette fois structurelle et
+// non plus une nouvelle estimation au pixel près. Les 4 tentatives précédentes
+// ajustaient du CSS (flex, height/line-height, puis un décalage position:
+// relative;top:-Npx) pour compenser un bug de html2canvas : il ignore
+// padding/height/line-height et positionne le texte selon sa propre
+// estimation interne des métriques de la police, jamais selon la vraie boîte
+// CSS — donc aucun réglage CSS n'est fiable à 100%, seulement calibré au cas
+// par cas (et le -7px de la tentative précédente, vérifié sur un rendu
+// isolé, ne suffisait pas sur le vrai document complet). En revanche,
+// html2canvas traite les éléments <svg> tout à fait différemment : il les
+// sérialise tels quels et les dessine comme une image (voir
+// SVGElementContainer dans html2canvas), donc via le vrai moteur SVG du
+// navigateur — le même qui affiche normalement la page. Le texte SVG avec
+// dominant-baseline="central" est donc centré de façon fiable et identique
+// à l'écran et dans le PDF, sans dépendre d'aucune estimation de html2canvas.
+const TAG_FONT_SIZE = 10.5;
+const TAG_FONT = `${TAG_FONT_SIZE}px Arial, Helvetica, sans-serif`;
+const TAG_PAD_X = 7;
+const TAG_HEIGHT = 17;
+function escapeXml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function missingDocTagSvg(label) {
+  const canvas = missingDocTagSvg._canvas || (missingDocTagSvg._canvas = document.createElement("canvas"));
+  const ctx = missingDocTagSvg._ctx || (missingDocTagSvg._ctx = canvas.getContext("2d"));
+  ctx.font = TAG_FONT;
+  const textW = ctx.measureText(String(label ?? "")).width;
+  const w = Math.ceil(textW) + TAG_PAD_X * 2;
+  const safeLabel = escapeXml(label);
+  return `<svg width="${w}" height="${TAG_HEIGHT}" viewBox="0 0 ${w} ${TAG_HEIGHT}" style="display:inline-block;vertical-align:top;margin:0 5px 5px 0;" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect x="0.5" y="0.5" width="${w - 1}" height="${TAG_HEIGHT - 1}" rx="5" ry="5" fill="#fff" stroke="#E8C4BE"/>` +
+    `<text x="${w / 2}" y="${TAG_HEIGHT / 2}" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="${TAG_FONT_SIZE}" fill="#B3261E">${safeLabel}</text>` +
+    `</svg>`;
+}
 function missingDocumentsPdfHtml(rows, totalMissing) {
   const blocks = rows.map(({ chantier, missing }) => `
     <div class="chantier-block avoid-break">
       <div class="chantier-titre">${chantier.titre || "(sans titre)"}</div>
       <div class="chantier-meta">${[chantier.client, chantier.nChantier].filter(Boolean).join(" · ") || "&nbsp;"}</div>
       <div class="tags">
-        ${missing.map((d) => `<span class="tag"><span>${d.label}</span></span>`).join("")}
+        ${missing.map((d) => missingDocTagSvg(d.label)).join("")}
       </div>
     </div>
   `).join("");
@@ -7105,23 +7140,10 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
       .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
-      /* Centrage vertical du texte dans chaque bulle — 4e tentative, cette
-         fois vérifiée directement contre le vrai rendu html2canvas (et non
-         plus devinée) : en inspectant pixel par pixel une bulle rendue, le
-         texte est en fait dessiné ~10-11px (échelle 1x) EN DESSOUS du haut
-         de la zone de contenu, quels que soient padding/height/line-height
-         — html2canvas ignore ces propriétés pour positionner le texte et se
-         cale sur sa propre estimation de la police, jamais sur la vraie
-         boîte CSS. Aucune combinaison de padding ne peut donc centrer le
-         texte : plus on agrandit la bulle, plus le vide s'accumule
-         au-dessus, jamais en dessous. La seule prise qui fonctionne
-         (vérifié empiriquement) est de décaler le texte lui-même vers le
-         haut avec position:relative + top négatif sur un span interne —
-         ça, html2canvas le respecte. -7px recentre exactement le texte
-         dans une bulle compacte (padding 2px 7px) quel que soit le libellé. */
+      /* Les bulles "document manquant" sont des <svg> injectés directement
+         par missingDocTagSvg() (voir plus haut) — plus de règle .tag ici,
+         voir le commentaire au-dessus de missingDocTagSvg pour le pourquoi. */
       .tags{font-size:0;}
-      .tag{display:inline-block;vertical-align:top;background:#fff;border:1px solid #E8C4BE;color:#B3261E;border-radius:5px;padding:2px 7px;font-size:10.5px;margin:0 5px 5px 0;overflow:hidden;}
-      .tag span{display:inline-block;position:relative;top:-7px;}
       .empty{text-align:center;color:#5B6779;font-size:13px;padding:24px;}
     </style></head><body>
     <div class="header">
