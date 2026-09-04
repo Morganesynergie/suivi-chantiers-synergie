@@ -7108,15 +7108,17 @@ function missingDocTagSvg(label) {
     `</svg>`;
 }
 function missingDocumentsPdfHtml(rows, totalMissing) {
-  const blocks = rows.map(({ chantier, missing }) => `
+  const blocks = rows.map(({ chantier, missing }) => {
+    const meta = [chantier.client, chantier.nChantier].filter(Boolean).join(" · ");
+    return `
     <div class="chantier-block avoid-break">
-      <div class="chantier-titre">${chantier.titre || "(sans titre)"}</div>
-      <div class="chantier-meta">${[chantier.client, chantier.nChantier].filter(Boolean).join(" · ") || "&nbsp;"}</div>
+      <div class="chantier-head"><span class="chantier-titre">${chantier.titre || "(sans titre)"}</span>${meta ? `<span class="chantier-meta">${meta}</span>` : ""}</div>
       <div class="tags">
         ${missing.map((d) => missingDocTagSvg(d.label)).join("")}
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
   return `
     <html><head><title>Documents manquants — SYNERGIE BTP</title>
     <style>
@@ -7138,8 +7140,14 @@ function missingDocumentsPdfHtml(rows, totalMissing) {
       .header img{height:32px;}
       .header .meta{text-align:right;font-size:11px;color:#5B6472;}
       .chantier-block{border:1px solid #E8C4BE;background:#FBEFEC;border-radius:8px;padding:10px 14px;margin-bottom:10px;}
+      /* Titre et code chantier/client sur la même ligne, en haut à côté du
+         titre (demande Morgane) : deux <span> inline dans un seul bloc, pas
+         de flex/align-items (voir plus haut pourquoi on évite tout ce qui
+         dépend de html2canvas pour l'alignement vertical du texte — le flux
+         inline normal, lui, est fiable). */
+      .chantier-head{margin-bottom:6px;}
       .chantier-titre{font-size:13px;font-weight:700;color:#16233B;}
-      .chantier-meta{font-size:11px;color:#5B6779;margin-bottom:6px;}
+      .chantier-meta{font-size:11px;font-weight:400;color:#5B6779;margin-left:8px;}
       /* Les bulles "document manquant" sont des <svg> injectés directement
          par missingDocTagSvg() (voir plus haut) — plus de règle .tag ici,
          voir le commentaire au-dessus de missingDocTagSvg pour le pourquoi. */
