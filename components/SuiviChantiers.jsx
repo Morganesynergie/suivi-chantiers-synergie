@@ -7257,9 +7257,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
   function setCautionPvDate(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, cautionPvDate: value || null } : m)) });
   }
-  function setDateLevee(chantier, marcheId, value) {
-    updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, dateLevee: value || null } : m)) });
-  }
   function setMontantCaution(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, montantCaution: value === "" ? "" : parseFloat(value) } : m)) });
   }
@@ -7298,7 +7295,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
               : j <= 30
               ? `Échéance dans ${j} j`
               : `Levée prévue le ${fmtDate(entry.leveeIso)}`;
-            const cardBg = !entry.pvDateEffective || j < 0 ? COLORS.redSoft : j <= 30 ? COLORS.amberSoft : "#fff";
+            const cardBg = COLORS.amberSoft;
             if (entry.kind === "manual") {
               const m = entry.manuelle;
               return (
@@ -7345,18 +7342,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                         style={{ width: 150 }}
                       />
                     </Field>
-                    <Field label="Date de levée à demander">
-                      <TextInput
-                        type="date"
-                        value={m.dateLevee || ""}
-                        placeholder={entry.alerteIso || ""}
-                        onChange={(e) => updateCautionManuelle(m.id, { dateLevee: e.target.value || "" })}
-                        style={{ width: 150 }}
-                      />
-                      {!m.dateLevee && entry.alerteIso && (
-                        <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Calculée : {fmtDate(entry.alerteIso)} (PV + 1 an)</p>
-                      )}
-                    </Field>
                   </div>
                 </Card>
               );
@@ -7402,18 +7387,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                       <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Reprise de la date de réception du chantier</p>
                     )}
                   </Field>
-                  <Field label="Date de levée à demander">
-                    <TextInput
-                      type="date"
-                      value={entry.marche.dateLevee || ""}
-                      placeholder={entry.alerteIso || ""}
-                      onChange={(e) => setDateLevee(entry.chantier, entry.marche.id, e.target.value)}
-                      style={{ width: 150 }}
-                    />
-                    {!entry.marche.dateLevee && entry.alerteIso && (
-                      <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Calculée : {fmtDate(entry.alerteIso)} (PV + 1 an)</p>
-                    )}
-                  </Field>
                 </div>
               </Card>
             );
@@ -7427,7 +7400,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
       ) : (
         <div className="flex flex-col gap-2">
           {actives.map((entry) => (
-            <Card key={entry.marche.id} className="p-3">
+            <Card key={entry.marche.id} className="p-3" style={{ background: COLORS.greenSoft }}>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <button
