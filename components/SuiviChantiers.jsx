@@ -2418,13 +2418,13 @@ function useComputed(chantiers, rgDues) {
 function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, onNavigate, undoCount, onUndoClick }) {
   const items = [
     { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-    { key: "reglements", label: "Règlements en attente", icon: Clock },
     { key: "chantiers", label: "Chantiers", icon: Building2 },
-    { key: "archives", label: "Archives", icon: Archive },
+    { key: "reglements", label: "Règlements en attente", icon: Clock },
     { key: "rg", label: "Retenues de garantie", icon: ShieldCheck },
-    { key: "documents", label: "Documents manquants", icon: FileWarning },
     { key: "caution", label: "Caution bancaire", icon: Landmark },
+    { key: "documents", label: "Documents manquants", icon: FileWarning },
     { key: "soustraitants", label: "Sous-traitants", icon: HardHat },
+    { key: "archives", label: "Archives", icon: Archive },
   ];
   return (
     <div className="h-full flex flex-col justify-between py-5 px-3" style={{ background: COLORS.navy }}>
@@ -7331,6 +7331,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                         type="number" step="0.01"
                         value={m.montantHt ?? ""}
                         onChange={(e) => updateCautionManuelle(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                        disabled={!unlocked}
                         style={{ width: 140 }}
                       />
                     </Field>
@@ -7373,6 +7374,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                       value={entry.marche.montantCaution ?? ""}
                       placeholder={fmtEUR(entry.marche.montantHt)}
                       onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                      disabled={!unlocked}
                       style={{ width: 140 }}
                     />
                   </Field>
@@ -7426,6 +7428,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                     value={entry.marche.montantCaution ?? ""}
                     placeholder={fmtEUR(entry.marche.montantHt)}
                     onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                    disabled={!unlocked}
                     style={{ width: 140 }}
                   />
                 </Field>
