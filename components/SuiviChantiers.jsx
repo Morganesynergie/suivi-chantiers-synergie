@@ -46,8 +46,17 @@ const MARCHE_COLOR_SCHEME = {
 const MONTHS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 
 function fmtEUR(n) {
-  if (n === null || n === undefined || isNaN(n)) return "—";
-  return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+  // Number(n) explicite (pas seulement isNaN, qui coerce déjà pour son test
+  // mais laissait ensuite passer n tel quel) : certaines valeurs saisies
+  // très anciennement sont restées stockées en chaîne ("9657.85" au lieu de
+  // 9657.85) — un nombre a .toLocaleString(...) qui formate en devise, une
+  // chaîne a AUSSI .toLocaleString() (hérité d'Object) mais qui l'ignore et
+  // renvoie la chaîne telle quelle, d'où des montants qui s'affichaient bruts
+  // ("9657.85" au lieu de "9 657,85 €") sans jamais déclencher isNaN.
+  if (n === null || n === undefined || n === "") return "—";
+  const v = Number(n);
+  if (isNaN(v)) return "—";
+  return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 }
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -6140,6 +6149,8 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [showVenir, setShowVenir] = useState(false);
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
+  const [editMode, setEditMode] = useState(false);
+  const editable = unlocked && editMode;
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
 
   // Dès qu'un chantier soldé à 100 % est détecté (voir computeAutoRgCumulees),
@@ -6218,64 +6229,51 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   function removeVenir(id) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.filter((r) => r.id !== id) }); }
   function updateVenir(id, patch) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
 
-  const totalEchues = rgDues.echues.reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0);
+  const totalEchues = rgDues.echues.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
+  const totalAVenir = rgDues.aVenir.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
 
   return (
     <div className="p-4 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Retenues de garantie</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Retenues de garantie</h1>
+        {unlocked && (
+          <Btn size="sm" variant={editMode ? "primary" : "ghost"} onClick={() => setEditMode((v) => !v)}>
+            {editMode ? "Terminé" : "Modifier"}
+          </Btn>
+        )}
+      </div>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
-        {unlocked && <Btn size="sm" variant="primary" onClick={() => setShowEchue(true)}><Plus size={13} /> Ajouter</Btn>}
+        {editable && <Btn size="sm" variant="primary" onClick={() => setShowEchue(true)}><Plus size={13} /> Ajouter</Btn>}
       </div>
       <Card className="overflow-x-auto mb-6">
         <div style={{ overflowX: "auto" }}>
-        <table className="text-xs" style={{ width: "100%", minWidth: 820 }}>
+        <table className="text-xs" style={{ width: "100%", minWidth: 760 }}>
           <thead>
             <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
               <th className="text-left font-medium px-3 py-2">N° chantier</th>
               <th className="text-left font-medium px-2 py-2">Nom</th>
-              <th className="text-left font-medium px-2 py-2">Chantier lié</th>
               <th className="text-right font-medium px-2 py-2">Montant HT</th>
               <th className="text-right font-medium px-2 py-2">Montant TTC</th>
               <th className="text-left font-medium px-2 py-2">BET / MO</th>
               <th className="text-left font-medium px-2 py-2">Date envoi</th>
               <th className="text-center font-medium px-2 py-2">Validation BET</th>
               <th className="text-left font-medium px-2 py-2">Notes</th>
-              {unlocked && <th className="px-3 py-2"></th>}
+              {editable && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
-            {rgDues.echues.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
-            {rgDues.echues.map((r) => (
-              <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                {unlocked ? (
+            {rgDues.echues.length === 0 && <tr><td colSpan={editable ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
+            {rgDues.echues.map((r) => {
+              const isAvocat = (r.notes || "").toUpperCase().includes("AVOCAT");
+              return (
+              <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}`, color: isAvocat ? COLORS.red : undefined }}>
+                {editable ? (
                   <>
                     <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateEchue(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
                     <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateEchue(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
-                    <td className="px-1 py-1">
-                      <select
-                        value={r.chantierId || ""}
-                        onChange={(e) => {
-                          const cid = e.target.value;
-                          const ch = chantiers.find((c) => c.id === cid);
-                          updateEchue(r.id, {
-                            chantierId: cid,
-                            nom: ch ? ch.titre : r.nom,
-                            nChantier: ch ? (ch.nChantier || r.nChantier) : r.nChantier,
-                          });
-                        }}
-                        style={{ ...inputStyle, minWidth: 140 }}
-                        className="outline-none focus:ring-2"
-                        title="Relie cette RG à une fiche chantier de l'appli — permet de poser automatiquement la mention 'réglée' dessus une fois la RG reçue"
-                      >
-                        <option value="">— aucun —</option>
-                        {chantiers.filter((c) => !c.isFacturesLibres).map((c) => (
-                          <option key={c.id} value={c.id}>{c.titre}</option>
-                        ))}
-                      </select>
-                    </td>
                     <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantHt ?? ""} onChange={(e) => updateEchue(r.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
                     <td className="px-1 py-1"><TextInput type="number" step="0.01" value={r.montantTtc ?? ""} onChange={(e) => updateEchue(r.id, { montantTtc: e.target.value === "" ? "" : parseFloat(e.target.value) })} style={{ minWidth: 90, textAlign: "right" }} /></td>
                     <td className="px-1 py-1"><TextInput value={r.betMo || ""} onChange={(e) => updateEchue(r.id, { betMo: e.target.value })} style={{ minWidth: 90 }} /></td>
@@ -6288,33 +6286,33 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                 ) : (
                   <>
                     <td className="px-3 py-2">{r.nChantier || "—"}</td>
-                    <td className="px-2 py-2 font-medium">{r.nom}</td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2 font-medium">
                       {r.chantierId ? (
-                        <button className="hover:underline text-left" style={{ color: COLORS.accent }} onClick={() => { setSelectedChantier(r.chantierId); setTab("chantierDetail"); }}>
-                          Voir la fiche
+                        <button className="hover:underline text-left" onClick={() => { setSelectedChantier(r.chantierId); setTab("chantierDetail"); }} style={{ color: isAvocat ? COLORS.red : COLORS.ink }}>
+                          {r.nom}
                         </button>
-                      ) : <span style={{ color: COLORS.inkSoft }}>—</span>}
+                      ) : r.nom}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantHt)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{fmtEUR(r.montantTtc)}</td>
                     <td className="px-2 py-2">{r.betMo || "—"}</td>
                     <td className="px-2 py-2">{fmtDate(r.dateEnvoi)}</td>
-                    <td className="px-2 py-2 text-center">{r.validBet ? <Check size={13} color={COLORS.green} /> : "—"}</td>
-                    <td className="px-2 py-2" style={{ color: COLORS.inkSoft }}>{r.notes || "—"}</td>
+                    <td className="px-2 py-2 text-center"><div className="flex items-center justify-center">{r.validBet ? <Check size={13} color={COLORS.green} /> : "—"}</div></td>
+                    <td className="px-2 py-2" style={{ color: isAvocat ? COLORS.red : COLORS.inkSoft }}>{r.notes || "—"}</td>
                   </>
                 )}
-                {unlocked && <td className="px-3 py-2 text-right"><button onClick={() => removeEchue(r.id)}><X size={13} color={COLORS.red} /></button></td>}
+                {editable && <td className="px-3 py-2 text-right"><button onClick={() => removeEchue(r.id)}><X size={13} color={COLORS.red} /></button></td>}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
             </div>
       </Card>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG à venir</h2>
-        {unlocked && <Btn size="sm" variant="primary" onClick={() => setShowVenir(true)}><Plus size={13} /> Ajouter</Btn>}
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG à venir — {fmtEUR(totalAVenir)}</h2>
+        {editable && <Btn size="sm" variant="primary" onClick={() => setShowVenir(true)}><Plus size={13} /> Ajouter</Btn>}
       </div>
       <Card className="overflow-x-auto">
         <div style={{ overflowX: "auto" }}>
@@ -6328,7 +6326,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
               <th className="text-left font-medium px-2 py-2">BET / MO</th>
               <th className="text-left font-medium px-2 py-2">Échéance</th>
               <th className="text-left font-medium px-2 py-2">À réclamer ?</th>
-              {unlocked && <th className="px-3 py-2"></th>}
+              {editable && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -6338,7 +6336,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
               const soon = d !== null && d <= 30;
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                  {unlocked ? (
+                  {editable ? (
                     <>
                       <td className="px-1 py-1"><TextInput value={r.nChantier || ""} onChange={(e) => updateVenir(r.id, { nChantier: e.target.value })} style={{ minWidth: 90 }} /></td>
                       <td className="px-1 py-1"><TextInput value={r.nom || ""} onChange={(e) => updateVenir(r.id, { nom: e.target.value })} style={{ minWidth: 120 }} /></td>
@@ -6358,7 +6356,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
                     </>
                   )}
                   <td className="px-2 py-2">{soon ? <Pill color="amber">oui — {d}j</Pill> : <Pill>non</Pill>}</td>
-                  {unlocked && (
+                  {editable && (
                     <td className="px-3 py-2">
                       <div className="flex gap-2 justify-end">
                         <button title="Marquer comme réclamée" onClick={() => moveToEchue(r)}><Check size={13} color={COLORS.green} /></button>
@@ -6437,6 +6435,8 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
 function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSelectedChantier, onAddSousTraitant, onUpdateSousTraitant, onRemoveSousTraitant, dossierSousTraitantId, onSetDossierSousTraitantId }) {
   const [section, setSection] = useState("repertoire");
   const [q, setQ] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const editable = unlocked && editMode;
 
   // L'identifiant du sous-traitant dont la modale "dossier" est ouverte vit
   // dans le composant App (pas ici) : ça permet à la fois d'ouvrir cette
@@ -6480,7 +6480,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
 
   return (
     <div className="p-4 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Sous-traitants</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Sous-traitants</h1>
+        {unlocked && (
+          <Btn size="sm" variant={editMode ? "primary" : "ghost"} onClick={() => setEditMode((v) => !v)}>
+            {editMode ? "Terminé" : "Modifier"}
+          </Btn>
+        )}
+      </div>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
         Répertoire des entreprises sous-traitantes et vue globale de tous leurs contrats, tous chantiers confondus.
       </p>
@@ -6508,14 +6515,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
 
       {section === "repertoire" ? (
         <>
-          {unlocked && (
+          {editable && (
             <div className="flex justify-end mb-2">
               <Btn size="sm" variant="primary" onClick={() => onAddSousTraitant({})}><Plus size={13} /> Nouveau sous-traitant</Btn>
             </div>
           )}
           <Card className="overflow-x-auto">
             <div style={{ overflowX: "auto" }}>
-              <table className="text-xs" style={{ width: "100%", minWidth: 1340 }}>
+              <table className="text-xs" style={{ width: "100%", minWidth: 1220 }}>
                 <thead>
                   <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
                     <th className="text-left font-medium px-3 py-2">Entreprise</th>
@@ -6523,39 +6530,29 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                     <th className="text-left font-medium px-2 py-2">Téléphone</th>
                     <th className="text-left font-medium px-2 py-2">Email</th>
                     <th className="text-left font-medium px-2 py-2">Banque</th>
-                    <th className="text-left font-medium px-2 py-2">IBAN</th>
+                    <th className="text-left font-medium px-2 py-2" style={{ minWidth: 240 }}>IBAN</th>
                     <th className="text-left font-medium px-2 py-2">SIRET</th>
                     <th className="text-left font-medium px-2 py-2">Adresse</th>
-                    <th className="text-left font-medium px-2 py-2">Forme juridique</th>
-                    <th className="text-left font-medium px-2 py-2">PME</th>
-                    {unlocked && <th className="px-3 py-2"></th>}
+                    {editable && <th className="px-3 py-2"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRepertoire.length === 0 && (
-                    <tr><td colSpan={unlocked ? 11 : 10} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
+                    <tr><td colSpan={editable ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun sous-traitant{qLower ? " ne correspond à cette recherche" : ""}</td></tr>
                   )}
                   {filteredRepertoire.map((s) => {
                     return (
                       <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
-                        {unlocked ? (
+                        {editable ? (
                           <>
                             <td className="px-1 py-1"><TextInput value={s.nom || ""} onChange={(e) => onUpdateSousTraitant(s.id, { nom: e.target.value })} style={{ minWidth: 140 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.representant || ""} onChange={(e) => onUpdateSousTraitant(s.id, { representant: e.target.value })} style={{ minWidth: 120 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.telephone || ""} onChange={(e) => onUpdateSousTraitant(s.id, { telephone: e.target.value })} style={{ minWidth: 100 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.email || ""} onChange={(e) => onUpdateSousTraitant(s.id, { email: e.target.value })} style={{ minWidth: 150 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.banque || ""} onChange={(e) => onUpdateSousTraitant(s.id, { banque: e.target.value })} style={{ minWidth: 90 }} /></td>
-                            <td className="px-1 py-1"><TextInput value={s.iban || ""} onChange={(e) => onUpdateSousTraitant(s.id, { iban: e.target.value })} style={{ minWidth: 170 }} /></td>
+                            <td className="px-1 py-1"><TextInput value={s.iban || ""} onChange={(e) => onUpdateSousTraitant(s.id, { iban: e.target.value })} style={{ minWidth: 240 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.siret || ""} onChange={(e) => onUpdateSousTraitant(s.id, { siret: e.target.value })} style={{ minWidth: 110 }} /></td>
                             <td className="px-1 py-1"><TextInput value={s.adresse || ""} onChange={(e) => onUpdateSousTraitant(s.id, { adresse: e.target.value })} style={{ minWidth: 200 }} /></td>
-                            <td className="px-1 py-1"><TextInput placeholder="EURL, SARL, SASU..." value={s.formeJuridique || ""} onChange={(e) => onUpdateSousTraitant(s.id, { formeJuridique: e.target.value })} style={{ minWidth: 130 }} /></td>
-                            <td className="px-1 py-1">
-                              <select className="text-xs rounded border px-1.5 py-1" style={{ borderColor: COLORS.line, minWidth: 80 }} value={s.pme || ""} onChange={(e) => onUpdateSousTraitant(s.id, { pme: e.target.value })}>
-                                <option value="">—</option>
-                                <option value="oui">Oui</option>
-                                <option value="non">Non</option>
-                              </select>
-                            </td>
                             <td className="px-2 py-1 whitespace-nowrap">
                               <button onClick={() => setDossierModalId(s.id)} title="Ouvrir le dossier administratif" className="mr-2"><FolderOpen size={14} color={COLORS.accent} /></button>
                               <button onClick={() => onRemoveSousTraitant(s.id)} title="Supprimer du répertoire"><Trash2 size={13} color={COLORS.red} /></button>
@@ -6570,11 +6567,9 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-2 py-2">{s.telephone || "—"}</td>
                             <td className="px-2 py-2">{s.email || "—"}</td>
                             <td className="px-2 py-2">{s.banque || "—"}</td>
-                            <td className="px-2 py-2">{s.iban || "—"}</td>
+                            <td className="px-2 py-2" style={{ minWidth: 240 }}>{s.iban || "—"}</td>
                             <td className="px-2 py-2">{s.siret || "—"}</td>
                             <td className="px-2 py-2">{s.adresse || "—"}</td>
-                            <td className="px-2 py-2">{s.formeJuridique || "—"}</td>
-                            <td className="px-2 py-2">{s.pme === "oui" ? "Oui" : s.pme === "non" ? "Non" : "—"}</td>
                           </>
                         )}
                       </tr>
@@ -7335,7 +7330,7 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
 
   return (
     <div className="p-4 max-w-6xl">
-      <div className="flex items-start justify-between gap-2 mb-1">
+      <div className="flex items-start justify-between gap-2 mb-5">
         <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Caution bancaire</h1>
         {unlocked && (
           <Btn size="sm" variant={editMode ? "primary" : "ghost"} onClick={() => setEditMode((v) => !v)}>
@@ -7343,9 +7338,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
           </Btn>
         )}
       </div>
-      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
-        Marchés/TS dont la retenue de garantie est une caution bancaire (réglage "Modifier les infos" de chaque chantier), plus les cautions ajoutées à la main pour d'anciens chantiers sans fiche.
-      </p>
 
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <div className="flex items-center gap-2">
