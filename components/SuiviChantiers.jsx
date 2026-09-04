@@ -2003,15 +2003,6 @@ function cautionsBancaires(chantiers) {
       const factureHt = sitsMarche.reduce((a, s) => a + (s.montantHt || 0), 0);
       const resteHt = Math.round(((m.montantHt || 0) - factureHt) * 100) / 100;
       const soldee = !!m.montantHt && resteHt <= 0;
-      // Total des RG effectivement comptabilisées, TOUTES situations de la
-      // fiche chantier confondues (marché principal, TS, avenants...) — pas
-      // seulement celles de ce marché/TS précis : une RG peut avoir été
-      // retenue sur une situation d'un autre bloc (ex. un avenant passé
-      // depuis en "aucune retenue") sans que ce bloc-ci, en caution banque,
-      // en tienne compte autrement. Sert de comparatif avec le montant de
-      // caution bancaire saisi à la main juste en dessous, qui peut
-      // légitimement différer (Morgane l'ajuste parfois à la main).
-      const rgTotalChantier = Math.round(c.situations.reduce((a, s) => a + (s.rg || 0), 0) * 100) / 100;
       // Date du PV de réception de CE marché : saisie propre au marché si
       // renseignée (utile quand la caution de ce bloc a été reçue à une date
       // différente du reste du chantier), sinon reprise automatiquement de
@@ -2025,7 +2016,7 @@ function cautionsBancaires(chantiers) {
       // tant que rien n'a été saisi.
       const leveeIso = m.dateLevee || alerteIso;
       out.push({
-        chantier: c, marche: m, resteHt, soldee, rgTotalChantier,
+        chantier: c, marche: m, resteHt, soldee,
         pvDateEffective, pvDateHerited, alerteIso, leveeIso,
         alerteJours: leveeIso ? daysUntil(leveeIso) : null,
       });
@@ -7424,7 +7415,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                     </button>
                     <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                       {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT marché — soldé
-                      {" — RG Total chantier : "}<span className="font-medium">{fmtEUR(entry.rgTotalChantier)}</span>
                     </div>
                   </div>
                   <Pill color={pillColor}>{pillLabel}</Pill>
@@ -7472,7 +7462,6 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                   </button>
                   <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                     {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}
-                    {" — RG Total chantier : "}<span className="font-medium">{fmtEUR(entry.rgTotalChantier)}</span>
                   </div>
                 </div>
                 <Pill color="accent">En cours</Pill>
@@ -7583,6 +7572,20 @@ export default function App() {
   // resynchronise pas depuis le serveur pour ne pas écraser localement ce
   // qu'on vient tout juste de modifier (voir refreshFromServer plus bas).
   const pendingWritesRef = useRef(0);
+  // Files d'attente d'écriture, une par clé de stockage : chaque frappe dans
+  // un champ (montant, texte...) déclenche un persistXxx, donc taper vite
+  // peut lancer plusieurs PUT réseau en parallèle vers la même clé. Rien ne
+  // garantit alors que le PUT le plus récent arrive en dernier côté serveur
+  // — un PUT plus ancien peut très bien répondre après, et écraser la bonne
+  // valeur avec une version périmée. Un refreshFromServer suivant reprend
+  // alors cette valeur périmée et le dernier caractère tapé "disparaît". En
+  // chaînant les écritures d'une même clé (chacune n'est envoyée qu'une fois
+  // la précédente terminée), l'ordre d'arrivée au serveur est garanti
+  // identique à l'ordre de déclenchement, donc la dernière frappe gagne
+  // toujours.
+  const chantiersWriteChainRef = useRef(Promise.resolve());
+  const rgWriteChainRef = useRef(Promise.resolve());
+  const sousTraitantsWriteChainRef = useRef(Promise.resolve());
 
   // ---- Bouton "Annuler la dernière action" -------------------------------
   // On garde en mémoire (jamais en base) un historique des derniers états
@@ -7663,53 +7666,68 @@ export default function App() {
     })();
   }, []);
 
-  const persistChantiers = useCallback(async (next, opts) => {
+  const persistChantiers = useCallback((next, opts) => {
     if (!opts || !opts.skipHistory) pushUndoSnapshot();
     setChantiers(next);
     chantiersRef.current = next;
     pendingWritesRef.current++;
-    try {
-      await storage.set("chantiers", JSON.stringify(next), true);
-      setSaveError(false);
-    } catch (e) {
-      console.error("Erreur de sauvegarde", e);
-      setSaveError(true);
-    } finally {
-      pendingWritesRef.current--;
-    }
+    const payload = JSON.stringify(next);
+    const run = chantiersWriteChainRef.current
+      .catch(() => {})
+      .then(() => storage.set("chantiers", payload, true))
+      .then(() => setSaveError(false))
+      .catch((e) => {
+        console.error("Erreur de sauvegarde", e);
+        setSaveError(true);
+      })
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
+    chantiersWriteChainRef.current = run;
+    return run;
   }, [pushUndoSnapshot]);
 
-  const persistRg = useCallback(async (next, opts) => {
+  const persistRg = useCallback((next, opts) => {
     if (!opts || !opts.skipHistory) pushUndoSnapshot();
     setRgDues(next);
     rgDuesRef.current = next;
     pendingWritesRef.current++;
-    try {
-      await storage.set("rg-dues", JSON.stringify(next), true);
-      setSaveError(false);
-    } catch (e) {
-      console.error("Erreur de sauvegarde", e);
-      setSaveError(true);
-    } finally {
-      pendingWritesRef.current--;
-    }
+    const payload = JSON.stringify(next);
+    const run = rgWriteChainRef.current
+      .catch(() => {})
+      .then(() => storage.set("rg-dues", payload, true))
+      .then(() => setSaveError(false))
+      .catch((e) => {
+        console.error("Erreur de sauvegarde", e);
+        setSaveError(true);
+      })
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
+    rgWriteChainRef.current = run;
+    return run;
   }, [pushUndoSnapshot]);
 
   // Répertoire des sous-traitants : volontairement HORS du système "Annuler
   // la dernière action" (comme le code d'édition) — ce sont des fiches
   // contact, pas des saisies comptables où une fausse manip coûte cher.
-  const persistSousTraitants = useCallback(async (next) => {
+  const persistSousTraitants = useCallback((next) => {
     setSousTraitants(next);
     pendingWritesRef.current++;
-    try {
-      await storage.set("sous-traitants", JSON.stringify(next), true);
-      setSaveError(false);
-    } catch (e) {
-      console.error("Erreur de sauvegarde", e);
-      setSaveError(true);
-    } finally {
-      pendingWritesRef.current--;
-    }
+    const payload = JSON.stringify(next);
+    const run = sousTraitantsWriteChainRef.current
+      .catch(() => {})
+      .then(() => storage.set("sous-traitants", payload, true))
+      .then(() => setSaveError(false))
+      .catch((e) => {
+        console.error("Erreur de sauvegarde", e);
+        setSaveError(true);
+      })
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
+    sousTraitantsWriteChainRef.current = run;
+    return run;
   }, []);
   // Crée une entreprise dans le répertoire et retourne aussitôt son id
   // (avant même que la sauvegarde réseau ne se termine) : utilisé depuis la
