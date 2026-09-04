@@ -1990,9 +1990,15 @@ function cautionsBancaires(chantiers) {
     if (c.isFacturesLibres || c.archived) continue;
     for (const m of c.marches || []) {
       if (m.rgMode !== "banque") continue;
-      const factureHt = c.situations.filter((s) => s.marcheId === m.id).reduce((a, s) => a + (s.montantHt || 0), 0);
+      const sitsMarche = c.situations.filter((s) => s.marcheId === m.id);
+      const factureHt = sitsMarche.reduce((a, s) => a + (s.montantHt || 0), 0);
       const resteHt = Math.round(((m.montantHt || 0) - factureHt) * 100) / 100;
       const soldee = !!m.montantHt && resteHt <= 0;
+      // Total des RG effectivement comptabilisées situation par situation sur
+      // ce marché/TS (toutes situations confondues) — sert de comparatif avec
+      // le montant de caution bancaire saisi à la main juste en dessous, qui
+      // peut légitimement différer (Morgane l'ajuste parfois à la main).
+      const rgTotalMarche = Math.round(sitsMarche.reduce((a, s) => a + (s.rg || 0), 0) * 100) / 100;
       // Date du PV de réception de CE marché : saisie propre au marché si
       // renseignée (utile quand la caution de ce bloc a été reçue à une date
       // différente du reste du chantier), sinon reprise automatiquement de
@@ -2006,7 +2012,7 @@ function cautionsBancaires(chantiers) {
       // tant que rien n'a été saisi.
       const leveeIso = m.dateLevee || alerteIso;
       out.push({
-        chantier: c, marche: m, resteHt, soldee,
+        chantier: c, marche: m, resteHt, soldee, rgTotalMarche,
         pvDateEffective, pvDateHerited, alerteIso, leveeIso,
         alerteJours: leveeIso ? daysUntil(leveeIso) : null,
       });
@@ -7239,6 +7245,47 @@ function DocumentsView({ chantiers, sousTraitants, setTab, setSelectedChantier }
 const emptyCautionManuelle = () => ({ id: uid("caution-m"), nChantier: "", nom: "", montantHt: "", pvDate: "", dateLevee: "" });
 
 function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedChantier, rgDues, updateRg, unlocked }) {
+  // Bascule locale à la page (indépendante du verrou global "Mode édition") :
+  // par défaut, même déverrouillée, la page reste en présentation lecture
+  // seule (chiffres écrits directement dans l'encadré, pas de bulle blanche
+  // de saisie) — demande Morgane. Les champs modifiables n'apparaissent que
+  // lorsqu'elle clique sur "Modifier" en haut de la page ; si l'appli est en
+  // "Consultation seule", ce bouton n'est même pas affiché.
+  const [editMode, setEditMode] = useState(false);
+  const editable = unlocked && editMode;
+  // Ligne "Label : valeur" en lecture seule, remplacée par le champ
+  // modifiable (Field + TextInput) une fois editable === true.
+  function MoneyRow({ label, value, placeholderText, onChange }) {
+    if (!editable) {
+      const display = value !== "" && value != null ? fmtEUR(value) : placeholderText || "—";
+      return (
+        <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+          {label} : <span className="font-medium text-sm" style={{ color: COLORS.ink }}>{display}</span>
+        </div>
+      );
+    }
+    return (
+      <Field label={label}>
+        <TextInput type="number" step="0.01" value={value ?? ""} placeholder={placeholderText} onChange={onChange} style={{ width: 140 }} />
+      </Field>
+    );
+  }
+  function DateRow({ label, value, onChange, hint }) {
+    if (!editable) {
+      return (
+        <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+          {label} : <span className="font-medium text-sm" style={{ color: COLORS.ink }}>{value ? fmtDate(value) : "—"}</span>
+          {hint}
+        </div>
+      );
+    }
+    return (
+      <Field label={label}>
+        <TextInput type="date" value={value || ""} onChange={onChange} style={{ width: 150 }} />
+        {hint}
+      </Field>
+    );
+  }
   const all = cautionsBancaires(chantiers);
   const actives = all.filter((c) => !c.soldee);
   const aAnnuler = all.filter((c) => c.soldee);
@@ -7272,14 +7319,21 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
 
   return (
     <div className="p-4 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Caution bancaire</h1>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Caution bancaire</h1>
+        {unlocked && (
+          <Btn size="sm" variant={editMode ? "primary" : "ghost"} onClick={() => setEditMode((v) => !v)}>
+            {editMode ? "Terminé" : "Modifier"}
+          </Btn>
+        )}
+      </div>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
         Marchés/TS dont la retenue de garantie est une caution bancaire (réglage "Modifier les infos" de chaque chantier), plus les cautions ajoutées à la main pour d'anciens chantiers sans fiche.
       </p>
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions à annuler ({aAnnulerAll.length})</h2>
-        {unlocked && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter</Btn>}
+        {editable && <Btn size="sm" variant="ghost" onClick={addCautionManuelle}><Plus size={13} /> Ajouter</Btn>}
       </div>
       {aAnnulerAll.length === 0 ? (
         <Card className="p-4 text-sm mb-6" style={{ color: COLORS.inkSoft }}>Aucune caution bancaire à annuler pour l'instant.</Card>
@@ -7302,46 +7356,46 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                 <Card key={m.id} className="p-3" style={{ background: cardBg }}>
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex-1" style={{ minWidth: 220 }}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <TextInput
-                          value={m.nom || ""}
-                          placeholder="Nom du chantier"
-                          onChange={(e) => updateCautionManuelle(m.id, { nom: e.target.value })}
-                          style={{ fontWeight: 500, minWidth: 180 }}
-                        />
-                        <TextInput
-                          value={m.nChantier || ""}
-                          placeholder="N° chantier (facultatif)"
-                          onChange={(e) => updateCautionManuelle(m.id, { nChantier: e.target.value })}
-                          style={{ minWidth: 140, fontSize: 12 }}
-                        />
-                      </div>
+                      {editable ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <TextInput
+                            value={m.nom || ""}
+                            placeholder="Nom du chantier"
+                            onChange={(e) => updateCautionManuelle(m.id, { nom: e.target.value })}
+                            style={{ fontWeight: 500, minWidth: 180 }}
+                          />
+                          <TextInput
+                            value={m.nChantier || ""}
+                            placeholder="N° chantier (facultatif)"
+                            onChange={(e) => updateCautionManuelle(m.id, { nChantier: e.target.value })}
+                            style={{ minWidth: 140, fontSize: 12 }}
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-medium text-sm" style={{ color: COLORS.ink }}>{m.nom || "(sans nom)"}</span>
+                          {m.nChantier && <span className="text-xs ml-2" style={{ color: COLORS.inkSoft }}>{m.nChantier}</span>}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Pill color={pillColor}>{pillLabel}</Pill>
-                      {unlocked && (
+                      {editable && (
                         <button title="Supprimer cette caution" onClick={() => removeCautionManuelle(m.id)}><Trash2 size={14} color={COLORS.red} /></button>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                    <Field label="Montant de la RG cautionnée">
-                      <TextInput
-                        type="number" step="0.01"
-                        value={m.montantHt ?? ""}
-                        onChange={(e) => updateCautionManuelle(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })}
-                        disabled={!unlocked}
-                        style={{ width: 140 }}
-                      />
-                    </Field>
-                    <Field label="Date du PV de réception">
-                      <TextInput
-                        type="date"
-                        value={m.pvDate || ""}
-                        onChange={(e) => updateCautionManuelle(m.id, { pvDate: e.target.value || "" })}
-                        style={{ width: 150 }}
-                      />
-                    </Field>
+                  <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-2 pt-2 flex-wrap`} style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                    <MoneyRow
+                      label="Montant de la RG cautionnée"
+                      value={m.montantHt}
+                      onChange={(e) => updateCautionManuelle(m.id, { montantHt: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                    />
+                    <DateRow
+                      label="Date du PV de réception"
+                      value={m.pvDate}
+                      onChange={(e) => updateCautionManuelle(m.id, { pvDate: e.target.value || "" })}
+                    />
                   </div>
                 </Card>
               );
@@ -7359,35 +7413,26 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                     </button>
                     <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                       {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT marché — soldé
-                      {entry.marche.montantCaution !== "" && entry.marche.montantCaution != null && (
-                        <> — RG cautionnée : <span className="font-medium">{fmtEUR(entry.marche.montantCaution)}</span></>
-                      )}
+                      {" — RG Total marché : "}<span className="font-medium">{fmtEUR(entry.rgTotalMarche)}</span>
                     </div>
                   </div>
                   <Pill color={pillColor}>{pillLabel}</Pill>
                 </div>
-                <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                  <Field label="Montant de la RG cautionnée">
-                    <TextInput
-                      type="number" step="0.01"
-                      value={entry.marche.montantCaution ?? ""}
-                      placeholder={fmtEUR(entry.marche.montantHt)}
-                      onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
-                      disabled={!unlocked}
-                      style={{ width: 140 }}
-                    />
-                  </Field>
-                  <Field label="Date du PV de réception">
-                    <TextInput
-                      type="date"
-                      value={entry.pvDateEffective || ""}
-                      onChange={(e) => setCautionPvDate(entry.chantier, entry.marche.id, e.target.value)}
-                      style={{ width: 150 }}
-                    />
-                    {entry.pvDateHerited && (
+                <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-2 pt-2 flex-wrap`} style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                  <MoneyRow
+                    label="Montant de la RG cautionnée"
+                    value={entry.marche.montantCaution}
+                    placeholderText={fmtEUR(entry.marche.montantHt)}
+                    onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                  />
+                  <DateRow
+                    label="Date du PV de réception"
+                    value={entry.pvDateEffective}
+                    onChange={(e) => setCautionPvDate(entry.chantier, entry.marche.id, e.target.value)}
+                    hint={entry.pvDateHerited ? (
                       <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Reprise de la date de réception du chantier</p>
-                    )}
-                  </Field>
+                    ) : null}
+                  />
                 </div>
               </Card>
             );
@@ -7413,24 +7458,18 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                   </button>
                   <div className="text-xs" style={{ color: COLORS.inkSoft }}>
                     {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}
-                    {entry.marche.montantCaution !== "" && entry.marche.montantCaution != null && (
-                      <> — RG cautionnée : <span className="font-medium">{fmtEUR(entry.marche.montantCaution)}</span></>
-                    )}
+                    {" — RG Total marché : "}<span className="font-medium">{fmtEUR(entry.rgTotalMarche)}</span>
                   </div>
                 </div>
                 <Pill color="accent">En cours</Pill>
               </div>
-              <div className="flex items-end gap-3 mt-2 pt-2 flex-wrap" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                <Field label="Montant de la RG cautionnée">
-                  <TextInput
-                    type="number" step="0.01"
-                    value={entry.marche.montantCaution ?? ""}
-                    placeholder={fmtEUR(entry.marche.montantHt)}
-                    onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
-                    disabled={!unlocked}
-                    style={{ width: 140 }}
-                  />
-                </Field>
+              <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-2 pt-2 flex-wrap`} style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                <MoneyRow
+                  label="Montant de la RG cautionnée"
+                  value={entry.marche.montantCaution}
+                  placeholderText={fmtEUR(entry.marche.montantHt)}
+                  onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
+                />
               </div>
             </Card>
           ))}
@@ -7723,14 +7762,31 @@ export default function App() {
   // copie locale ne soit (quasiment) jamais périmée au moment d'une
   // sauvegarde. On saute la resynchro si une écriture est en cours
   // (pendingWritesRef) pour ne pas courir après notre propre sauvegarde.
+  //
+  // Bug remonté ensuite (Morgane, dépôt de PDF dans les bulles de document
+  // qui "disparaît", parfois 2-3 essais avant que ça tienne) : la garde
+  // ci-dessus ne protégeait que le DÉBUT de cette fonction. Le aller-retour
+  // serveur (storage.get, Promise.all ci-dessous) prend un instant — sur une
+  // connexion faible sur un chantier, largement le temps qu'un dépôt de PDF
+  // démarré juste après (ou pendant) se termine et écrive sa propre version
+  // plus fraîche. Cette resynchro, elle, avait déjà commencé AVANT et donc
+  // n'a rien vu de cette écriture à son démarrage — mais elle se termine
+  // APRÈS, et écrasait alors silencieusement le document tout juste déposé
+  // avec la version serveur d'avant. D'où : on revérifie pendingWritesRef
+  // (et qu'aucune resynchro plus récente n'a été lancée entre-temps, via
+  // refreshSeqRef) juste avant d'appliquer le résultat, pas seulement avant
+  // de le demander.
+  const refreshSeqRef = useRef(0);
   const refreshFromServer = useCallback(async () => {
     if (pendingWritesRef.current > 0) return;
+    const seq = ++refreshSeqRef.current;
     try {
       const [ch, rg, stt] = await Promise.all([
         storage.get("chantiers", true).catch(() => null),
         storage.get("rg-dues", true).catch(() => null),
         storage.get("sous-traitants", true).catch(() => null),
       ]);
+      if (pendingWritesRef.current > 0 || seq !== refreshSeqRef.current) return;
       const parsedSousTraitants = stt && stt.value ? normalizeSousTraitants(JSON.parse(stt.value)) : null;
       if (ch && ch.value) {
         const { chantiers: fixedChantiers } = normalizeChantiersData(JSON.parse(ch.value), parsedSousTraitants);
