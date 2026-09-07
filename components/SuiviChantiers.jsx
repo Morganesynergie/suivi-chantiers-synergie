@@ -4097,9 +4097,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       setSituationDocError("Seuls les fichiers PDF sont acceptés ici.");
       return;
     }
-    const MAX_SIZE = 4 * 1024 * 1024;
+    // Dépôt en 2 temps (URL signée Supabase Storage), comme pour les
+    // documents de fiche chantier (voir uploadDocument) : le fichier part
+    // DIRECTEMENT du navigateur vers Supabase, sans repasser par une fonction
+    // Vercel (limitée à 4,5 Mo de requête). La limite réelle devient celle du
+    // bucket côté Supabase (50 Mo sur ce projet).
+    const MAX_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
-      setSituationDocError("Fichier trop volumineux (4 Mo max). Essayez de le compresser.");
+      setSituationDocError("Fichier trop volumineux (50 Mo max). Essayez de le compresser.");
       return;
     }
     setSituationDocError("");
@@ -4115,43 +4120,56 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       // car il faut pouvoir LIRE la position réelle du texte déjà présent sur
       // le PDF (pdf-lib, utilisé côté navigateur, ne sait qu'écrire) pour
       // caler l'encadré juste sous "Règlement :" quel que soit le nombre de
-      // lignes déjà imprimées au-dessus sur ce document précis. En cas
-      // d'échec (PDF protégé/illisible...), on dépose quand même le fichier
-      // original tel quel plutôt que de bloquer l'envoi.
+      // lignes déjà imprimées au-dessus sur ce document précis. Cette route
+      // reste une fonction Vercel classique (multipart), donc plafonnée à
+      // 4,5 Mo de requête — au-delà, ou en cas d'échec (PDF protégé/
+      // illisible...), on dépose quand même le fichier original tel quel
+      // plutôt que de bloquer l'envoi.
       if (docType === "recap" && situation) {
-        try {
-          const stampFd = new FormData();
-          stampFd.append("file", file);
-          stampFd.append("data", JSON.stringify({
-            fournisseurs: situation.fournisseurs || [],
-            prorata: situation.prorata || 0,
-            totalARecevoir: situation.totalARecevoir || 0,
-          }));
-          const stampRes = await fetch("/api/stamp-repartition", { method: "POST", body: stampFd });
-          if (!stampRes.ok) {
-            const errData = await stampRes.json().catch(() => ({}));
-            throw new Error(errData.error || "Échec du tamponnage du PDF.");
+        if (file.size <= 4 * 1024 * 1024) {
+          try {
+            const stampFd = new FormData();
+            stampFd.append("file", file);
+            stampFd.append("data", JSON.stringify({
+              fournisseurs: situation.fournisseurs || [],
+              prorata: situation.prorata || 0,
+              totalARecevoir: situation.totalARecevoir || 0,
+            }));
+            const stampRes = await fetch("/api/stamp-repartition", { method: "POST", body: stampFd });
+            if (!stampRes.ok) {
+              const errData = await stampRes.json().catch(() => ({}));
+              throw new Error(errData.error || "Échec du tamponnage du PDF.");
+            }
+            const stampedBlob = await stampRes.blob();
+            fileToUpload = new File([stampedBlob], file.name, { type: "application/pdf" });
+          } catch (stampErr) {
+            console.error("Échec de l'ajout automatique de la signature/répartition sur le PDF", stampErr);
+            setSituationDocError("La signature n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans signature.");
+            fileToUpload = file;
           }
-          const stampedBlob = await stampRes.blob();
-          fileToUpload = new File([stampedBlob], file.name, { type: "application/pdf" });
-        } catch (stampErr) {
-          console.error("Échec de l'ajout automatique de la signature/répartition sur le PDF", stampErr);
-          setSituationDocError("La signature n'a pas pu être ajoutée automatiquement sur ce PDF (document protégé ou illisible) — le fichier a été déposé tel quel, sans signature.");
-          fileToUpload = file;
+        } else {
+          setSituationDocError("PDF de plus de 4 Mo : la signature n'est pas ajoutée automatiquement sur les gros fichiers — le document a été déposé tel quel.");
         }
       }
-      const fd = new FormData();
-      fd.append("file", fileToUpload);
-      fd.append("chantierId", chantier.id);
-      fd.append("docKey", situationDocKey(situationId, docType));
-      const res = await fetch("/api/documents", { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
+      const docKey = situationDocKey(situationId, docType);
+      const signRes = await fetch("/api/documents/sign-upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chantierId: chantier.id, docKey, fileName: fileToUpload.name }),
+      });
+      const signData = await signRes.json().catch(() => ({}));
+      if (!signRes.ok) throw new Error(signData.error || "Échec de l'envoi du PDF.");
+      const putRes = await fetch(signData.signedUrl, {
+        method: "PUT",
+        headers: { "content-type": fileToUpload.type || "application/octet-stream" },
+        body: fileToUpload,
+      });
+      if (!putRes.ok) throw new Error("Échec de l'envoi du PDF.");
       // Déposer l'état d'acompte (EA) ou, pour une situation prorata, la
       // facture signée (F) vaut validation BET : la date du jour est
       // enregistrée automatiquement dans "Validation BET" de la situation.
       const extraPatch = (docType === "ea" || docType === "facture") ? { validBet: new Date().toISOString().slice(0, 10) } : undefined;
-      setSituationDocMeta(situationId, docType, { present: true, fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt }, extraPatch);
+      setSituationDocMeta(situationId, docType, { present: true, fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() }, extraPatch);
     } catch (err) {
       setSituationDocError(err.message || "Échec de l'envoi du PDF.");
     } finally {
@@ -4209,7 +4227,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   async function uploadFournisseurFactureFiles(situationId, files) {
     if (!unlocked || !files.length) return;
     const stateKey = situationId + ":fournFact";
-    const MAX_SIZE = 4 * 1024 * 1024;
+    // Dépôt en 2 temps (URL signée Supabase Storage), comme pour les
+    // documents de fiche chantier (voir uploadDocument) : le fichier part
+    // DIRECTEMENT du navigateur vers Supabase, sans repasser par une fonction
+    // Vercel (limitée à 4,5 Mo de requête). La limite réelle devient celle du
+    // bucket côté Supabase (50 Mo sur ce projet).
+    const MAX_SIZE = 50 * 1024 * 1024;
     setSituationDocError("");
     setUploadingSituationDocId(stateKey);
     try {
@@ -4221,17 +4244,24 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           continue;
         }
         if (file.size > MAX_SIZE) {
-          setSituationDocError(`"${file.name}" est trop volumineux (4 Mo max) — ignoré.`);
+          setSituationDocError(`"${file.name}" est trop volumineux (50 Mo max) — ignoré.`);
           continue;
         }
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("chantierId", chantier.id);
-        fd.append("docKey", situationDocKey(situationId, "fournfact-" + uid("ff")));
-        const res = await fetch("/api/documents", { method: "POST", body: fd });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Échec de l'envoi du PDF.");
-        newMetas.push({ id: uid("ff"), fileName: data.fileName, filePath: data.path, uploadedAt: data.uploadedAt });
+        const docKey = situationDocKey(situationId, "fournfact-" + uid("ff"));
+        const signRes = await fetch("/api/documents/sign-upload", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chantierId: chantier.id, docKey, fileName: file.name }),
+        });
+        const signData = await signRes.json().catch(() => ({}));
+        if (!signRes.ok) throw new Error(signData.error || "Échec de l'envoi du PDF.");
+        const putRes = await fetch(signData.signedUrl, {
+          method: "PUT",
+          headers: { "content-type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error("Échec de l'envoi du PDF.");
+        newMetas.push({ id: uid("ff"), fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() });
       }
       if (newMetas.length) {
         const situations = chantier.situations.map((x) =>
