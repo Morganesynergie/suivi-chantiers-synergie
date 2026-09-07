@@ -6257,7 +6257,14 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
           </thead>
           <tbody>
             {rgDues.echues.length === 0 && <tr><td colSpan={editable ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
-            {rgDues.echues.map((r) => {
+            {/* Les lignes "AVOCAT" (notes contenant ce mot) sont regroupées en
+                haut de liste — tri stable : à mention égale, l'ordre de saisie
+                d'origine est conservé. */}
+            {[...rgDues.echues].sort((a, b) => {
+              const aAvocat = (a.notes || "").toUpperCase().includes("AVOCAT") ? 0 : 1;
+              const bAvocat = (b.notes || "").toUpperCase().includes("AVOCAT") ? 0 : 1;
+              return aAvocat - bAvocat;
+            }).map((r) => {
               const isAvocat = (r.notes || "").toUpperCase().includes("AVOCAT");
               return (
               <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.line}`, color: isAvocat ? COLORS.red : undefined }}>
