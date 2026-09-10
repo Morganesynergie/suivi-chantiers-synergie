@@ -895,13 +895,13 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 34px;background:#FFFFFF;}
       .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
       .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
-      .cover .title{font-size:26px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px;margin-bottom:10px;}
+      .cover .title{font-size:26px;line-height:1;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:18px 38px;margin-bottom:10px;}
       .cover .subtitle{font-size:15px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#5A6478;margin-bottom:50px;}
       .cover .chantier-name{font-size:13px;color:#5A6478;margin-bottom:6px;}
-      .cover .party-grid{display:flex;gap:24px;margin-top:20px;width:100%;}
-      .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:19px 16px;background:#fff;}
+      .cover .party-grid{display:flex;gap:20px;margin:20px auto 0;max-width:600px;}
+      .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:16px 13px;background:#fff;}
       .cover .party .kind{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:8px;}
-      .cover .party .name{font-size:16px;font-weight:700;}
+      .cover .party .name{font-size:15.5px;font-weight:700;}
       .cover .footer{margin-top:50px;font-size:10px;color:#8A93A3;line-height:1.6;}
       h3{font-size:13px;text-transform:uppercase;letter-spacing:0.02em;border-bottom:1px solid #16233B;padding-bottom:4px;margin:20px 0 8px 0;}
       h3:first-child{margin-top:0;}
@@ -917,10 +917,10 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       .pieces-list li{display:flex;align-items:flex-start;gap:8px;}
       .checkbox{font-size:14px;line-height:1.3;}
       .sig-grid{display:flex;justify-content:space-between;gap:24px;margin-top:26px;}
-      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:14px 16px;font-size:11px;min-height:270px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:14px 16px;font-size:11px;min-height:300px;}
       .sig-block .sig-title{font-weight:700;margin-bottom:10px;}
       .sig-block .sig-space{margin-top:16px;}
-      .sig-block .sig-stamp{max-width:190px;max-height:95px;margin-top:10px;display:block;}
+      .sig-block .sig-stamp{max-width:280px;max-height:140px;margin-top:10px;display:block;}
       .fait{margin:18px 0 6px 0;font-size:12px;}
       .moa-block{margin-top:28px;padding-top:14px;border-top:1.5px solid #16233B;}
       .moa-fields{margin:10px 0;}
