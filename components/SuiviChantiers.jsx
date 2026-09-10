@@ -891,14 +891,14 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
          le découpage en pages réel se fait mécaniquement par hauteur de
          pixels (voir generatePdfBlob), donc c'est cette hauteur qui fixe
          la coupure, pas un page-break CSS. */
-      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 20px;background:#FFFFFF;}
+      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 30px;background:#FFFFFF;}
       .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
       .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
       .cover .title{font-size:26px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px;margin-bottom:10px;}
       .cover .subtitle{font-size:15px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#5A6478;margin-bottom:50px;}
       .cover .chantier-name{font-size:13px;color:#5A6478;margin-bottom:6px;}
-      .cover .party-grid{display:flex;gap:14px;margin-top:20px;width:100%;}
-      .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:16px 12px;background:#fff;}
+      .cover .party-grid{display:flex;gap:20px;margin-top:20px;width:100%;}
+      .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:18px 15px;background:#fff;}
       .cover .party .kind{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:8px;}
       .cover .party .name{font-size:16px;font-weight:700;}
       .cover .footer{margin-top:50px;font-size:10px;color:#8A93A3;line-height:1.6;}
@@ -916,7 +916,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       .pieces-list li{display:flex;align-items:flex-start;gap:8px;}
       .checkbox{font-size:14px;line-height:1.3;}
       .sig-grid{display:flex;justify-content:space-between;gap:24px;margin-top:26px;}
-      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:14px 16px;font-size:11px;min-height:210px;}
+      .sig-block{flex:1;border:1px solid #C9C2AE;border-radius:6px;padding:14px 16px;font-size:11px;min-height:270px;}
       .sig-block .sig-title{font-weight:700;margin-bottom:10px;}
       .sig-block .sig-space{margin-top:16px;}
       .fait{margin:18px 0 6px 0;font-size:12px;}
@@ -1015,7 +1015,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       <div class="moa-block avoid-break">
         ${CONTRAT_MOA_ACCEPTATION_HTML}
         <div class="moa-fields">
-          <div class="row">Je soussigné(e), Nom/Raison sociale du maître d'ouvrage : <span class="fill">${fields.moaRaisonSociale || chantier.client || ""}</span></div>
+          <div class="row">Je soussigné(e), Nom/Raison sociale du maître d'ouvrage : <span class="fill">${fields.moaRaisonSociale || chantier.titre || ""}</span></div>
           <div class="row">Représenté par : <span class="fill">${fields.moaRepresentant || ""}</span></div>
           <div class="row">Fait à : <span class="fill">${fields.moaFaitA || ""}</span> &nbsp; Le : <span class="fill">${fmtDate(fields.moaDate) || ""}</span></div>
         </div>
@@ -1050,9 +1050,9 @@ function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }
   const [montantHt, setMontantHt] = useState(entry.montant !== "" && entry.montant != null ? String(entry.montant) : "");
   const [retenueGarantie, setRetenueGarantie] = useState("Pas de retenue de garantie");
   const [dateFait, setDateFait] = useState(new Date().toISOString().slice(0, 10));
-  const [moaRaisonSociale, setMoaRaisonSociale] = useState(chantier.client || "");
-  const [moaRepresentant, setMoaRepresentant] = useState("");
-  const [moaFaitA, setMoaFaitA] = useState("");
+  const [moaRaisonSociale, setMoaRaisonSociale] = useState(chantier.titre || "");
+  const [moaRepresentant, setMoaRepresentant] = useState(chantier.client || "");
+  const [moaFaitA, setMoaFaitA] = useState("Petit-Bourg");
   const [moaDate, setMoaDate] = useState("");
   const [pieces, setPieces] = useState(() => sousTraitancePiecesChecklist(sousTraitant));
   const [genError, setGenError] = useState("");
