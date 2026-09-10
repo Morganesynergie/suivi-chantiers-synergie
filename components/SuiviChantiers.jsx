@@ -891,16 +891,16 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
          le découpage en pages réel se fait mécaniquement par hauteur de
          pixels (voir generatePdfBlob), donc c'est cette hauteur qui fixe
          la coupure, pas un page-break CSS. */
-      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;background:#FFFFFF;}
+      .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 20px;background:#FFFFFF;}
       .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
       .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
       .cover .title{font-size:26px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px;margin-bottom:10px;}
       .cover .subtitle{font-size:15px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#5A6478;margin-bottom:50px;}
       .cover .chantier-name{font-size:13px;color:#5A6478;margin-bottom:6px;}
-      .cover .party-grid{display:flex;gap:28px;margin-top:20px;}
-      .cover .party{flex:1;border:1px solid #C9C2AE;border-radius:8px;padding:20px 18px;background:#fff;}
+      .cover .party-grid{display:flex;gap:14px;margin-top:20px;width:100%;}
+      .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:16px 12px;background:#fff;}
       .cover .party .kind{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:8px;}
-      .cover .party .name{font-size:17px;font-weight:700;}
+      .cover .party .name{font-size:16px;font-weight:700;}
       .cover .footer{margin-top:50px;font-size:10px;color:#8A93A3;line-height:1.6;}
       h3{font-size:13px;text-transform:uppercase;letter-spacing:0.02em;border-bottom:1px solid #16233B;padding-bottom:4px;margin:20px 0 8px 0;}
       h3:first-child{margin-top:0;}
@@ -5319,7 +5319,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <Field label="Client"><TextInput value={chantier.client || ""} onChange={(e) => updateHeaderField({ client: e.target.value })} /></Field>
             <Field label="Email client"><TextInput type="email" placeholder="contact@client.fr" value={chantier.clientEmail || ""} onChange={(e) => updateHeaderField({ clientEmail: e.target.value })} /></Field>
             <Field label="N° chantier"><TextInput value={chantier.nChantier || ""} onChange={(e) => updateHeaderField({ nChantier: e.target.value })} /></Field>
-            <Field label="Adresse chantier"><TextInput placeholder="Lieu d'exécution des travaux" value={chantier.adresseChantier || ""} onChange={(e) => updateHeaderField({ adresseChantier: e.target.value })} /></Field>
+            <Field label="Adresse chantier (lieu d'exécution)"><TextInput placeholder="Lieu d'exécution des travaux" value={chantier.adresseChantier || ""} onChange={(e) => updateHeaderField({ adresseChantier: e.target.value })} /></Field>
             <Field label="BET / Archi"><TextInput value={chantier.betArchi || ""} onChange={(e) => updateHeaderField({ betArchi: e.target.value })} /></Field>
             <Field label="Date démarrage"><TextInput type="date" value={chantier.dateDemarrage || ""} onChange={(e) => updateHeaderField({ dateDemarrage: e.target.value })} /></Field>
             <Field label="Durée prévue"><TextInput value={chantier.dureePrevue || ""} onChange={(e) => updateHeaderField({ dureePrevue: e.target.value })} /></Field>
