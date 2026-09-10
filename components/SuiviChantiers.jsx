@@ -895,10 +895,10 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       .cover{height:1123px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 34px;background:#FFFFFF;}
       .cover img.logo{height:64px;width:auto;margin-bottom:26px;}
       .cover .band{width:120px;height:3px;background:#B8720A;margin:22px auto;}
-      .cover .title{font-size:26px;line-height:1;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:18px 38px;margin-bottom:10px;}
+      .cover .title{font-size:26px;line-height:1;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:2.5px solid #16233B;display:inline-block;padding:16px 38px 20px;margin-bottom:10px;}
       .cover .subtitle{font-size:15px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#5A6478;margin-bottom:50px;}
       .cover .chantier-name{font-size:13px;color:#5A6478;margin-bottom:6px;}
-      .cover .party-grid{display:flex;gap:20px;margin:20px auto 0;max-width:600px;}
+      .cover .party-grid{display:flex;gap:20px;margin:20px auto 0;max-width:520px;}
       .cover .party{flex:1;min-width:0;border:1px solid #C9C2AE;border-radius:8px;padding:16px 13px;background:#fff;}
       .cover .party .kind{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:#5A6478;margin-bottom:8px;}
       .cover .party .name{font-size:15.5px;font-weight:700;}
