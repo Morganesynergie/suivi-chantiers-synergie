@@ -2055,7 +2055,15 @@ function computeAutoRgCumulees(chantiers) {
     const totalRg = sits.reduce((a, s) => a + (s.rg || 0), 0);
     const resteAFacturerNonBanque = Math.round((totalMarcheHtNonBanque - totalHt) * 100) / 100;
     const enAttenteNonBanque = soldeAttenteChantier(sits);
-    if (resteAFacturerNonBanque !== 0 || enAttenteNonBanque !== 0 || totalRg <= 0) continue;
+    // Tolérance de quelques centimes : sur un chantier avec de nombreuses
+    // situations, des arrondis successifs (HT de chaque situation arrondi
+    // indépendamment) peuvent laisser un écart résiduel de l'ordre du
+    // centime entre la somme des situations et le montant HT du marché,
+    // même quand le chantier est réellement facturé et réglé à 100 %. Une
+    // égalité stricte à 0 faisait passer ces chantiers à la trappe (ex. Ti
+    // Pérou, écart de 0,05 €) et leur RG n'apparaissait jamais dans "RG en
+    // attente".
+    if (Math.abs(resteAFacturerNonBanque) > 0.02 || Math.abs(enAttenteNonBanque) > 0.02 || totalRg <= 0) continue;
     out.push({ chantierId: c.id, chantierTitre: c.titre, client: c.client, nChantier: c.nChantier, tvaRegime: c.marches[0]?.tvaRegime, totalRg, totalHt, sits, marches: c.marches });
   }
   return out;
@@ -2787,6 +2795,50 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
   );
 }
 // ---------- Reglements en attente ----------
+// Avances de démarrage et RG à réclamer sont épinglées tout en haut de
+// "Règlements en attente" (deux groupes fixes, avant les groupes par mois),
+// plutôt que mélangées au milieu des situations classiques triées par
+// date de facture — pour deux raisons : ce sont des montants que Morgane
+// veut visuellement retrouver au même endroit d'un coup d'œil, quel que
+// soit leur mois d'échéance, et leur "date" n'a de toute façon pas le même
+// sens qu'une date de facture (date d'appel de fonds / date d'envoi de la
+// RG au client) donc les mélanger par mois n'a pas de sens. Utilisé à la
+// fois pour l'affichage écran (avec recherche) et l'export PDF (sans, voir
+// exportGroups) pour que les deux restent cohérents entre eux.
+function buildReglementGroups(source) {
+  const addItems = source.filter((s) => s.isADDPending);
+  const rgItems = source.filter((s) => s.isRgPending);
+  const rest = source.filter((s) => !s.isADDPending && !s.isRgPending);
+  const byDate = (a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || "");
+  const pinned = [];
+  if (addItems.length) {
+    pinned.push({
+      key: "__add__", label: "Avances de démarrage en attente", pinned: true,
+      items: [...addItems].sort(byDate),
+      total: addItems.reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+    });
+  }
+  if (rgItems.length) {
+    pinned.push({
+      key: "__rg__", label: "Retenues de garantie à réclamer", pinned: true,
+      items: [...rgItems].sort(byDate),
+      total: rgItems.reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+    });
+  }
+  const byMonth = {};
+  for (const s of rest) {
+    const k = monthKey(s.dateFacture);
+    if (!byMonth[k]) byMonth[k] = [];
+    byMonth[k].push(s);
+  }
+  const monthGroups = Object.keys(byMonth).sort().map((k) => ({
+    key: k,
+    label: monthLabel(k),
+    items: byMonth[k].sort(byDate),
+    total: byMonth[k].reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+  }));
+  return [...pinned, ...monthGroups];
+}
 function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
   const [q, setQ] = useState("");
   const groups = useMemo(() => {
@@ -2799,36 +2851,12 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
           (s.nFact || "").toLowerCase().includes(qLower)
         )
       : computed.impayees;
-    const byMonth = {};
-    for (const s of source) {
-      const k = monthKey(s.dateFacture);
-      if (!byMonth[k]) byMonth[k] = [];
-      byMonth[k].push(s);
-    }
-    return Object.keys(byMonth).sort().map((k) => ({
-      key: k,
-      label: monthLabel(k),
-      items: byMonth[k].sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || "")),
-      total: byMonth[k].reduce((a, s) => a + (s.totalARecevoir || 0), 0),
-    }));
+    return buildReglementGroups(source);
   }, [computed.impayees, q]);
 
-  // Regroupement par mois pour l'export PDF — indépendant de la recherche à l'écran (q),
+  // Regroupement pour l'export PDF — indépendant de la recherche à l'écran (q),
   // pour que l'export "global" couvre bien tout, même si une recherche est active.
-  const exportGroups = useMemo(() => {
-    const byMonth = {};
-    for (const s of computed.impayees) {
-      const k = monthKey(s.dateFacture);
-      if (!byMonth[k]) byMonth[k] = [];
-      byMonth[k].push(s);
-    }
-    return Object.keys(byMonth).sort().map((k) => ({
-      key: k,
-      label: monthLabel(k),
-      items: byMonth[k].sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || "")),
-      total: byMonth[k].reduce((a, s) => a + (s.totalARecevoir || 0), 0),
-    }));
-  }, [computed.impayees]);
+  const exportGroups = useMemo(() => buildReglementGroups(computed.impayees), [computed.impayees]);
 
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [exportPdfError, setExportPdfError] = useState("");
@@ -4642,6 +4670,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   const totalFactureTtc = chantier.situations.reduce((a, s) => a + (s.montantTtc || 0), 0);
   const totalAttente = soldeAttenteChantier(chantier.situations);
   const totalFournisseur = chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (f.montant || 0), 0), 0);
+  // RG retenue (total) : cumul du champ "RG" de TOUTES les situations du
+  // chantier, tous blocs confondus (marché principal, chaque TS, PRORATA le
+  // cas échéant) — vue d'ensemble demandée par Morgane pour voir en un coup
+  // d'œil le montant total de retenue de garantie déjà retenue sur ce
+  // chantier, sans avoir à additionner marché par marché.
+  const totalRgRetenue = chantier.situations.reduce((a, s) => a + (s.rg || 0), 0);
   // "Reste à facturer TTC" doit refléter EXACTEMENT le même "reste" que celui
   // affiché en HT sur chaque ligne de marché (m.montantHt - facturé HT, voir
   // renderMarcheBlock plus bas) — juste converti en TTC au taux de TVA
@@ -5575,6 +5609,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Facturé TTC</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalFactureTtc)}</div></Card>
             <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>Reste à facturer TTC</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(resteAFacturer)}</div></Card>
             <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>En attente règlement</div><div className="text-sm font-semibold tabular-nums" style={{ color: totalAttente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(totalAttente)}</div></Card>
+            <Card className="p-3"><div className="text-xs" style={{ color: COLORS.inkSoft }}>RG retenue</div><div className="text-sm font-semibold tabular-nums">{fmtEUR(totalRgRetenue)}</div></Card>
           </ResponsiveGrid>
 
           {allSupplierNames.length > 0 && (
@@ -5773,21 +5808,19 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
             <div className="flex items-center justify-between mb-1.5 px-0.5 flex-wrap gap-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold" style={{ color: scheme.name }}>{marcheDisplayName(m)}</span>
-                {!isProrata && <Pill color={scheme.pill}>{fmtEUR(m.montantHt)} HT marché</Pill>}
+                {!isProrata && <Pill color={scheme.pill}>{fmtEUR(m.montantHt)} HT marché · {fmtEUR(marcheTtc(m))} TTC</Pill>}
                 <span className="text-xs" style={{ color: COLORS.inkSoft }}>
                   facturé {fmtEUR(totalHt)}
                   {!isProrata && (
                     <>
                       {m.montantHt ? ` · reste à facturer ${fmtEUR(Math.round((m.montantHt - totalHt) * 100) / 100)}` : ""}
                       {" · RG "}{m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}
-                      {m.addMontant ? (() => {
-                        const addTotal = Number(m.addMontant) || 0;
-                        const addRecuNum = Number(m.addRecu) || 0;
-                        const resteARecevoir = Math.round((addTotal - addRecuNum) * 100) / 100;
-                        return ` · ADD ${fmtEUR(addTotal)} TTC${m.addDate ? " le " + fmtDate(m.addDate) : ""}` +
-                          (resteARecevoir > 0.01 ? ` · reçu ${fmtEUR(addRecuNum)} (reste à recevoir ${fmtEUR(resteARecevoir)})` : "") +
-                          ` · déjà remboursé ${fmtEUR(addRembourseTotal(m.id))} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}`;
-                      })() : ""}
+                      {/* Le reste à recevoir sur l'ADD (règlement partiel) ne s'affiche
+                          plus ici : il fait doublon avec "Règlements en attente", qui
+                          centralise déjà toutes les ADD non réglées (voir
+                          buildReglementGroups) — cette ligne ne montre plus que le
+                          suivi du remboursement/crédit de l'ADD sur les situations. */}
+                      {m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)} TTC${m.addDate ? " le " + fmtDate(m.addDate) : ""} · déjà remboursé ${fmtEUR(addRembourseTotal(m.id))} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}
                     </>
                   )}
                 </span>
@@ -6256,6 +6289,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [editMode, setEditMode] = useState(false);
   const editable = unlocked && editMode;
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
+  const [q, setQ] = useState("");
 
   // Dès qu'un chantier soldé à 100 % est détecté (voir computeAutoRgCumulees),
   // sa RG cumulée est aussitôt transformée en une vraie ligne "RG à venir"
@@ -6333,8 +6367,15 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   function removeVenir(id) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.filter((r) => r.id !== id) }); }
   function updateVenir(id, patch) { updateRg({ ...rgDues, aVenir: rgDues.aVenir.map((r) => (r.id === id ? { ...r, ...patch } : r)) }); }
 
-  const totalEchues = rgDues.echues.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
-  const totalAVenir = rgDues.aVenir.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
+  const qLower = q.trim().toLowerCase();
+  const matchesQ = (r) => !qLower ||
+    (r.nom || "").toLowerCase().includes(qLower) ||
+    (r.nChantier || "").toLowerCase().includes(qLower) ||
+    (r.betMo || "").toLowerCase().includes(qLower);
+  const filteredEchues = rgDues.echues.filter(matchesQ);
+  const filteredAVenir = rgDues.aVenir.filter(matchesQ);
+  const totalEchues = filteredEchues.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
+  const totalAVenir = filteredAVenir.reduce((a, r) => a + (Number(r.montantTtc) || Number(r.montantHt) || 0), 0);
 
   return (
     <div className="p-4 max-w-6xl">
@@ -6346,7 +6387,12 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
           </Btn>
         )}
       </div>
-      <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
+      <p className="text-sm mb-3" style={{ color: COLORS.inkSoft }}>Suivi des RG échues à réclamer et à venir</p>
+
+      <div className="relative mb-5 max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
+        <TextInput placeholder="Rechercher un chantier, un client, un BET/MO..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      </div>
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>RG échues — {fmtEUR(totalEchues)}</h2>
@@ -6369,11 +6415,11 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             </tr>
           </thead>
           <tbody>
-            {rgDues.echues.length === 0 && <tr><td colSpan={editable ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG échue</td></tr>}
+            {filteredEchues.length === 0 && <tr><td colSpan={editable ? 9 : 8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>{qLower ? "Aucun résultat pour cette recherche" : "Aucune RG échue"}</td></tr>}
             {/* Les lignes "AVOCAT" (notes contenant ce mot) sont regroupées en
                 haut de liste — tri stable : à mention égale, l'ordre de saisie
                 d'origine est conservé. */}
-            {[...rgDues.echues].sort((a, b) => {
+            {[...filteredEchues].sort((a, b) => {
               const aAvocat = (a.notes || "").toUpperCase().includes("AVOCAT") ? 0 : 1;
               const bAvocat = (b.notes || "").toUpperCase().includes("AVOCAT") ? 0 : 1;
               return aAvocat - bAvocat;
@@ -6441,8 +6487,8 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
             </tr>
           </thead>
           <tbody>
-            {rgDues.aVenir.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucune RG à venir</td></tr>}
-            {[...rgDues.aVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
+            {filteredAVenir.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>{qLower ? "Aucun résultat pour cette recherche" : "Aucune RG à venir"}</td></tr>}
+            {[...filteredAVenir].sort((a, b) => (a.dateEcheance || "9999").localeCompare(b.dateEcheance || "9999")).map((r) => {
               const d = daysUntil(r.dateEcheance);
               const soon = d !== null && d <= 30;
               return (
