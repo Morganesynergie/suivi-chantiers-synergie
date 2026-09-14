@@ -2035,6 +2035,24 @@ function cautionsBancaires(chantiers) {
   return out;
 }
 
+// Regroupe les entrées cautionsBancaires() par chantier (ex. marché principal
+// + TS cautionnés banque sur le même chantier "BABOU") pour n'afficher qu'une
+// seule bulle par chantier dans l'onglet "Caution bancaire", avec le détail
+// par marché en dessous — plutôt qu'une bulle séparée pour chaque marché.
+function groupCautionsByChantier(entries) {
+  const order = [];
+  const byChantier = new Map();
+  for (const e of entries) {
+    const cid = e.chantier.id;
+    if (!byChantier.has(cid)) {
+      byChantier.set(cid, { chantier: e.chantier, entries: [] });
+      order.push(cid);
+    }
+    byChantier.get(cid).entries.push(e);
+  }
+  return order.map((cid) => byChantier.get(cid));
+}
+
 function computeAutoRgCumulees(chantiers) {
   const out = [];
   for (const c of chantiers) {
@@ -7456,8 +7474,19 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
     const leveeIso = m.dateLevee || alerteIso;
     return { kind: "manual", manuelle: m, pvDateEffective: m.pvDate || null, alerteIso, leveeIso, alerteJours: leveeIso ? daysUntil(leveeIso) : null };
   });
-  const aAnnulerAll = [...aAnnuler.map((e) => ({ kind: "auto", ...e })), ...manuellesComputed]
-    .sort((a, b) => (a.alerteJours ?? -Infinity) - (b.alerteJours ?? -Infinity));
+  // Regroupement par chantier : quand un chantier a plusieurs marchés
+  // cautionnés banque (ex. marché principal + TS), on n'affiche qu'une seule
+  // bulle pour le chantier, avec le détail par marché en dessous — demande
+  // Morgane (ex. "BABOU"). Un groupe reste scindé entre "à annuler" et
+  // "actives" si ses marchés n'ont pas le même statut (l'un soldé, l'autre
+  // pas encore) : chacun apparaît alors dans sa section respective.
+  const aAnnulerGroups = groupCautionsByChantier(aAnnuler).map((g) => ({ kind: "auto-group", chantier: g.chantier, entries: g.entries }));
+  function groupAlerteJours(g) {
+    return Math.min(...g.entries.map((e) => e.alerteJours ?? -Infinity));
+  }
+  const aAnnulerAll = [...aAnnulerGroups, ...manuellesComputed]
+    .sort((a, b) => (a.kind === "manual" ? a.alerteJours ?? -Infinity : groupAlerteJours(a)) - (b.kind === "manual" ? b.alerteJours ?? -Infinity : groupAlerteJours(b)));
+  const activesGroups = groupCautionsByChantier(actives);
 
   // Montant de caution effectivement affiché sur chaque carte (voir
   // MoneyRow) : le montant saisi à la main, sinon le montant HT du marché
@@ -7466,8 +7495,26 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
     if (entry.kind === "manual") return entry.manuelle.montantHt || 0;
     return entry.marche.montantCaution !== "" && entry.marche.montantCaution != null ? entry.marche.montantCaution : (entry.marche.montantHt || 0);
   }
+  function groupCautionMontant(g) {
+    return Math.round(g.entries.reduce((a, e) => a + effectiveCautionMontant({ kind: "auto", ...e }), 0) * 100) / 100;
+  }
   const activesTotal = Math.round(actives.reduce((a, e) => a + effectiveCautionMontant({ kind: "auto", ...e }), 0) * 100) / 100;
-  const aAnnulerTotal = Math.round(aAnnulerAll.reduce((a, e) => a + effectiveCautionMontant(e), 0) * 100) / 100;
+  const aAnnulerTotal = Math.round(
+    aAnnulerAll.reduce((a, x) => a + (x.kind === "manual" ? effectiveCautionMontant(x) : groupCautionMontant(x)), 0) * 100
+  ) / 100;
+
+  // Enveloppe globale de cautions bancaires accordée par la banque, et
+  // disponibilité restante = enveloppe - total de toutes les cautions
+  // actuellement en cours, actives ET à annuler (celles-ci restent
+  // consommées tant qu'elles ne sont pas effectivement levées par la
+  // banque) — demande Morgane.
+  const DEFAULT_CAUTION_ENVELOPPE = 250000;
+  const enveloppe = rgDues.cautionEnveloppe ?? DEFAULT_CAUTION_ENVELOPPE;
+  const enveloppeNum = Number(enveloppe) || 0;
+  const disponibilite = Math.round((enveloppeNum - (activesTotal + aAnnulerTotal)) * 100) / 100;
+  function setCautionEnveloppe(value) {
+    updateRg({ ...rgDues, cautionEnveloppe: value === "" ? "" : parseFloat(value) });
+  }
 
   function setCautionPvDate(chantier, marcheId, value) {
     updateChantier({ ...chantier, marches: chantier.marches.map((m) => (m.id === marcheId ? { ...m, cautionPvDate: value || null } : m)) });
@@ -7487,13 +7534,26 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
 
   return (
     <div className="p-4 max-w-6xl">
-      <div className="flex items-start justify-between gap-2 mb-5">
+      <div className="flex items-start justify-between gap-2 mb-1">
         <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Caution bancaire</h1>
         {unlocked && (
           <Btn size="sm" variant={editMode ? "primary" : "ghost"} onClick={() => setEditMode((v) => !v)}>
             {editMode ? "Terminé" : "Modifier"}
           </Btn>
         )}
+      </div>
+      <div className="text-xs mb-5 flex items-center gap-1 flex-wrap" style={{ color: COLORS.inkSoft }}>
+        <span>Enveloppe :</span>
+        {editable ? (
+          <TextInput
+            type="number" step="0.01" value={enveloppe} onChange={(e) => setCautionEnveloppe(e.target.value)}
+            style={{ width: 110, display: "inline-block" }}
+          />
+        ) : (
+          <span className="font-medium" style={{ color: COLORS.ink }}>{fmtEUR(enveloppeNum)}</span>
+        )}
+        <span>/ Disponibilité =</span>
+        <span className="font-medium" style={{ color: disponibilite < 0 ? COLORS.red : COLORS.ink }}>{fmtEUR(disponibilite)}</span>
       </div>
 
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -7508,18 +7568,18 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
       ) : (
         <div className="flex flex-col gap-2 mb-6">
           {aAnnulerAll.map((entry) => {
-            const j = entry.alerteJours;
-            const pillColor = !entry.pvDateEffective ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
-            const pillLabel = !entry.pvDateEffective
-              ? "Date du PV à renseigner"
-              : j < 0
-              ? `À demander à la banque (échue depuis ${Math.abs(j)} j)`
-              : j <= 30
-              ? `Échéance dans ${j} j`
-              : `Levée prévue le ${fmtDate(entry.leveeIso)}`;
             const cardBg = COLORS.amberSoft;
             if (entry.kind === "manual") {
               const m = entry.manuelle;
+              const j = entry.alerteJours;
+              const pillColor = !entry.pvDateEffective ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
+              const pillLabel = !entry.pvDateEffective
+                ? "Date du PV à renseigner"
+                : j < 0
+                ? `À demander à la banque (échue depuis ${Math.abs(j)} j)`
+                : j <= 30
+                ? `Échéance dans ${j} j`
+                : `Levée prévue le ${fmtDate(entry.leveeIso)}`;
               return (
                 <Card key={m.id} className="p-3" style={{ background: cardBg }}>
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -7568,8 +7628,26 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                 </Card>
               );
             }
+            // Bulle groupée par chantier (un ou plusieurs marchés cautionnés
+            // banque, tous soldés) : pastille globale = le cas le plus
+            // urgent parmi les marchés du groupe, détail de chaque marché
+            // en gris en dessous (voir groupCautionsByChantier).
+            const worst = entry.entries.reduce(
+              (w, e) => ((e.alerteJours ?? -Infinity) < (w.alerteJours ?? -Infinity) ? e : w),
+              entry.entries[0]
+            );
+            const j = worst.alerteJours;
+            const pillColor = !worst.pvDateEffective ? "amber" : j < 0 ? "red" : j <= 30 ? "amber" : "green";
+            const pillLabel = !worst.pvDateEffective
+              ? "Date du PV à renseigner"
+              : j < 0
+              ? `À demander à la banque (échue depuis ${Math.abs(j)} j)`
+              : j <= 30
+              ? `Échéance dans ${j} j`
+              : `Levée prévue le ${fmtDate(worst.leveeIso)}`;
+            const multi = entry.entries.length > 1;
             return (
-              <Card key={entry.marche.id} className="p-3" style={{ background: cardBg }}>
+              <Card key={entry.chantier.id} className="p-3" style={{ background: cardBg }}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <button
@@ -7580,26 +7658,35 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
                       {entry.chantier.titre}
                     </button>
                     <div className="text-xs" style={{ color: COLORS.inkSoft }}>
-                      {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT marché — soldé
+                      {multi ? `${entry.entries.length} marchés cautionnés — ` : ""}Total {fmtEUR(groupCautionMontant(entry))} — soldé
                     </div>
                   </div>
                   <Pill color={pillColor}>{pillLabel}</Pill>
                 </div>
-                <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-2 pt-2 flex-wrap`} style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                  <MoneyRow
-                    label="Montant de la RG cautionnée"
-                    value={entry.marche.montantCaution}
-                    placeholderText={fmtEUR(entry.marche.montantHt)}
-                    onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
-                  />
-                  <DateRow
-                    label="Date du PV de réception"
-                    value={entry.pvDateEffective}
-                    onChange={(e) => setCautionPvDate(entry.chantier, entry.marche.id, e.target.value)}
-                    hint={entry.pvDateHerited ? (
-                      <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Reprise de la date de réception du chantier</p>
-                    ) : null}
-                  />
+                <div className="flex flex-col gap-2 mt-2 pt-2" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                  {entry.entries.map((e) => (
+                    <div key={e.marche.id}>
+                      <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                        {marcheDisplayName(e.marche)} — {fmtEUR(e.marche.montantHt)} HT marché
+                      </div>
+                      <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-1 flex-wrap`}>
+                        <MoneyRow
+                          label="Montant de la RG cautionnée"
+                          value={e.marche.montantCaution}
+                          placeholderText={fmtEUR(e.marche.montantHt)}
+                          onChange={(ev) => setMontantCaution(e.chantier, e.marche.id, ev.target.value)}
+                        />
+                        <DateRow
+                          label="Date du PV de réception"
+                          value={e.pvDateEffective}
+                          onChange={(ev) => setCautionPvDate(e.chantier, e.marche.id, ev.target.value)}
+                          hint={e.pvDateHerited ? (
+                            <p className="text-[11px] mt-1" style={{ color: COLORS.inkSoft }}>Reprise de la date de réception du chantier</p>
+                          ) : null}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </Card>
             );
@@ -7608,40 +7695,52 @@ function CautionBancaireView({ chantiers, updateChantier, setTab, setSelectedCha
       )}
 
       <div className="flex items-center gap-2 mb-2">
-        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions actives ({actives.length})</h2>
+        <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cautions actives ({activesGroups.length})</h2>
         <span className="text-xs" style={{ color: COLORS.inkSoft }}>Total : <span className="font-medium" style={{ color: COLORS.ink }}>{fmtEUR(activesTotal)}</span></span>
       </div>
-      {actives.length === 0 ? (
+      {activesGroups.length === 0 ? (
         <Card className="p-4 text-sm" style={{ color: COLORS.inkSoft }}>Aucune caution bancaire active.</Card>
       ) : (
         <div className="flex flex-col gap-2">
-          {actives.map((entry) => (
-            <Card key={entry.marche.id} className="p-3" style={{ background: COLORS.greenSoft }}>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <button
-                    className="font-medium text-sm hover:underline text-left"
-                    style={{ color: COLORS.ink }}
-                    onClick={() => { setSelectedChantier(entry.chantier.id); setTab("chantierDetail"); }}
-                  >
-                    {entry.chantier.titre}
-                  </button>
-                  <div className="text-xs" style={{ color: COLORS.inkSoft }}>
-                    {marcheDisplayName(entry.marche)} — {fmtEUR(entry.marche.montantHt)} HT — reste à facturer {fmtEUR(entry.resteHt)}
+          {activesGroups.map((g) => {
+            const multi = g.entries.length > 1;
+            return (
+              <Card key={g.chantier.id} className="p-3" style={{ background: COLORS.greenSoft }}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <button
+                      className="font-medium text-sm hover:underline text-left"
+                      style={{ color: COLORS.ink }}
+                      onClick={() => { setSelectedChantier(g.chantier.id); setTab("chantierDetail"); }}
+                    >
+                      {g.chantier.titre}
+                    </button>
+                    <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                      {multi ? `${g.entries.length} marchés cautionnés — ` : ""}Total {fmtEUR(groupCautionMontant(g))}
+                    </div>
                   </div>
+                  <Pill color="accent">En cours</Pill>
                 </div>
-                <Pill color="accent">En cours</Pill>
-              </div>
-              <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-2 pt-2 flex-wrap`} style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                <MoneyRow
-                  label="Montant de la RG cautionnée"
-                  value={entry.marche.montantCaution}
-                  placeholderText={fmtEUR(entry.marche.montantHt)}
-                  onChange={(e) => setMontantCaution(entry.chantier, entry.marche.id, e.target.value)}
-                />
-              </div>
-            </Card>
-          ))}
+                <div className="flex flex-col gap-2 mt-2 pt-2" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                  {g.entries.map((e) => (
+                    <div key={e.marche.id}>
+                      <div className="text-xs" style={{ color: COLORS.inkSoft }}>
+                        {marcheDisplayName(e.marche)} — {fmtEUR(e.marche.montantHt)} HT — reste à facturer {fmtEUR(e.resteHt)}
+                      </div>
+                      <div className={`flex ${editable ? "items-end" : "items-center"} gap-3 mt-1 flex-wrap`}>
+                        <MoneyRow
+                          label="Montant de la RG cautionnée"
+                          value={e.marche.montantCaution}
+                          placeholderText={fmtEUR(e.marche.montantHt)}
+                          onChange={(ev) => setMontantCaution(e.chantier, e.marche.id, ev.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
