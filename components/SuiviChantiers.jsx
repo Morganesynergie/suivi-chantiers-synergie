@@ -2061,7 +2061,6 @@ function groupCautionsByChantier(entries) {
 function computeAutoRgCumulees(chantiers) {
   const out = [];
   for (const c of chantiers) {
-    if (c.rgExtracted) continue;
     // Un bloc PRORATA (compte prorata de chantier, budget mutualisé pour les
     // frais communs de base vie/nettoyage...) n'a rien à voir avec le
     // montant du marché : on l'exclut de ce total, même s'il lui reste un
@@ -2075,7 +2074,7 @@ function computeAutoRgCumulees(chantiers) {
     const sits = c.situations.filter((s) => nonBanqueMarches.some((m) => m.id === s.marcheId));
     if (sits.length === 0) continue;
     const totalHt = sits.reduce((a, s) => a + (s.montantHt || 0), 0);
-    const totalRg = sits.reduce((a, s) => a + (s.rg || 0), 0);
+    const totalRgAbsolu = sits.reduce((a, s) => a + (s.rg || 0), 0);
     const resteAFacturerNonBanque = Math.round((totalMarcheHtNonBanque - totalHt) * 100) / 100;
     const enAttenteNonBanque = soldeAttenteChantier(sits);
     // Tolérance de quelques centimes : sur un chantier avec de nombreuses
@@ -2086,10 +2085,53 @@ function computeAutoRgCumulees(chantiers) {
     // égalité stricte à 0 faisait passer ces chantiers à la trappe (ex. Ti
     // Pérou, écart de 0,05 €) et leur RG n'apparaissait jamais dans "RG en
     // attente".
-    if (Math.abs(resteAFacturerNonBanque) > 0.02 || Math.abs(enAttenteNonBanque) > 0.02 || totalRg <= 0) continue;
-    out.push({ chantierId: c.id, chantierTitre: c.titre, client: c.client, nChantier: c.nChantier, tvaRegime: c.marches[0]?.tvaRegime, totalRg, totalHt, sits, marches: c.marches });
+    if (Math.abs(resteAFacturerNonBanque) > 0.02 || Math.abs(enAttenteNonBanque) > 0.02 || totalRgAbsolu <= 0) continue;
+    // rgExtractedMontant retient le cumul de RG déjà transformé en ligne "RG
+    // à venir" lors d'un précédent passage (voir markMarcheRgExtractedBulk) —
+    // remplace l'ancien booléen rgExtracted, qui figeait le chantier pour
+    // toujours dès la première extraction et perdait silencieusement toute
+    // RG facturée ENSUITE (ex. SCI HORIZON, 3 940,29 € de RG sur son dernier
+    // TS jamais remontés car le chantier était déjà marqué "extrait"). Seul
+    // le SUPPLÉMENT de RG apparu depuis la dernière extraction redevient une
+    // nouvelle ligne "RG à venir".
+    const dejaExtrait = Number(c.rgExtractedMontant) || 0;
+    const totalRg = Math.round((totalRgAbsolu - dejaExtrait) * 100) / 100;
+    if (totalRg <= 0.01) continue;
+    out.push({ chantierId: c.id, chantierTitre: c.titre, client: c.client, nChantier: c.nChantier, tvaRegime: c.marches[0]?.tvaRegime, totalRg, totalRgAbsolu, totalHt, sits, marches: c.marches });
   }
   return out;
+}
+
+// Migration silencieuse (voir normalizeChantiersData plus bas pour le même
+// principe) : convertit l'ancien booléen c.rgExtracted en un montant
+// c.rgExtractedMontant, seul champ lu désormais par computeAutoRgCumulees.
+// Pour chaque chantier déjà marqué rgExtracted, on cherche une ligne "RG à
+// venir"/"RG échues" encore présente et liée à ce chantier (rgDues, voir
+// RgView) : si son montant est INFÉRIEUR à la RG cumulée réellement facturée
+// aujourd'hui, c'est la preuve concrète d'un écart réel (nouvelle situation
+// facturée après l'extraction, ex. SCI HORIZON) — on repart alors de ce
+// montant connu pour que le supplément redevienne détectable. Sinon (aucune
+// ligne trouvée, le plus souvent parce que la RG a déjà été reçue et la
+// ligne supprimée par markRgReceived) on part du principe que le chantier
+// est à jour, pour ne jamais faire réapparaître à tort une caution déjà
+// soldée.
+function backfillRgExtractedMontant(chantiers, rgDues) {
+  let changed = false;
+  const liees = [...(rgDues?.aVenir || []), ...(rgDues?.echues || [])];
+  const next = chantiers.map((c) => {
+    if (!c.rgExtracted || c.rgExtractedMontant != null) return c;
+    const totalRgAbsolu = (() => {
+      const nonBanqueMarches = (c.marches || []).filter((m) => m.type !== "prorata" && m.rgMode !== "banque" && m.rgMode !== "aucune");
+      if (nonBanqueMarches.length === 0) return 0;
+      const sits = (c.situations || []).filter((s) => nonBanqueMarches.some((m) => m.id === s.marcheId));
+      return sits.reduce((a, s) => a + (s.rg || 0), 0);
+    })();
+    const matched = Math.round(liees.filter((r) => r.chantierId === c.id).reduce((a, r) => a + (r.montantTtc || r.montantHt || 0), 0) * 100) / 100;
+    const rgExtractedMontant = matched > 0 && matched < totalRgAbsolu ? matched : totalRgAbsolu;
+    changed = true;
+    return { ...c, rgExtractedMontant };
+  });
+  return { changed, chantiers: next };
 }
 
 // Répare silencieusement les situations dont des champs numériques ont été
@@ -6341,7 +6383,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
       };
     });
     updateRg({ ...rgDues, aVenir: [...rgDues.aVenir, ...newEntries] });
-    onExtractMarcheRgBulk(autoRg.map((item) => item.chantierId));
+    onExtractMarcheRgBulk(autoRg.map((item) => ({ chantierId: item.chantierId, totalRgAbsolu: item.totalRgAbsolu })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRg]);
 
@@ -7895,21 +7937,29 @@ export default function App() {
         // (Earlier builds force-reseeded on every version bump, which silently wiped out
         // anything the person had already entered. Seeding now only ever happens once,
         // on a genuine first-ever load when nothing is stored yet.)
+        // Valeur de rg-dues analysée AVANT les chantiers : la migration
+        // rgExtracted -> rgExtractedMontant (voir backfillRgExtractedMontant)
+        // en a besoin pour retrouver, pour chaque chantier déjà marqué
+        // rgExtracted, le montant qui avait réellement été extrait.
+        const parsedRg = rg && rg.value ? JSON.parse(rg.value) : null;
         if (ch && ch.value) {
           const parsedChantiers = JSON.parse(ch.value);
           const { changed, chantiers: fixedChantiers } = normalizeChantiersData(parsedChantiers, parsedSousTraitants);
-          setChantiers(fixedChantiers);
-          if (changed) {
+          const { changed: rgMigChanged, chantiers: migratedChantiers } = backfillRgExtractedMontant(fixedChantiers, parsedRg || SEED_RG);
+          setChantiers(migratedChantiers);
+          if (changed || rgMigChanged) {
             // Auto-réparation silencieuse de données déjà enregistrées avec
-            // des champs numériques en string (voir normalizeChantiersData).
-            storage.set("chantiers", JSON.stringify(fixedChantiers), true).catch(() => {});
+            // des champs numériques en string (voir normalizeChantiersData),
+            // et/ou de l'ancien booléen rgExtracted (voir
+            // backfillRgExtractedMontant).
+            storage.set("chantiers", JSON.stringify(migratedChantiers), true).catch(() => {});
           }
         } else {
           setChantiers(SEED_CHANTIERS);
           await storage.set("chantiers", JSON.stringify(SEED_CHANTIERS), true);
         }
-        if (rg && rg.value) {
-          setRgDues(JSON.parse(rg.value));
+        if (parsedRg) {
+          setRgDues(parsedRg);
         } else {
           setRgDues(SEED_RG);
           await storage.set("rg-dues", JSON.stringify(SEED_RG), true);
@@ -8136,9 +8186,13 @@ export default function App() {
   // RgView) : les appeler un par un ré-écrirait chaque fois depuis le même
   // "chantiers" figé au moment du rendu, et les appels précédents seraient
   // perdus (seul le dernier persisterait réellement).
-  function markMarcheRgExtractedBulk(chantierIds) {
-    const idSet = new Set(chantierIds);
-    persistChantiers(chantiers.map((c) => (idSet.has(c.id) ? { ...c, rgExtracted: true } : c)));
+  function markMarcheRgExtractedBulk(items) {
+    // items: [{ chantierId, totalRgAbsolu }] — totalRgAbsolu est le cumul
+    // complet de RG facturée à cet instant (pas seulement la part qui vient
+    // d'être extraite), pour que le prochain calcul (computeAutoRgCumulees)
+    // ne détecte plus que ce qui viendra s'ajouter APRÈS aujourd'hui.
+    const byId = new Map(items.map((it) => [it.chantierId, it.totalRgAbsolu]));
+    persistChantiers(chantiers.map((c) => (byId.has(c.id) ? { ...c, rgExtractedMontant: byId.get(c.id) } : c)));
   }
 
   function createChantier({ titre, client }) {
