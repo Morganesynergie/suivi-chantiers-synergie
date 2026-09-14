@@ -3573,7 +3573,12 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const fournisseurs = (f.fournisseurs || []).map((x) => ({ nom: x.nom || "", montant: num(x.montant) })).filter((x) => x.nom || x.montant);
     const fournisseurTotal = fournisseurs.reduce((a, x) => a + x.montant, 0);
     const total = f.totalARecevoir !== "" ? num(f.totalARecevoir) : Math.round((ttc - rg - prorata - remb - fournisseurTotal) * 100) / 100;
-    const paye = f.datePaiement ? true : !!f.paye;
+    // "Payé" suit strictement la date de règlement (voir le libellé du champ,
+    // "laisser vide si non réglé") : la garder synchronisée sur f.paye au
+    // lieu de f.datePaiement laissait le statut bloqué sur "payé" quand la
+    // date était effacée après coup (ex. saisie par erreur) — la case ne
+    // repassait alors jamais à "en attente".
+    const paye = !!f.datePaiement;
     const montantRegle = f.montantRegle !== "" && f.montantRegle != null ? num(f.montantRegle) : (f.montantRegle === "" ? null : f.montantRegle);
     const marcheHt = num(marche.montantHt);
     const cumulHt = cumulativeMontantHt(marche.id || f.marcheId, ht, f.id, f);
