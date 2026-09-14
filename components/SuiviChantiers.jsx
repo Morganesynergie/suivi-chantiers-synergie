@@ -533,20 +533,25 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
   const [nDevis, setNDevis] = useState(extractDevisNumber(marche));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [montantMarcheHt, setMontantMarcheHt] = useState(marche && marche.montantHt !== "" && marche.montantHt != null ? String(marche.montantHt) : "");
-  const [montantAvanceHt, setMontantAvanceHt] = useState(marche && marche.addMontant !== "" && marche.addMontant != null ? String(marche.addMontant) : "");
-  // % d'avance et montant HT de l'avance restent reliés dans les deux sens :
-  // Morgane peut soit taper le % directement (ex. "40" pour du 40 % comme
-  // sur le modèle CEPAC) et le montant se calcule tout seul depuis le
-  // marché HT, soit taper le montant et le % s'affiche/se recalcule à son
-  // tour. Chaque champ ne recalcule l'autre que sur sa propre saisie — pas
-  // de boucle, et modifier "Montant du marché H.T." ensuite ne touche plus
-  // à un montant d'avance déjà saisi.
-  const initialMarcheHt = marche && marche.montantHt ? Number(marche.montantHt) : 0;
-  const initialAvanceHt = marche && marche.addMontant ? Number(marche.addMontant) : 0;
-  const [pctAvance, setPctAvance] = useState(
-    initialMarcheHt > 0 && initialAvanceHt > 0 ? String(Math.round((initialAvanceHt / initialMarcheHt) * 1000) / 10) : ""
-  );
+  // marche.addMontant est en T.T.C. (voir normalizeChantiersData) — c'est
+  // directement le montant que le client règle pour cette avance.
+  const [montantAvanceTtc, setMontantAvanceTtc] = useState(marche && marche.addMontant !== "" && marche.addMontant != null ? String(marche.addMontant) : "");
   const [tvaRegime, setTvaRegime] = useState((marche && marche.tvaRegime) || "085");
+  const initialRate = TVA_REGIMES[tvaRegime]?.rate ?? 0.085;
+  // % d'avance et montant TTC de l'avance restent reliés dans les deux
+  // sens, le % étant calculé par rapport au montant TTC du marché (HT +
+  // TVA de son régime), pas juste son HT : Morgane peut soit taper le %
+  // directement (ex. "40" pour du 40 % comme sur le modèle CEPAC) et le
+  // montant se calcule tout seul depuis le marché TTC, soit taper le
+  // montant et le % s'affiche/se recalcule à son tour. Chaque champ ne
+  // recalcule l'autre que sur sa propre saisie — pas de boucle, et modifier
+  // "Montant du marché H.T." ensuite ne touche plus à un montant d'avance
+  // déjà saisi.
+  const initialMarcheTtc = marche && marche.montantHt ? Math.round(Number(marche.montantHt) * (1 + initialRate) * 100) / 100 : 0;
+  const initialAvanceTtc = marche && marche.addMontant ? Number(marche.addMontant) : 0;
+  const [pctAvance, setPctAvance] = useState(
+    initialMarcheTtc > 0 && initialAvanceTtc > 0 ? String(Math.round((initialAvanceTtc / initialMarcheTtc) * 1000) / 10) : ""
+  );
   const [genError, setGenError] = useState("");
   // "idle" | "saving" | "saved" | "error" — conservation du PDF généré dans
   // les documents du chantier (voir onGenerated, câblé par ChantierDetail
@@ -556,25 +561,26 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
 
   if (!marche) return null;
 
-  const ht = parseFloat(montantAvanceHt) || 0;
+  const ttc = parseFloat(montantAvanceTtc) || 0;
   const rate = TVA_REGIMES[tvaRegime]?.rate ?? 0.085;
-  const tva = Math.round(ht * rate * 100) / 100;
-  const ttc = Math.round((ht + tva) * 100) / 100;
+  const ht = Math.round((ttc / (1 + rate)) * 100) / 100;
+  const tva = Math.round((ttc - ht) * 100) / 100;
   const marcheHtNum = parseFloat(montantMarcheHt) || 0;
-  const pct = marcheHtNum > 0 ? Math.round((ht / marcheHtNum) * 1000) / 10 : null;
+  const marcheTtcNum = Math.round(marcheHtNum * (1 + rate) * 100) / 100;
+  const pct = marcheTtcNum > 0 ? Math.round((ttc / marcheTtcNum) * 1000) / 10 : null;
 
   function handlePctChange(v) {
     setPctAvance(v);
     const p = parseFloat(v);
-    if (!isNaN(p) && marcheHtNum > 0) {
-      setMontantAvanceHt(String(Math.round(marcheHtNum * p / 100 * 100) / 100));
+    if (!isNaN(p) && marcheTtcNum > 0) {
+      setMontantAvanceTtc(String(Math.round(marcheTtcNum * p / 100 * 100) / 100));
     }
   }
   function handleMontantAvanceChange(v) {
-    setMontantAvanceHt(v);
+    setMontantAvanceTtc(v);
     const m = parseFloat(v);
-    if (!isNaN(m) && marcheHtNum > 0) {
-      setPctAvance(String(Math.round((m / marcheHtNum) * 1000) / 10));
+    if (!isNaN(m) && marcheTtcNum > 0) {
+      setPctAvance(String(Math.round((m / marcheTtcNum) * 1000) / 10));
     }
   }
 
@@ -725,7 +731,7 @@ function AvanceDemarragePdfModal({ chantier, marche, onClose, onGenerated }) {
           <Field label="Montant du marché H.T."><TextInput type="number" step="0.01" value={montantMarcheHt} onChange={(e) => setMontantMarcheHt(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="% d'avance"><TextInput type="number" step="0.1" value={pctAvance} onChange={(e) => handlePctChange(e.target.value)} placeholder="ex. 40" /></Field>
-            <Field label="Montant H.T. de l'avance"><TextInput type="number" step="0.01" value={montantAvanceHt} onChange={(e) => handleMontantAvanceChange(e.target.value)} /></Field>
+            <Field label="Montant T.T.C. de l'avance"><TextInput type="number" step="0.01" value={montantAvanceTtc} onChange={(e) => handleMontantAvanceChange(e.target.value)} /></Field>
           </div>
           <Field label="Régime de TVA">
             <select value={tvaRegime} onChange={(e) => setTvaRegime(e.target.value)} style={inputStyle} className="outline-none focus:ring-2">
@@ -2266,6 +2272,40 @@ function normalizeChantiersData(list, sousTraitantsList) {
     const cessionPaiementChanged = syncedFournisseursResult.hasAutoRows && c.cessionPaiement !== "OUI";
     if (fournisseursListChanged || cessionPaiementChanged) chantierChanged = true;
 
+    // Migration silencieuse (une seule fois par marché/TS, marquée par
+    // addMontantIsTtc) : l'ADD était historiquement saisie/stockée en H.T.
+    // (voir AvanceDemarragePdfModal) alors que Morgane raisonne — et veut
+    // désormais que l'appli affiche/calcule — en T.T.C. (le montant que le
+    // client règle réellement). On convertit le montant déjà enregistré en
+    // T.T.C. avec le régime de TVA du marché pour que la somme réelle de
+    // l'avance ne change pas, seule son "unité" de calcul change — sans
+    // cette conversion, "reste à rembourser" (qui compare déjà l'ADD à des
+    // montants "Remb. ADD" saisis en T.T.C. sur les situations, voir
+    // addRembourseTotal) comparerait en fait des montants HT et TTC entre
+    // eux, sous-estimant ce qui reste réellement dû.
+    // Profite du même passage pour initialiser m.addRecu (nouveau champ,
+    // montant reçu sur l'ADD — voir markAddPaid/computeAddPendingEntries) :
+    // AVANT ce champ, m.addDate faisait office de "réglé" (present =
+    // considérée réglée, absent = tout reste dû, voir l'ancien
+    // computeAddPendingEntries) — pour ne pas faire réapparaître dans
+    // "Règlements en attente" une ADD que Morgane a déjà générée/considère
+    // réglée, on initialise addRecu au montant total quand addDate est déjà
+    // renseignée, à 0 sinon (elle pourra corriger ensuite au cas par cas).
+    let marchesChanged = false;
+    const marches = (c.marches || []).map((m) => {
+      if (m.addMontantIsTtc || !m.addMontant) return m;
+      const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? TVA_REGIMES["085"].rate;
+      const addMontantTtc = Math.round(Number(m.addMontant) * (1 + rate) * 100) / 100;
+      marchesChanged = true;
+      return {
+        ...m,
+        addMontant: addMontantTtc,
+        addMontantIsTtc: true,
+        addRecu: m.addRecu == null ? (m.addDate ? addMontantTtc : 0) : m.addRecu,
+      };
+    });
+    if (marchesChanged) chantierChanged = true;
+
     if (chantierChanged) {
       changed = true;
       return {
@@ -2275,6 +2315,7 @@ function normalizeChantiersData(list, sousTraitantsList) {
         ...(cessionPaiementChanged ? { cessionPaiement: "OUI" } : {}),
         ...(docTypesActifsChanged ? { docTypesActifs } : {}),
         ...(sousTraitanceChanged ? { sousTraitance } : {}),
+        ...(marchesChanged ? { marches } : {}),
       };
     }
     return c;
@@ -2299,18 +2340,21 @@ function computeAddPendingEntries(chantiers) {
   const out = [];
   for (const c of chantiers) {
     for (const m of c.marches) {
-      if (m.addMontant && !m.addDate) {
-        // m.addMontant est saisi en H.T. (voir AvanceDemarragePdfModal) —
-        // la liste des règlements en attente doit afficher le montant que
-        // le client doit effectivement régler, donc en T.T.C., calculé
-        // avec le régime de TVA du marché (comme sur le PDF d'appel
-        // d'avance généré).
-        const ht = Number(m.addMontant) || 0;
-        const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? TVA_REGIMES["085"].rate;
-        const ttc = Math.round(ht * (1 + rate) * 100) / 100;
+      // m.addMontant est en T.T.C. (voir normalizeChantiersData, migration
+      // addMontantIsTtc, et AvanceDemarragePdfModal) — c'est directement le
+      // montant que le client doit régler. On affiche ici le RESTE à
+      // recevoir (montant total de l'ADD moins ce qui a déjà été reçu, voir
+      // m.addRecu/markAddPaid) plutôt que la date d'appel de fonds
+      // (m.addDate) : un règlement partiel doit continuer à apparaître dans
+      // "Règlements en attente" pour le solde restant, même après que
+      // l'appel d'avance a été généré/daté.
+      const total = Number(m.addMontant) || 0;
+      const recu = Number(m.addRecu) || 0;
+      const reste = Math.round((total - recu) * 100) / 100;
+      if (total > 0 && reste > 0.01) {
         out.push({
-          id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: c.dateDemarrage || null,
-          totalARecevoir: ttc, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+          id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: m.addDate || c.dateDemarrage || null,
+          totalARecevoir: reste, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
           chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
           marcheId: m.id, isADDPending: true,
         });
@@ -3131,7 +3175,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
           onClose={() => setPayingSituation(null)}
           onConfirm={(date, montant) => {
             if (payingSituation.isADDPending) {
-              onMarkAddPaid(payingSituation.chantierId, payingSituation.marcheId, date);
+              onMarkAddPaid(payingSituation.chantierId, payingSituation.marcheId, date, montant);
             } else if (payingSituation.isRgPending) {
               onMarkRgReceived(payingSituation.rgEchueId, date, montant);
             } else if (payingSituation.isFacturesLibres) {
@@ -3584,23 +3628,31 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   // bidirectionnelle %/montant que dans AvanceDemarragePdfModal
   // (handlePctChange/handleMontantAvanceChange), mais ici c'est m.addMontant
   // lui-même qui est mis à jour directement (il n'y a pas de champ % stocké
-  // sur le marché, seulement le montant).
+  // sur le marché, seulement le montant). m.addMontant est en T.T.C. (voir
+  // normalizeChantiersData) donc le % se calcule par rapport au montant TTC
+  // du marché (HT + TVA de son régime), pas juste son HT — sinon "40 %"
+  // donnerait un montant TTC supérieur à 40 % du marché TTC.
+  function marcheTtc(m) {
+    const ht = parseFloat(m.montantHt) || 0;
+    const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? TVA_REGIMES["085"].rate;
+    return Math.round(ht * (1 + rate) * 100) / 100;
+  }
   function addPctDisplay(m) {
     if (Object.prototype.hasOwnProperty.call(addPctDraft, m.id)) return addPctDraft[m.id];
-    const marcheHt = parseFloat(m.montantHt) || 0;
+    const marcheTtcNum = marcheTtc(m);
     const add = parseFloat(m.addMontant) || 0;
-    if (!marcheHt || !add) return "";
-    return String(Math.round((add / marcheHt) * 1000) / 10);
+    if (!marcheTtcNum || !add) return "";
+    return String(Math.round((add / marcheTtcNum) * 1000) / 10);
   }
   function handleAddPctChange(m, v) {
     setAddPctDraft((prev) => ({ ...prev, [m.id]: v }));
-    const marcheHt = parseFloat(m.montantHt) || 0;
+    const marcheTtcNum = marcheTtc(m);
     const pct = parseFloat(v);
-    if (v === "" || isNaN(pct) || !marcheHt) {
-      updateMarche(m.id, { addMontant: "" });
+    if (v === "" || isNaN(pct) || !marcheTtcNum) {
+      updateMarche(m.id, { addMontant: "", addMontantIsTtc: true });
       return;
     }
-    updateMarche(m.id, { addMontant: Math.round(marcheHt * (pct / 100) * 100) / 100 });
+    updateMarche(m.id, { addMontant: Math.round(marcheTtcNum * (pct / 100) * 100) / 100, addMontantIsTtc: true });
   }
   function handleAddMontantChange(m, v) {
     setAddPctDraft((prev) => {
@@ -3608,7 +3660,7 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
       delete next[m.id];
       return next;
     });
-    updateMarche(m.id, { addMontant: v === "" ? "" : parseFloat(v) });
+    updateMarche(m.id, { addMontant: v === "" ? "" : parseFloat(v), addMontantIsTtc: true });
   }
   function removeMarche(id) {
     if (chantier.marches.length <= 1) return;
@@ -5400,9 +5452,29 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                         </Field>
                       )}
                       <Field label="Prorata % (ex 0.01)"><TextInput type="number" step="0.001" value={m.prorataPct ?? ""} onChange={(e) => updateMarche(m.id, { prorataPct: e.target.value === "" ? "" : parseFloat(e.target.value) })} /></Field>
-                      <Field label="% ADD"><TextInput type="number" step="0.1" value={addPctDisplay(m)} onChange={(e) => handleAddPctChange(m, e.target.value)} placeholder="ex. 40" /></Field>
-                      <Field label="ADD (montant)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => handleAddMontantChange(m, e.target.value)} /></Field>
+                      <Field label="% ADD (T.T.C.)"><TextInput type="number" step="0.1" value={addPctDisplay(m)} onChange={(e) => handleAddPctChange(m, e.target.value)} placeholder="ex. 40" /></Field>
+                      <Field label="ADD (montant T.T.C.)"><TextInput type="number" value={m.addMontant ?? ""} onChange={(e) => handleAddMontantChange(m, e.target.value)} /></Field>
                       <Field label="Date ADD"><TextInput type="date" value={m.addDate || ""} onChange={(e) => updateMarche(m.id, { addDate: e.target.value })} /></Field>
+                      {m.addMontant ? (() => {
+                        const addTotal = Number(m.addMontant) || 0;
+                        const addRecuNum = Number(m.addRecu) || 0;
+                        const resteARecevoir = Math.round((addTotal - addRecuNum) * 100) / 100;
+                        return (
+                          <Field label="Reçu (ADD)">
+                            <TextInput
+                              type="number" step="0.01"
+                              value={m.addRecu ?? ""}
+                              placeholder="0,00"
+                              onChange={(e) => updateMarche(m.id, { addRecu: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                            />
+                            <p className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>
+                              {resteARecevoir > 0.01
+                                ? <>Reste à recevoir : <span className="font-medium">{fmtEUR(resteARecevoir)}</span> — apparaît dans "Règlements en attente" tant que ce n'est pas à 0.</>
+                                : "Avance reçue en totalité."}
+                            </p>
+                          </Field>
+                        );
+                      })() : null}
                       {m.addMontant ? (() => {
                         const autoRembourse = chantier.situations.filter((s) => s.marcheId === m.id).reduce((a, s) => a + (s.rembAdd || 0), 0);
                         const isManual = m.addRembourseManuel !== "" && m.addRembourseManuel !== null && m.addRembourseManuel !== undefined;
@@ -5708,7 +5780,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                     <>
                       {m.montantHt ? ` · reste à facturer ${fmtEUR(Math.round((m.montantHt - totalHt) * 100) / 100)}` : ""}
                       {" · RG "}{m.rgMode === "banque" ? "caution banque" : m.rgMode === "aucune" ? "pas de RG" : fmtPct(m.rgPct)}
-                      {m.addMontant ? ` · ADD ${fmtEUR(m.addMontant)}${m.addDate ? " le " + fmtDate(m.addDate) : ""} · déjà remboursé ${fmtEUR(addRembourseTotal(m.id))} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}` : ""}
+                      {m.addMontant ? (() => {
+                        const addTotal = Number(m.addMontant) || 0;
+                        const addRecuNum = Number(m.addRecu) || 0;
+                        const resteARecevoir = Math.round((addTotal - addRecuNum) * 100) / 100;
+                        return ` · ADD ${fmtEUR(addTotal)} TTC${m.addDate ? " le " + fmtDate(m.addDate) : ""}` +
+                          (resteARecevoir > 0.01 ? ` · reçu ${fmtEUR(addRecuNum)} (reste à recevoir ${fmtEUR(resteARecevoir)})` : "") +
+                          ` · déjà remboursé ${fmtEUR(addRembourseTotal(m.id))} · reste à rembourser ${fmtEUR(addResteARembourser(m.id))}`;
+                      })() : ""}
                     </>
                   )}
                 </span>
@@ -8039,9 +8118,24 @@ export default function App() {
     }
   }
 
-  function markAddPaid(chantierId, marcheId, dateStr) {
-    const next = chantiers.map((c) => c.id !== chantierId ? c : {
-      ...c, marches: c.marches.map((m) => (m.id === marcheId ? { ...m, addDate: dateStr } : m)),
+  // Même logique que markPaid (voir plus haut) mais sur le marché/TS plutôt
+  // qu'une situation : un règlement partiel de l'ADD (montant explicitement
+  // inférieur au reste dû, voir MarkPaidModal) reste dans "Règlements en
+  // attente" pour le solde restant (voir computeAddPendingEntries) au lieu
+  // de disparaître entièrement — jusqu'ici "Marquer réglé" sur une ADD
+  // l'effaçait toujours en entier quel que soit le montant tapé, qui était
+  // ignoré.
+  function markAddPaid(chantierId, marcheId, dateStr, montant) {
+    const next = chantiers.map((c) => {
+      if (c.id !== chantierId) return c;
+      return { ...c, marches: c.marches.map((m) => {
+        if (m.id !== marcheId) return m;
+        const dejaRecu = Number(m.addRecu) || 0;
+        const total = Number(m.addMontant) || 0;
+        const montantCePaiement = montant != null ? montant : Math.max(0, total - dejaRecu);
+        const totalRecu = Math.round((dejaRecu + montantCePaiement) * 100) / 100;
+        return { ...m, addDate: dateStr, addRecu: totalRecu };
+      }) };
     });
     persistChantiers(next);
   }
