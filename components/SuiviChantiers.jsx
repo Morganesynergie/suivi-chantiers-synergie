@@ -2006,7 +2006,12 @@ function cautionAlerteIso(pvDateIso) {
 function cautionsBancaires(chantiers) {
   const out = [];
   for (const c of chantiers) {
-    if (c.isFacturesLibres || c.archived) continue;
+    // Un chantier archivé n'a pas forcément vu sa caution bancaire levée par
+    // la banque (ex. SGDM, archivé mais toujours avec 86 800 € de caution en
+    // cours) : contrairement à d'autres listes de l'appli, on ne doit donc
+    // PAS exclure les chantiers archivés ici, sous peine de perdre le suivi
+    // de cautions bien réelles jusqu'à leur levée effective.
+    if (c.isFacturesLibres) continue;
     for (const m of c.marches || []) {
       if (m.rgMode !== "banque") continue;
       const sitsMarche = c.situations.filter((s) => s.marcheId === m.id);
