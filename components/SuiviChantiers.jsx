@@ -1082,7 +1082,7 @@ function ContratSousTraitancePdfModal({ chantier, entry, sousTraitant, onClose }
       sousTraitant,
       fields: { missionDescription, dateDebut, dateFin, montantHt: parseFloat(montantHt) || 0, retenueGarantie, dateFait, moaRaisonSociale, moaRepresentant, moaFaitA, moaDate, pieces },
     });
-    const fileName = sanitizeFileNameKeepAccents(`Contrat de SST - ${sousTraitant.nom} / ${chantier.titre}`) + ".pdf";
+    const fileName = sanitizeFileNameKeepAccents(`Contrat de ST - ${sousTraitant.nom} - ${chantier.titre}`) + ".pdf";
     // Vrai PDF (pas un aperçu HTML à imprimer) : pagination fiable, plus de
     // grand blanc entre deux articles, et le visualiseur PDF du navigateur
     // affiche lui-même "page X / N" (voir openGeneratedPdf).
