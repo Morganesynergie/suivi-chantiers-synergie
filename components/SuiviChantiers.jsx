@@ -2403,6 +2403,43 @@ function normalizeChantiersData(list, sousTraitantsList) {
     });
     if (marchesChanged) chantierChanged = true;
 
+    // Correction ponctuelle (une seule fois, marquée addMontantDoubleConvertTtcFixed) :
+    // la migration H.T.→T.T.C. ci-dessus a supposé que TOUS les montants
+    // d'ADD déjà enregistrés étaient en H.T., alors qu'une partie de ces
+    // chantiers plus anciens avait en réalité déjà l'ADD saisie en T.T.C. —
+    // ils se sont retrouvés reconvertis une seconde fois par erreur
+    // (× 1,085 en trop), signalé par Morgane. Repérés en comparant, pour
+    // chaque marché concerné, le montant actuel à ce qu'il redevient une
+    // fois qu'on annule cette seconde conversion (÷ 1,085) : dans chacun des
+    // 24 cas listés ci-dessous, seule l'hypothèse "déjà en T.T.C." retombe
+    // sur un pourcentage rond du marché (ou un montant rond en euros) —
+    // preuve quasi certaine que c'était la vraie valeur avant migration.
+    // Liste figée et validée avec Morgane le 16/09/2026 : ne doit jamais
+    // être étendue à d'autres chantiers sans un nouvel examen au cas par cas
+    // (voir l'audit publié ce jour-là) — les cas restés incertains ou les
+    // anomalies distinctes (ADD = 100 % du marché sur SOFIJAR) n'en font
+    // volontairement pas partie.
+    const ADD_DOUBLE_CONVERT_FIX_LIST = new Set([
+      "agore|marche-0", "agore|marche-1", "cabesto|marche-0", "crous|marche-0",
+      "hta-cgp-cpg|marche-0", "domaine-de-bel-air|marche-0", "ch-gttrn64u|marche-principal",
+      "ch-dxu2v75t|marche-principal", "jlm-antilles|marche-0", "le-green|marche-0",
+      "martinique-courrier|marche-0", "domaine-de-monteran|marche-0", "petit-canal|marche-0",
+      "port-coton|marche-0", "port-coton|marche-1", "port-coton|marche-2", "sagip|marche-0",
+      "horizon|marche-0", "horizon|marche-1", "malajo|marche-0", "serco|marche-0",
+      "serco-serco-marche-vrd|marche-0", "sofijar|marche-0", "ti-perou|marche-0",
+    ]);
+    let doubleConvertFixed = false;
+    const marchesFixed = marches.map((m) => {
+      if (m.addMontantDoubleConvertTtcFixed || !m.addMontant) return m;
+      if (!ADD_DOUBLE_CONVERT_FIX_LIST.has(`${c.id}|${m.id}`)) return m;
+      const rate = TVA_REGIMES[m.tvaRegime]?.rate ?? TVA_REGIMES["085"].rate;
+      const corrected = Math.round((Number(m.addMontant) / (1 + rate)) * 100) / 100;
+      const correctedRecu = m.addRecu ? Math.round((Number(m.addRecu) / (1 + rate)) * 100) / 100 : m.addRecu;
+      doubleConvertFixed = true;
+      return { ...m, addMontant: corrected, addRecu: correctedRecu, addMontantDoubleConvertTtcFixed: true };
+    });
+    if (doubleConvertFixed) { marchesChanged = true; chantierChanged = true; }
+
     if (chantierChanged) {
       changed = true;
       return {
@@ -2412,7 +2449,7 @@ function normalizeChantiersData(list, sousTraitantsList) {
         ...(cessionPaiementChanged ? { cessionPaiement: "OUI" } : {}),
         ...(docTypesActifsChanged ? { docTypesActifs } : {}),
         ...(sousTraitanceChanged ? { sousTraitance } : {}),
-        ...(marchesChanged ? { marches } : {}),
+        ...(marchesChanged ? { marches: marchesFixed } : {}),
       };
     }
     return c;
