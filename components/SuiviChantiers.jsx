@@ -823,13 +823,27 @@ const CONTRAT_ARTICLE4_HTML = `
   <h3>Article 4 – Devis et commande</h3>
   <p>Toute intervention du Sous-traitant fait l'objet d'un devis écrit préalable, validé par SYNERGIE BTP avant tout démarrage des travaux. Un acompte pourra être versé pour l'achat de matériaux, sur présentation des justificatifs correspondants. Toute modification de la prestation (quantités, nature des travaux, délais) fait l'objet d'un avenant écrit signé des deux parties.</p>
 `;
-function contratArticle5Html({ isDirect, montantHtLabel }) {
+function contratArticle5Html({ isDirect, montantHtLabel, banque, iban }) {
   if (isDirect) {
+    // Coordonnées bancaires du sous-traitant : utiles UNIQUEMENT ici, en
+    // paiement direct par le maître d'ouvrage — c'est alors le MO, et non
+    // SYNERGIE BTP, qui règle le sous-traitant, donc le contrat doit lui
+    // indiquer où virer les fonds. Reprises depuis sa fiche du répertoire
+    // (déjà utilisées de la même façon sur le DC4, rubrique H) ; absentes
+    // si la fiche n'a pas encore été renseignée (demande de Morgane).
+    const coordonneesBancairesHtml = banque || iban ? `
+      <div class="info-box" style="margin-top:8px;">
+        <div class="row"><span class="label">Établissement bancaire</span><span class="val">${banque || ""}</span></div>
+        <div class="row"><span class="label">IBAN</span><span class="val">${iban || ""}</span></div>
+      </div>
+    ` : "";
     return `
       <h3>Article 5 – Facturation et paiement</h3>
       <div class="boxed-warning">⚠ Le présent contrat est conclu dans le cadre d'un marché avec stipulation de paiement direct du sous-traitant par le maître d'ouvrage, conformément à la loi n°75-1334 du 31 décembre 1975 relative à la sous-traitance.</div>
       <p><strong>Situations mensuelles :</strong> le Sous-traitant établit une situation mensuelle qu'il adresse à SYNERGIE BTP en fin de chaque mois, et jamais directement au Maître d'Ouvrage. SYNERGIE BTP vérifie et valide cette situation, ou formule ses réserves, puis la transmet au Bureau d'Études du Maître d'Ouvrage pour validation technique.</p>
       <p><strong>Modalités de paiement direct :</strong> conformément à la loi n°75-1334, le paiement est effectué directement par le Maître d'Ouvrage dans un délai de 30 jours à compter de la validation par le Bureau d'Études. Le montant réglé est limité à la part du marché principal correspondant à la prestation sous-traitée, telle qu'elle résulte du présent acte spécial agréé par le Maître d'Ouvrage.</p>
+      <p><strong>Coordonnées bancaires du Sous-traitant</strong>, à qui le Maître d'Ouvrage doit régler directement les sommes dues :</p>
+      ${coordonneesBancairesHtml}
       ${montantHtLabel}
     `;
   }
@@ -996,7 +1010,7 @@ function contratSousTraitanceHtml({ chantier, entry, sousTraitant, fields }) {
       <div class="avoid-break">${CONTRAT_ARTICLE1_HTML(sousTraitant)}</div>
       <div class="avoid-break">${CONTRAT_ARTICLE2_HTML}</div>
       <div class="avoid-break">${CONTRAT_ARTICLE4_HTML}</div>
-      <div class="avoid-break">${contratArticle5Html({ isDirect, montantHtLabel })}</div>
+      <div class="avoid-break">${contratArticle5Html({ isDirect, montantHtLabel, banque: sousTraitant.banque, iban: sousTraitant.iban })}</div>
       <div class="avoid-break">${CONTRAT_ARTICLE6_HTML}</div>
       <div class="avoid-break">${CONTRAT_ARTICLE7_HTML}</div>
       <div class="avoid-break">${CONTRAT_ARTICLE8_HTML}</div>
