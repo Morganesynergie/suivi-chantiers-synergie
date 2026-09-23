@@ -3408,6 +3408,15 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
     CHANTIERS_QUICK_FILTERS.every((f) => !activeFilters.has(f.key) || f.test(c))
   ).sort((a, b) => (a.titre || "").localeCompare(b.titre || ""));
 
+  const showCessionCol = activeFilters.has("cession");
+  const colCount = 7 + (showCessionCol ? 1 : 0) + (unlocked ? 1 : 0);
+  // Total des enveloppes de cession affichées, tous chantiers actuellement
+  // listés confondus (respecte donc aussi la recherche texte et les autres
+  // filtres actifs en même temps que "Cession fournisseur").
+  const totalEnveloppeCession = showCessionCol
+    ? filtered.reduce((a, c) => a + (c.fournisseurs || []).reduce((a2, f) => a2 + (Number(f.enveloppe) || 0), 0), 0)
+    : 0;
+
   function submitNew() {
     if (!newTitre.trim()) return;
     onCreateChantier({ titre: newTitre.trim(), client: newClient.trim() });
@@ -3492,16 +3501,22 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               <th className="text-right font-medium px-2 py-2.5">Facturé</th>
               <th className="text-right font-medium px-2 py-2.5">En attente</th>
               <th className="text-left font-medium px-4 py-2.5">Situations</th>
+              {/* Colonne "Fournisseur en cession" : seulement quand le filtre
+                  "Cession fournisseur" est actif, demandé par Morgane pour voir
+                  d'un coup d'œil qui est cessionnaire et pour combien, sans
+                  encombrer le tableau le reste du temps. */}
+              {showCessionCol && <th className="text-left font-medium px-2 py-2.5">Fournisseur en cession</th>}
               {unlocked && <th className="px-3 py-2.5"></th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-6 text-center" style={{ color: COLORS.inkSoft }}>{showArchived ? "Aucun chantier archivé" : "Aucun chantier"}</td></tr>
+              <tr><td colSpan={colCount} className="px-4 py-6 text-center" style={{ color: COLORS.inkSoft }}>{showArchived ? "Aucun chantier archivé" : "Aucun chantier"}</td></tr>
             )}
             {filtered.map((c) => {
               const facture = c.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
               const attente = soldeAttenteChantier(c.situations);
+              const fournisseursCession = c.fournisseurs || [];
               return (
                 <tr key={c.id} style={{ borderTop: `1px solid ${COLORS.line}`, cursor: "pointer" }} onClick={() => { setSelectedChantier(c.id); setTab("chantierDetail"); }}>
                   <td className="px-4 py-2.5 font-medium" style={{ color: COLORS.accent }}>{c.titre}</td>
@@ -3511,6 +3526,21 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
                   <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(facture)}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums font-medium" style={{ color: attente > 0 ? COLORS.amber : COLORS.green }}>{fmtEUR(attente)}</td>
                   <td className="px-4 py-2.5" style={{ color: COLORS.inkSoft }}>{c.situations.length}</td>
+                  {showCessionCol && (
+                    <td className="px-2 py-2.5">
+                      {fournisseursCession.length === 0 ? (
+                        <span style={{ color: COLORS.inkSoft }}>—</span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {fournisseursCession.map((f, idx) => (
+                            <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.ink }}>
+                              {f.nom || "—"}{f.enveloppe !== "" && f.enveloppe != null ? ` — ${fmtEUR(f.enveloppe)}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   {unlocked && (
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1 justify-end items-center" onClick={(e) => e.stopPropagation()}>
@@ -3539,6 +3569,15 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               );
             })}
           </tbody>
+          {showCessionCol && filtered.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: `2px solid ${COLORS.line}`, background: "#F7F5EF" }}>
+                <td colSpan={colCount - 2} className="px-4 py-2 text-right font-medium" style={{ color: COLORS.ink }}>Total enveloppes de cession</td>
+                <td className="px-2 py-2 font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalEnveloppeCession)}</td>
+                {unlocked && <td></td>}
+              </tr>
+            </tfoot>
+          )}
         </table>
             </div>
       </Card>
