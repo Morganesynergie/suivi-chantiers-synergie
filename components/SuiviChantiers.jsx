@@ -3367,6 +3367,19 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
 // et celle des chantiers clôturés (onglet "Archives" à part dans le menu de
 // gauche) — les deux réutilisent ce même composant plutôt que de dupliquer le
 // tableau, seul le filtre et les libellés changent.
+// Filtres rapides de l'onglet Chantiers (et Archives, qui réutilise le même
+// composant) — demandés par Morgane en plus de la recherche texte libre :
+// repérer d'un coup d'œil les chantiers avec cession de créance fournisseur,
+// avec sous-traitant(s) en cours, en marché public, ou avec une RG cautionnée
+// banque. Chaque chip est un filtre indépendant, cumulable (ET logique) avec
+// les autres et avec la recherche texte.
+const CHANTIERS_QUICK_FILTERS = [
+  { key: "cession", label: "Cession fournisseur", test: (c) => c.cessionPaiement === "OUI" },
+  { key: "sousTraitants", label: "Sous-traitants", test: (c) => (c.sousTraitance || []).some((e) => e.statutContrat !== "annule") },
+  { key: "marchePublic", label: "Marché public", test: (c) => c.marchePublic === true },
+  { key: "cautionBanque", label: "Caution bancaire", test: (c) => (c.marches || []).some((m) => m.rgMode === "banque") },
+];
+
 function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier, archivedOnly = false }) {
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -3374,6 +3387,15 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
   const [newClient, setNewClient] = useState("");
   const showArchived = archivedOnly;
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [activeFilters, setActiveFilters] = useState(() => new Set());
+
+  function toggleFilter(key) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   const facturesLibres = chantiers.find((c) => c.isFacturesLibres);
   const base = chantiers.filter((c) => !c.isFacturesLibres && !!c.archived === showArchived);
@@ -3382,6 +3404,8 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
     (c.titre || "").toLowerCase().includes(q.toLowerCase()) ||
     (c.client || "").toLowerCase().includes(q.toLowerCase()) ||
     (c.nChantier || "").toLowerCase().includes(q.toLowerCase())
+  ).filter((c) =>
+    CHANTIERS_QUICK_FILTERS.every((f) => !activeFilters.has(f.key) || f.test(c))
   ).sort((a, b) => (a.titre || "").localeCompare(b.titre || ""));
 
   function submitNew() {
@@ -3417,9 +3441,34 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
         )}
       </p>
 
-      <div className="relative mb-4 max-w-sm">
+      <div className="relative mb-3 max-w-sm">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
         <TextInput placeholder="Rechercher un client, chantier..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+        {CHANTIERS_QUICK_FILTERS.map((f) => {
+          const active = activeFilters.has(f.key);
+          return (
+            <button
+              key={f.key}
+              onClick={() => toggleFilter(f.key)}
+              className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+              style={{
+                background: active ? COLORS.navy : "transparent",
+                color: active ? "#fff" : COLORS.inkSoft,
+                border: `1px solid ${active ? COLORS.navy : COLORS.line}`,
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+        {activeFilters.size > 0 && (
+          <button onClick={() => setActiveFilters(new Set())} className="text-xs hover:underline px-1" style={{ color: COLORS.accent }}>
+            Réinitialiser
+          </button>
+        )}
       </div>
 
       {showNew && (
@@ -3948,13 +3997,14 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
           <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
           <td style="text-align:right">${fmtPct(pctMapExport.get(s.id) ?? s.pctAvancement)}</td>
           <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
-          <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
+          <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${s.prorata ? fmtEUR(s.prorata) : "—"}</td>
+          <td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
           <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
         </tr>`).join("");
       return `
         <h3>${marcheDisplayName(m)}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
-        <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>À recevoir</th><th>Paiement</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
+        <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>Prorata</th><th>À recevoir</th><th>Paiement</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
     }).join("");
     const html = `
       <html><head><title>Suivi — ${chantier.titre}</title>
