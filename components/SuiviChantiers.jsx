@@ -4030,24 +4030,47 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
     const totalAttenteX = soldeAttenteChantier(chantier.situations);
     setExportPdfError("");
     const pctMapExport = computeSituationPercentages(chantier.situations, chantier.marches);
+    // Fournisseur(s) en cession déduits sur CETTE situation (même formatage
+    // que la colonne équivalente à l'écran : "nom montant", un par ligne si
+    // plusieurs) — absent du PDF jusqu'ici au même titre que Prorata/Remb. ADD.
+    function fournisseurCellHtml(s) {
+      const list = s.fournisseurs || [];
+      if (list.length === 0) return "—";
+      return list.map((f) => `${f.nom || "—"} ${fmtEUR(f.montant)}`).join("<br/>");
+    }
     const blocks = chantier.marches.map((m) => {
       const sits = chantier.situations.filter((s) => s.marcheId === m.id).sort((a, b) => (a.dateFacture || "").localeCompare(b.dateFacture || ""));
       const rows = sits.map((s) => `<tr>
-          <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
-          <td style="text-align:right">${fmtPct(pctMapExport.get(s.id) ?? s.pctAvancement)}</td>
-          <td style="text-align:right">${fmtEUR(s.montantHt)}</td><td style="text-align:right">${fmtEUR(s.montantTtc)}</td>
-          <td style="text-align:right">${fmtEUR(s.rg)}</td><td style="text-align:right">${s.prorata ? fmtEUR(s.prorata) : "—"}</td>
-          <td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
+          <td class="nowrap">${s.nSituation ?? "—"}</td><td class="nowrap">${s.nFact || "—"}</td><td class="nowrap">${fmtDate(s.dateFacture)}</td>
+          <td class="nowrap" style="text-align:right">${fmtPct(pctMapExport.get(s.id) ?? s.pctAvancement)}</td>
+          <td class="nowrap" style="text-align:right">${fmtEUR(s.montantHt)}</td><td class="nowrap" style="text-align:right">${fmtEUR(s.montantTtc)}</td>
+          <td class="nowrap" style="text-align:right">${fmtEUR(s.rg)}</td>
+          <td class="nowrap" style="text-align:right">${s.prorata ? fmtEUR(s.prorata) : "—"}</td>
+          <td class="nowrap" style="text-align:right">${s.rembAdd ? fmtEUR(s.rembAdd) : "—"}</td>
+          <td>${fournisseurCellHtml(s)}</td>
+          <td class="nowrap" style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
+          <td class="nowrap">${s.dateEnvoi ? fmtDate(s.dateEnvoi) : "—"}</td>
+          <td class="nowrap">${s.validBet ? fmtDate(s.validBet) : "—"}</td>
           <td>${s.paye ? "Réglée" + (s.datePaiement ? " le " + fmtDate(s.datePaiement) : "") + (hasMontantRegle(s) && Math.abs(Number(s.montantRegle) - (s.totalARecevoir || 0)) > 0.01 ? ` — montant reçu ${fmtEUR(s.montantRegle)}` : "") : "En attente"}</td>
         </tr>`).join("");
       return `
         <h3>${marcheDisplayName(m)}${m.montantHt ? " — " + fmtEUR(m.montantHt) + " HT marché" : ""}</h3>
-        <table><thead><tr><th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th><th>Prorata</th><th>À recevoir</th><th>Paiement</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody></table>`;
+        <table>
+          <thead><tr>
+            <th>N°</th><th>Facture</th><th>Date</th><th>% Av.</th><th>Mt HT</th><th>TTC</th><th>RG</th>
+            <th>Prorata</th><th>Remb. ADD</th><th>Fournisseur</th><th>À recevoir</th><th>Envoi</th><th>Val. BET</th><th>Paiement</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="14" style="text-align:center;color:#999">Aucune situation</td></tr>'}</tbody>
+        </table>`;
     }).join("");
     const html = `
       <html><head><title>Suivi — ${chantier.titre}</title>
       <style>
+        /* Format paysage : avec toutes les colonnes (RG, Prorata, Remb. ADD,
+           Fournisseur, Envoi, Val. BET...) demandées par Morgane, le tableau
+           ne rentre plus confortablement en portrait — le navigateur propose
+           directement l'impression/l'enregistrement PDF en paysage. */
+        @page{size:A4 landscape;margin:12mm 14mm;}
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
         h1{font-size:22px;margin:0 0 2px 0;color:#16233B;}
         .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
@@ -4064,10 +4087,20 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
         .stat-card{flex:1;background:#F7F5EF;border-radius:10px;padding:14px 16px;}
         .stat-label{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8A93A3;margin-bottom:4px;}
         .stat-value{display:block;font-size:18px;font-weight:700;color:#16233B;}
-        table{width:100%;border-collapse:collapse;font-size:11px;}
-        th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
-        th{background:#F7F5EF;}
+        /* PAS de table-layout:fixed ici, volontairement : avec 14 colonnes,
+           deviner une largeur fixe pour chacune coupait les nombres en plein
+           milieu ("23 962,54 €" à cheval sur 2 lignes) dès que la vraie
+           valeur dépassait la largeur devinée. En laissant le navigateur
+           calculer lui-même (table-layout auto, par défaut), chaque colonne
+           "nowrap" ci-dessous (N°, dates, %, montants...) prend exactement
+           la largeur nécessaire à SON contenu réel, jamais moins — et
+           "Fournisseur"/"Paiement" (texte libre, parfois long) se partagent
+           le reste de la place et peuvent, eux, revenir à la ligne. */
+        table{width:100%;border-collapse:collapse;font-size:10.5px;}
+        th,td{border:1px solid #ddd;padding:5px 6px;text-align:left;overflow-wrap:break-word;}
+        th{background:#F7F5EF;font-size:10px;text-transform:uppercase;letter-spacing:.02em;color:#5B6472;white-space:nowrap;}
         tbody tr:nth-child(even){background:#FBFAF7;}
+        td.nowrap{white-space:nowrap;}
         .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
         .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
         .close-bar-brand img{height:22px;width:auto;display:block;flex-shrink:0;}
