@@ -3,7 +3,7 @@ import { storage } from "@/lib/kv";
 import { openPrintableDocument, generatePdfBlob, openGeneratedPdf } from "@/lib/exportPdf";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LayoutDashboard, Clock, Building2, ShieldCheck, ShieldAlert, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2, HardHat, FolderOpen, Upload, Users, UserPlus, FileText, ExternalLink, Landmark } from "lucide-react";
+import { LayoutDashboard, Clock, Building2, ShieldCheck, Lock, Unlock, Plus, Search, ChevronLeft, ChevronDown, X, Check, AlertTriangle, Settings, Loader2, Menu, StickyNote, FileWarning, Undo2, Archive, Send, Trash2, HardHat, FolderOpen, Upload, Users, UserPlus, FileText, ExternalLink, Landmark } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
 import JSZip from "jszip";
 
@@ -1916,128 +1916,6 @@ const SEED_SOUS_TRAITANTS_RAW = [
 // forme que les données rechargées depuis le serveur.
 const SEED_SOUS_TRAITANTS = normalizeSousTraitants(SEED_SOUS_TRAITANTS_RAW.map((s) => ({ ...s, documents: {}, salariesEtrangers: [] })));
 
-// ---------- Sécurité & obligations administratives ----------
-// Registre unique, à l'échelle de la société (pas par chantier), des
-// obligations administratives et de prévention des risques que Morgane doit
-// suivre (documents à détenir, registres, formations, vérifications
-// périodiques...). Repris tel quel du fichier "SUIVI_DOCUMENTS_SECURITE.xlsx"
-// qu'elle a fourni (9 catégories, 43 obligations) — ne sert qu'au tout
-// premier chargement, exactement comme SEED_CHANTIERS/SEED_SOUS_TRAITANTS.
-function emptySecuriteObligation(patch) {
-  return {
-    id: uid("obl"),
-    categorie: "",
-    nom: "",
-    type: "",
-    // existant/aJour : "" (non renseigné), "O" ou "N".
-    existant: "",
-    aJour: "",
-    dateMaj: "",
-    prochaineEcheance: "",
-    responsable: "",
-    commentaires: "",
-    // Justificatif déposable en PDF (bulle, même mécanique que les documents
-    // de chantier — voir /api/documents), 1 seul fichier remplacé à chaque
-    // nouveau dépôt (comme la bulle "avance de démarrage").
-    document: { present: false, fileName: null, filePath: null, uploadedAt: null },
-    ...patch,
-  };
-}
-const SEED_SECURITE_OBLIGATIONS_RAW = [
-  ["1. Évaluation des risques", [
-    ["DUERP (Document Unique d'Évaluation des Risques Professionnels)", "Obligatoire"],
-    ["Liste des postes à risque particulier", "Obligatoire"],
-    ["Fiches d'exposition à la pénibilité", "Obligatoire"],
-  ]],
-  ["2. Documents chantier", [
-    ["PGC-SPS (Plan Général de Coordination)", "Obligatoire si coordination SPS"],
-    ["PPSPS (Plan Particulier de Sécurité et de Protection de la Santé)", "Obligatoire si coordination SPS"],
-    ["DIUO (Dossier d'Intervention Ultérieure sur l'Ouvrage)", "Obligatoire"],
-    ["Plan de prévention (entreprises extérieures)", "Obligatoire si 400h/an ou travaux dangereux"],
-    ["Protocole de sécurité (chargement/déchargement)", "Obligatoire"],
-    ["Registre-journal de coordination SPS", "Obligatoire si coordination SPS"],
-    ["Déclaration Réglementaire d'Ouverture de Chantier (DROC)", "Obligatoire selon cas"],
-    ["Autorisations de voirie / arrêtés de circulation", "Selon chantier"],
-  ]],
-  ["3. Registres et affichages", [
-    ["Registre unique du personnel", "Obligatoire"],
-    ["Registre de sécurité incendie", "Obligatoire"],
-    ["Registre des accidents bénins", "Obligatoire si poste de secours agréé"],
-    ["Affichage consignes incendie / urgences / inspection du travail", "Obligatoire"],
-    ["Règlement intérieur", "Obligatoire si 50+ salariés"],
-  ]],
-  ["4. Vérifications périodiques", [
-    ["Rapports VGP engins de levage (grues, nacelles, chariots)", "Obligatoire"],
-    ["Rapports de vérification échafaudages", "Obligatoire"],
-    ["Rapports de vérification installations électriques", "Obligatoire"],
-    ["Rapports de vérification extincteurs / matériel incendie", "Obligatoire"],
-    ["Carnets de maintenance des engins de chantier", "Obligatoire"],
-    ["Certificats de conformité EPC (protections collectives)", "Obligatoire"],
-  ]],
-  ["5. Formations & habilitations", [
-    ["Attestations formation sécurité (accueil nouvel embauché)", "Obligatoire"],
-    ["Attestations formation renforcée CDD/intérim", "Obligatoire si applicable"],
-    ["Cartes/certificats CACES par type d'engin", "Obligatoire selon poste"],
-    ["Attestations habilitation électrique (B0, B1, B2, BR, BC...)", "Obligatoire selon poste"],
-    ["Attestations SST (Sauveteur Secouriste du Travail)", "Fortement recommandé"],
-    ["Attestations travail en hauteur / port du harnais", "Obligatoire selon poste"],
-    ["Attestations amiante SS3/SS4", "Obligatoire si applicable"],
-    ["Attestations montage/démontage échafaudage", "Obligatoire selon poste"],
-  ]],
-  ["6. Suivi médical", [
-    ["Fiches d'aptitude médicale (VIP ou SIR)", "Obligatoire"],
-    ["Dossier médical en santé au travail (traçabilité employeur)", "Obligatoire"],
-    ["Fiches individuelles d'exposition (chimique, amiante, bruit)", "Obligatoire selon poste"],
-  ]],
-  ["7. Instances représentatives", [
-    ["PV des élections du CSE", "Obligatoire dès 11 salariés"],
-    ["Comptes rendus réunions CSE (volet santé-sécurité)", "Obligatoire"],
-    ["Rapport annuel santé-sécurité-conditions de travail (CSE)", "Obligatoire"],
-  ]],
-  ["8. Risques spécifiques BTP", [
-    ["Repérage Amiante avant Travaux (RAT)", "Obligatoire (bâti avant 1997)"],
-    ["Fiches de données de sécurité (FDS) produits chimiques", "Obligatoire"],
-    ["Plan de gestion des déchets de chantier (PGDC/SOSED)", "Obligatoire selon chantier"],
-    ["Étude de sol / diagnostic terrassement", "Selon chantier"],
-  ]],
-  ["9. Accidents du travail", [
-    ["Déclarations d'accident du travail (DAT - CPAM, 48h)", "Obligatoire"],
-    ["Registre des accidents du travail", "Obligatoire"],
-    ["Rapports d'enquête / analyse des causes", "Recommandé"],
-  ]],
-];
-const SEED_SECURITE_OBLIGATIONS = SEED_SECURITE_OBLIGATIONS_RAW.flatMap(([categorie, items]) =>
-  items.map(([nom, type]) => emptySecuriteObligation({ categorie, nom, type }))
-);
-// Liste ordonnée des catégories (pour l'ordre d'affichage et le menu
-// "catégorie" d'une obligation ajoutée à la main).
-const SECURITE_CATEGORIES = SEED_SECURITE_OBLIGATIONS_RAW.map(([categorie]) => categorie);
-// Statut calculé d'une obligation — jamais stocké, toujours recalculé à
-// partir des champs saisis (voir securiteObligationStatus), pour rester
-// cohérent même quand seule la date change (ex. échéance qui approche au fil
-// du temps, sans aucune saisie de la part de Morgane).
-function securiteObligationStatus(o) {
-  if (o.existant === "N") return "manquant";
-  if (!o.existant) return "a_renseigner";
-  if (o.prochaineEcheance) {
-    const d = daysUntil(o.prochaineEcheance);
-    if (d !== null) {
-      if (d < 0) return "perimee";
-      if (d <= 30) return "bientot";
-    }
-  }
-  if (o.aJour === "N") return "a_verifier";
-  return "ok";
-}
-const SECURITE_STATUS_META = {
-  manquant: { label: "Manquant", color: "red" },
-  a_renseigner: { label: "À renseigner", color: "ink" },
-  perimee: { label: "Périmé", color: "red" },
-  bientot: { label: "Échéance proche", color: "amber" },
-  a_verifier: { label: "À vérifier", color: "amber" },
-  ok: { label: "À jour", color: "green" },
-};
-
 // Ancienne logique automatique (avant la case à cocher manuelle) : uniquement
 // utilisée par normalizeChantiersData pour initialiser docTypesActifs sur les
 // chantiers existants, afin que les bulles déjà affichées ne disparaissent
@@ -2763,7 +2641,6 @@ function SidebarContent({ tab, setTab, unlocked, onLockClick, onSettingsClick, o
     { key: "caution", label: "Caution bancaire", icon: Landmark },
     { key: "documents", label: "Documents manquants", icon: FileWarning },
     { key: "soustraitants", label: "Sous-traitants", icon: HardHat },
-    { key: "securite", label: "Sécurité & obligations", icon: ShieldAlert },
     { key: "archives", label: "Archives", icon: Archive },
   ];
   return (
@@ -2858,7 +2735,7 @@ function Sidebar({ tab, setTab, unlocked, onLockClick, onSettingsClick, isMobile
 }
 
 // ---------- Dashboard ----------
-function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, sousTraitants, onOpenSousTraitantDossier, securiteObligations }) {
+function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, sousTraitants, onOpenSousTraitantDossier }) {
   const { totalEnAttente, impayees, enRetard, totalRetard, chartData, rgAReclamerBientot, betARelancer } = computed;
   const chantiersDocsIncomplets = chantiers.filter((c) => allMissingDocuments(c, sousTraitants).length > 0).length;
   // Cautions bancaires soldées (marché entièrement facturé, RG en "caution
@@ -2916,18 +2793,6 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
     }
     return out;
   }, [chantiers, sousTraitants]);
-  // Obligations "Sécurité & obligations" nécessitant une action : manquantes,
-  // périmées ou dont l'échéance approche sous 30j (voir
-  // securiteObligationStatus) — jamais celles déjà à jour/à renseigner
-  // ultérieurement sans échéance connue.
-  const securiteAlertes = useMemo(() => {
-    const statusOrder = { perimee: 0, manquant: 1, bientot: 2 };
-    return (securiteObligations || [])
-      .map((o) => ({ obligation: o, status: securiteObligationStatus(o) }))
-      .filter((a) => a.status === "manquant" || a.status === "perimee" || a.status === "bientot")
-      .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-  }, [securiteObligations]);
-  const [showAllSecurite, setShowAllSecurite] = useState(false);
   return (
     <div className="p-4 max-w-6xl">
       <h1 className="text-xl font-semibold mb-1" style={{ color: COLORS.ink }}>Tableau de bord</h1>
@@ -2963,11 +2828,6 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
           <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Cautions à annuler</div>
           <div className="text-2xl font-semibold tabular-nums" style={{ color: cautionsAAnnuler.length > 0 ? (cautionsARelancer.length > 0 ? COLORS.red : COLORS.amber) : COLORS.green }}>{cautionsAAnnuler.length}</div>
           <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>{cautionsARelancer.length > 0 ? `${cautionsARelancer.length} à relancer` : "caution(s) bancaire(s)"}</div>
-        </Card>
-        <Card className="p-4" style={{ cursor: "pointer" }} onClick={() => setTab("securite")}>
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Obligations sécurité</div>
-          <div className="text-2xl font-semibold tabular-nums" style={{ color: securiteAlertes.length > 0 ? COLORS.red : COLORS.green }}>{securiteAlertes.length}</div>
-          <div className="text-xs mt-1" style={{ color: COLORS.inkSoft }}>{securiteAlertes.length > 0 ? "à traiter" : "à jour"}</div>
         </Card>
       </ResponsiveGrid>
 
@@ -3065,35 +2925,6 @@ function Dashboard({ chantiers, rgDues, computed, setTab, setSelectedChantier, s
               </button>
             ))}
           </div>
-        </Card>
-      )}
-
-      {securiteAlertes.length > 0 && (
-        <Card className="p-4 mb-6" style={{ borderColor: COLORS.redSoft, background: COLORS.redSoft }}>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={16} color={COLORS.red} />
-            <span className="text-sm font-semibold" style={{ color: COLORS.red }}>Sécurité & obligations — à traiter</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            {securiteAlertes.slice(0, showAllSecurite ? securiteAlertes.length : 8).map(({ obligation: o, status }) => (
-              <button
-                key={o.id}
-                onClick={() => setTab("securite")}
-                className="text-xs flex justify-between text-left hover:underline gap-2"
-                style={{ color: COLORS.ink }}
-              >
-                <span>{o.categorie} — {o.nom}</span>
-                <span className="font-medium shrink-0" style={{ color: COLORS.red }}>
-                  {status === "manquant" ? "manquant" : status === "perimee" ? `périmé depuis ${Math.abs(daysUntil(o.prochaineEcheance))} j` : `échéance dans ${daysUntil(o.prochaineEcheance)} j`}
-                </span>
-              </button>
-            ))}
-          </div>
-          {securiteAlertes.length > 8 && (
-            <button onClick={() => setShowAllSecurite(!showAllSecurite)} className="text-xs mt-2 font-medium hover:underline" style={{ color: COLORS.red }}>
-              {showAllSecurite ? "Réduire la liste" : `+ ${securiteAlertes.length - 8} autre(s) obligation(s) à traiter`}
-            </button>
-          )}
         </Card>
       )}
 
@@ -3570,7 +3401,7 @@ const CHANTIERS_QUICK_FILTERS = [
   { key: "avanceDemarrage", label: "Avance de démarrage", test: (c) => (c.marches || []).some((m) => !!m.addMontant) },
 ];
 
-function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier, archivedOnly = false }) {
+function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier, archivedOnly = false, sousTraitants = [] }) {
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [newTitre, setNewTitre] = useState("");
@@ -3599,12 +3430,34 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
   ).sort((a, b) => (a.titre || "").localeCompare(b.titre || ""));
 
   const showCessionCol = activeFilters.has("cession");
-  const colCount = 7 + (showCessionCol ? 1 : 0) + (unlocked ? 1 : 0);
+  // Colonnes de détail supplémentaires, sur le même principe que "Fournisseur
+  // en cession" : n'apparaissent que quand le filtre rapide correspondant est
+  // actif, pour voir d'un coup d'œil le détail (sous-traitant(s), montant de
+  // caution, montant d'avance de démarrage) sans encombrer le tableau le
+  // reste du temps — demandé par Morgane.
+  const showSousTraitantsCol = activeFilters.has("sousTraitants");
+  const showCautionCol = activeFilters.has("cautionBanque");
+  const showAddCol = activeFilters.has("avanceDemarrage");
+  const extraColCount = [showCessionCol, showSousTraitantsCol, showCautionCol, showAddCol].filter(Boolean).length;
+  const colCount = 7 + extraColCount + (unlocked ? 1 : 0);
   // Total des enveloppes de cession affichées, tous chantiers actuellement
   // listés confondus (respecte donc aussi la recherche texte et les autres
   // filtres actifs en même temps que "Cession fournisseur").
   const totalEnveloppeCession = showCessionCol
     ? filtered.reduce((a, c) => a + (c.fournisseurs || []).reduce((a2, f) => a2 + (Number(f.enveloppe) || 0), 0), 0)
+    : 0;
+  // Montant de caution effectif d'un marché : montantCaution s'il a été
+  // saisi à la main, sinon le montant HT du marché par défaut (même repli
+  // que dans l'onglet "Caution bancaire", voir cautionsBancaires).
+  function montantCautionEffectif(m) {
+    return m.montantCaution !== "" && m.montantCaution != null ? Number(m.montantCaution) || 0 : (m.montantHt || 0);
+  }
+  const totalCautionBanque = showCautionCol
+    ? filtered.reduce((a, c) => a + (c.marches || []).filter((m) => m.rgMode === "banque").reduce((a2, m) => a2 + montantCautionEffectif(m), 0), 0)
+    : 0;
+  // m.addMontant est en T.T.C. (voir normalizeChantiersData / AvanceDemarragePdfModal).
+  const totalAvanceDemarrage = showAddCol
+    ? filtered.reduce((a, c) => a + (c.marches || []).filter((m) => !!m.addMontant).reduce((a2, m) => a2 + (Number(m.addMontant) || 0), 0), 0)
     : 0;
 
   function submitNew() {
@@ -3691,11 +3544,14 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               <th className="text-right font-medium px-2 py-2.5">Facturé</th>
               <th className="text-right font-medium px-2 py-2.5">En attente</th>
               <th className="text-left font-medium px-4 py-2.5">Situations</th>
-              {/* Colonne "Fournisseur en cession" : seulement quand le filtre
-                  "Cession fournisseur" est actif, demandé par Morgane pour voir
-                  d'un coup d'œil qui est cessionnaire et pour combien, sans
-                  encombrer le tableau le reste du temps. */}
+              {/* Colonnes de détail : seulement quand le filtre rapide
+                  correspondant est actif, demandé par Morgane pour voir d'un
+                  coup d'œil le détail sans encombrer le tableau le reste du
+                  temps. */}
               {showCessionCol && <th className="text-left font-medium px-2 py-2.5">Fournisseur en cession</th>}
+              {showSousTraitantsCol && <th className="text-left font-medium px-2 py-2.5">Sous-traitant(s)</th>}
+              {showCautionCol && <th className="text-left font-medium px-2 py-2.5">Caution bancaire</th>}
+              {showAddCol && <th className="text-left font-medium px-2 py-2.5">Avance de démarrage</th>}
               {unlocked && <th className="px-3 py-2.5"></th>}
             </tr>
           </thead>
@@ -3707,6 +3563,14 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               const facture = c.situations.reduce((a, s) => a + (s.montantHt || 0), 0);
               const attente = soldeAttenteChantier(c.situations);
               const fournisseursCession = c.fournisseurs || [];
+              const sousTraitantsActifs = showSousTraitantsCol
+                ? (c.sousTraitance || [])
+                    .filter((e) => e.statutContrat !== "annule")
+                    .map((e) => sousTraitants.find((s) => s.id === e.sousTraitantId))
+                    .filter(Boolean)
+                : [];
+              const marchesCaution = showCautionCol ? (c.marches || []).filter((m) => m.rgMode === "banque") : [];
+              const marchesAdd = showAddCol ? (c.marches || []).filter((m) => !!m.addMontant) : [];
               return (
                 <tr key={c.id} style={{ borderTop: `1px solid ${COLORS.line}`, cursor: "pointer" }} onClick={() => { setSelectedChantier(c.id); setTab("chantierDetail"); }}>
                   <td className="px-4 py-2.5 font-medium" style={{ color: COLORS.accent }}>{c.titre}</td>
@@ -3725,6 +3589,49 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
                           {fournisseursCession.map((f, idx) => (
                             <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.ink }}>
                               {f.nom || "—"}{f.enveloppe !== "" && f.enveloppe != null ? ` — ${fmtEUR(f.enveloppe)}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showSousTraitantsCol && (
+                    <td className="px-2 py-2.5">
+                      {sousTraitantsActifs.length === 0 ? (
+                        <span style={{ color: COLORS.inkSoft }}>—</span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {sousTraitantsActifs.map((s, idx) => (
+                            <span key={idx} className="whitespace-nowrap" style={{ color: COLORS.ink }}>{s.nom || "—"}</span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showCautionCol && (
+                    <td className="px-2 py-2.5">
+                      {marchesCaution.length === 0 ? (
+                        <span style={{ color: COLORS.inkSoft }}>—</span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {marchesCaution.map((m) => (
+                            <span key={m.id} className="whitespace-nowrap" style={{ color: COLORS.ink }}>
+                              {marcheDisplayName(m)} — {fmtEUR(montantCautionEffectif(m))}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showAddCol && (
+                    <td className="px-2 py-2.5">
+                      {marchesAdd.length === 0 ? (
+                        <span style={{ color: COLORS.inkSoft }}>—</span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {marchesAdd.map((m) => (
+                            <span key={m.id} className="whitespace-nowrap" style={{ color: COLORS.ink }}>
+                              {marcheDisplayName(m)} — {fmtEUR(m.addMontant)}
                             </span>
                           ))}
                         </div>
@@ -3759,13 +3666,29 @@ function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCre
               );
             })}
           </tbody>
-          {showCessionCol && filtered.length > 0 && (
+          {filtered.length > 0 && (showCessionCol || showCautionCol || showAddCol) && (
             <tfoot>
-              <tr style={{ borderTop: `2px solid ${COLORS.line}`, background: "#F7F5EF" }}>
-                <td colSpan={colCount - 2} className="px-4 py-2 text-right font-medium" style={{ color: COLORS.ink }}>Total enveloppes de cession</td>
-                <td className="px-2 py-2 font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalEnveloppeCession)}</td>
-                {unlocked && <td></td>}
-              </tr>
+              {showCessionCol && (
+                <tr style={{ borderTop: `2px solid ${COLORS.line}`, background: "#F7F5EF" }}>
+                  <td colSpan={colCount - 2} className="px-4 py-2 text-right font-medium" style={{ color: COLORS.ink }}>Total enveloppes de cession</td>
+                  <td className="px-2 py-2 font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalEnveloppeCession)}</td>
+                  {unlocked && <td></td>}
+                </tr>
+              )}
+              {showCautionCol && (
+                <tr style={{ borderTop: `2px solid ${COLORS.line}`, background: "#F7F5EF" }}>
+                  <td colSpan={colCount - 2} className="px-4 py-2 text-right font-medium" style={{ color: COLORS.ink }}>Total cautions bancaires</td>
+                  <td className="px-2 py-2 font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalCautionBanque)}</td>
+                  {unlocked && <td></td>}
+                </tr>
+              )}
+              {showAddCol && (
+                <tr style={{ borderTop: `2px solid ${COLORS.line}`, background: "#F7F5EF" }}>
+                  <td colSpan={colCount - 2} className="px-4 py-2 text-right font-medium" style={{ color: COLORS.ink }}>Total avances de démarrage</td>
+                  <td className="px-2 py-2 font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(totalAvanceDemarrage)}</td>
+                  {unlocked && <td></td>}
+                </tr>
+              )}
             </tfoot>
           )}
         </table>
@@ -7918,369 +7841,6 @@ function DocumentsView({ chantiers, sousTraitants, setTab, setSelectedChantier }
   );
 }
 
-// ---------- Sécurité & obligations ----------
-// Pseudo-identifiant de "chantier" utilisé côté stockage (/api/documents,
-// /api/documents/sign-upload) pour les justificatifs PDF de ce registre —
-// ces obligations sont à l'échelle de la société, pas d'un chantier précis,
-// mais réutilisent exactement le même bucket/la même mécanique de dépôt.
-const SECURITE_DOC_PSEUDO_CHANTIER_ID = "societe-obligations";
-
-function SecuriteView({ obligations, unlocked, onAdd, onUpdate, onRemove }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("tous");
-  const [expandedId, setExpandedId] = useState(null);
-  const [uploadingId, setUploadingId] = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
-  const [docError, setDocError] = useState("");
-  const fileInputRef = useRef(null);
-  const pendingUploadIdRef = useRef(null);
-
-  const counts = useMemo(() => {
-    const c = { manquant: 0, a_renseigner: 0, perimee: 0, bientot: 0, a_verifier: 0, ok: 0 };
-    for (const o of obligations) c[securiteObligationStatus(o)]++;
-    return c;
-  }, [obligations]);
-  const aTraiterCount = counts.manquant + counts.a_renseigner + counts.perimee;
-  const aSurveillerCount = counts.bientot + counts.a_verifier;
-
-  const STATUS_FILTERS = [
-    { key: "tous", label: "Toutes" },
-    { key: "a_traiter", label: `À traiter (${aTraiterCount})` },
-    { key: "a_surveiller", label: `À surveiller (${aSurveillerCount})` },
-    { key: "ok", label: `À jour (${counts.ok})` },
-  ];
-  function matchesStatusFilter(status) {
-    if (statusFilter === "tous") return true;
-    if (statusFilter === "a_traiter") return status === "manquant" || status === "a_renseigner" || status === "perimee";
-    if (statusFilter === "a_surveiller") return status === "bientot" || status === "a_verifier";
-    if (statusFilter === "ok") return status === "ok";
-    return true;
-  }
-
-  const q = search.trim().toLowerCase();
-  const filtered = obligations.filter((o) => {
-    if (!matchesStatusFilter(securiteObligationStatus(o))) return false;
-    if (!q) return true;
-    return [o.nom, o.categorie, o.type, o.responsable, o.commentaires].some((v) => (v || "").toLowerCase().includes(q));
-  });
-
-  // Groupement par catégorie, en gardant l'ordre officiel (SECURITE_CATEGORIES)
-  // puis en ajoutant à la fin, dans l'ordre d'apparition, toute catégorie que
-  // Morgane aurait créée à la main sur une obligation ajoutée par elle.
-  const categories = [...SECURITE_CATEGORIES];
-  for (const o of obligations) if (o.categorie && !categories.includes(o.categorie)) categories.push(o.categorie);
-  const grouped = categories
-    .map((cat) => ({ categorie: cat, items: filtered.filter((o) => o.categorie === cat) }))
-    .filter((g) => g.items.length > 0);
-
-  function triggerUpload(id) {
-    if (!unlocked) return;
-    pendingUploadIdRef.current = id;
-    fileInputRef.current?.click();
-  }
-  function handleFileInputChange(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (file && pendingUploadIdRef.current) uploadObligationDoc(pendingUploadIdRef.current, file);
-  }
-  // Dépôt en 2 temps (URL signée Supabase Storage), comme les autres bulles
-  // PDF de l'appli — voir uploadDocument/uploadSituationDocument.
-  async function uploadObligationDoc(id, file) {
-    if (!unlocked) return;
-    const MAX_SIZE = 50 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
-      setDocError("Fichier trop volumineux (50 Mo max). Essayez de le compresser.");
-      return;
-    }
-    setDocError("");
-    setUploadingId(id);
-    try {
-      const signRes = await fetch("/api/documents/sign-upload", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chantierId: SECURITE_DOC_PSEUDO_CHANTIER_ID, docKey: id, fileName: file.name }),
-      });
-      const signData = await signRes.json().catch(() => ({}));
-      if (!signRes.ok) throw new Error(signData.error || "Échec de l'envoi du document.");
-      const putRes = await fetch(signData.signedUrl, {
-        method: "PUT",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!putRes.ok) throw new Error("Échec de l'envoi du document.");
-      onUpdate(id, { document: { present: true, fileName: signData.fileName, filePath: signData.path, uploadedAt: new Date().toISOString() } });
-    } catch (err) {
-      setDocError(err.message || "Échec de l'envoi du document.");
-    } finally {
-      setUploadingId(null);
-    }
-  }
-  async function removeObligationDoc(o) {
-    if (!unlocked) return;
-    setUploadingId(o.id);
-    setDocError("");
-    try {
-      if (o.document && o.document.filePath) {
-        await fetch(`/api/documents?path=${encodeURIComponent(o.document.filePath)}`, { method: "DELETE" });
-      }
-      onUpdate(o.id, { document: { present: false, fileName: null, filePath: null, uploadedAt: null } });
-    } catch (err) {
-      setDocError(err.message || "Échec de la suppression du document.");
-    } finally {
-      setUploadingId(null);
-    }
-  }
-  async function openObligationDoc(o) {
-    if (!o.document || !o.document.filePath) return;
-    setDocError("");
-    try {
-      const res = await fetch(`/api/documents?path=${encodeURIComponent(o.document.filePath)}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Échec de l'ouverture du document.");
-      window.open(data.url, "_blank");
-    } catch (err) {
-      setDocError(err.message || "Impossible d'ouvrir le document.");
-    }
-  }
-
-  function handleAddObligation(categorie) {
-    const id = onAdd({ categorie });
-    setExpandedId(id);
-  }
-  function handleRemoveObligation(o) {
-    if (!window.confirm(`Supprimer "${o.nom || "cette obligation"}" du registre ?`)) return;
-    onRemove(o.id);
-    if (expandedId === o.id) setExpandedId(null);
-  }
-
-  return (
-    <div className="p-4 max-w-6xl">
-      <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFileInputChange} />
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-        <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Sécurité & obligations</h1>
-        {unlocked && (
-          <Btn size="sm" variant="ghost" onClick={() => handleAddObligation(categoriesFirstOrEmpty(SECURITE_CATEGORIES))}>
-            <Plus size={13} /> Ajouter une obligation
-          </Btn>
-        )}
-      </div>
-      <p className="text-sm mb-4" style={{ color: COLORS.inkSoft }}>
-        Registre des obligations administratives et de prévention des risques de la société, avec justificatif PDF déposable pour chacune.
-      </p>
-
-      <ResponsiveGrid min={120} className="mb-4">
-        <Card className="p-3">
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>À traiter</div>
-          <div className="text-xl font-semibold tabular-nums" style={{ color: aTraiterCount > 0 ? COLORS.red : COLORS.green }}>{aTraiterCount}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>À surveiller</div>
-          <div className="text-xl font-semibold tabular-nums" style={{ color: aSurveillerCount > 0 ? COLORS.amber : COLORS.green }}>{aSurveillerCount}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>À jour</div>
-          <div className="text-xl font-semibold tabular-nums" style={{ color: COLORS.green }}>{counts.ok}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs font-medium mb-1" style={{ color: COLORS.inkSoft }}>Total</div>
-          <div className="text-xl font-semibold tabular-nums" style={{ color: COLORS.ink }}>{obligations.length}</div>
-        </Card>
-      </ResponsiveGrid>
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative flex-1" style={{ minWidth: 200 }}>
-          <Search size={14} className="absolute pointer-events-none" style={{ left: 10, top: "50%", transform: "translateY(-50%)" }} color={COLORS.inkSoft} />
-          <TextInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un document, une catégorie, un responsable..."
-            style={{ paddingLeft: 28, width: "100%" }}
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className="px-2.5 py-1 rounded-full text-xs font-medium border transition-colors"
-              style={
-                statusFilter === f.key
-                  ? { background: COLORS.navy, color: "#fff", borderColor: COLORS.navy }
-                  : { background: "#fff", color: COLORS.inkSoft, borderColor: COLORS.line }
-              }
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {docError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{docError}</p>}
-
-      {grouped.length === 0 ? (
-        <Card className="p-8 text-center text-sm" style={{ color: COLORS.inkSoft }}>Aucune obligation ne correspond à cette recherche.</Card>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {grouped.map((g) => (
-            <div key={g.categorie}>
-              <div className="flex items-center justify-between mb-1.5">
-                <h2 className="text-sm font-semibold" style={{ color: COLORS.ink }}>{g.categorie}</h2>
-                {unlocked && (
-                  <button
-                    onClick={() => handleAddObligation(g.categorie)}
-                    className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
-                    style={{ color: COLORS.accent }}
-                  >
-                    <Plus size={12} /> Ajouter dans cette catégorie
-                  </button>
-                )}
-              </div>
-              <Card className="overflow-hidden">
-                {g.items.map((o, i) => {
-                  const status = securiteObligationStatus(o);
-                  const meta = SECURITE_STATUS_META[status];
-                  const isExpanded = expandedId === o.id;
-                  const isUploading = uploadingId === o.id;
-                  const isDragOver = dragOverId === o.id;
-                  const docPresent = !!(o.document && o.document.present);
-                  const days = o.prochaineEcheance ? daysUntil(o.prochaineEcheance) : null;
-                  return (
-                    <div key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.line}` : "none" }}>
-                      <div
-                        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer"
-                        style={{ background: isExpanded ? COLORS.bg : "transparent" }}
-                        onClick={() => setExpandedId(isExpanded ? null : o.id)}
-                      >
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS[meta.color] || COLORS.ink }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate" style={{ color: COLORS.ink }}>{o.nom || "(sans nom)"}</div>
-                          <div className="text-xs truncate" style={{ color: COLORS.inkSoft }}>{o.type}</div>
-                        </div>
-                        <div className="hidden sm:block text-xs text-right shrink-0" style={{ color: COLORS.inkSoft, minWidth: 120 }}>
-                          {o.responsable && <div className="truncate">{o.responsable}</div>}
-                          {o.prochaineEcheance && (
-                            <div style={{ color: days < 0 ? COLORS.red : days <= 30 ? COLORS.amber : COLORS.inkSoft }}>
-                              {days < 0 ? `Périmé (${Math.abs(days)} j)` : `Échéance ${fmtDate(o.prochaineEcheance)}`}
-                            </div>
-                          )}
-                        </div>
-                        <Pill color={meta.color}>{meta.label}</Pill>
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          onDragOver={(e) => { if (!unlocked || isUploading) return; e.preventDefault(); setDragOverId(o.id); }}
-                          onDragLeave={() => setDragOverId((k) => (k === o.id ? null : k))}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDragOverId((k) => (k === o.id ? null : k));
-                            if (!unlocked || isUploading) return;
-                            const file = e.dataTransfer.files && e.dataTransfer.files[0];
-                            if (file) uploadObligationDoc(o.id, file);
-                          }}
-                        >
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isUploading) return;
-                              if (docPresent) { openObligationDoc(o); return; }
-                              if (unlocked) triggerUpload(o.id);
-                            }}
-                            title={docPresent ? `${o.document.fileName || "PDF"} — cliquer pour ouvrir` : unlocked ? "Déposer le PDF (cliquer ou glisser-déposer)" : "Aucun PDF déposé"}
-                            className="relative inline-flex items-center justify-center shrink-0"
-                            style={{
-                              width: 34, height: 24, borderRadius: 7,
-                              border: `1.5px ${docPresent ? "solid" : "dashed"} ${docPresent ? COLORS.green : isDragOver ? COLORS.accent : COLORS.line}`,
-                              background: docPresent ? COLORS.greenSoft : isDragOver ? COLORS.accentSoft : "#fff",
-                              cursor: isUploading ? "default" : "pointer",
-                              opacity: isUploading ? 0.6 : 1,
-                            }}
-                          >
-                            {unlocked && docPresent && !isUploading && (
-                              <span
-                                role="button"
-                                onClick={(e) => { e.stopPropagation(); removeObligationDoc(o); }}
-                                style={{ position: "absolute", top: -6, right: -6, width: 13, height: 13, borderRadius: 999, background: "#fff", border: `1px solid ${COLORS.red}`, display: "flex", alignItems: "center", justifyContent: "center" }}
-                              >
-                                <X size={8} color={COLORS.red} />
-                              </span>
-                            )}
-                            {isUploading ? (
-                              <Loader2 size={11} color={COLORS.accent} className="animate-spin" />
-                            ) : (
-                              <span className="text-[8px] font-bold leading-none" style={{ color: docPresent ? COLORS.green : COLORS.inkSoft }}>PDF</span>
-                            )}
-                          </button>
-                        </div>
-                        <ChevronDown size={16} color={COLORS.inkSoft} style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
-                      </div>
-                      {isExpanded && (
-                        <div className="px-3 pb-3 pt-2" style={{ background: COLORS.bg, borderTop: `1px solid ${COLORS.line}` }}>
-                          <ResponsiveGrid min={150} gap={10} className="mb-2">
-                            <Field label="Existant">
-                              <select disabled={!unlocked} value={o.existant} onChange={(e) => onUpdate(o.id, { existant: e.target.value })} style={inputStyle}>
-                                <option value="">—</option>
-                                <option value="O">Oui</option>
-                                <option value="N">Non</option>
-                              </select>
-                            </Field>
-                            <Field label="À jour">
-                              <select disabled={!unlocked} value={o.aJour} onChange={(e) => onUpdate(o.id, { aJour: e.target.value })} style={inputStyle}>
-                                <option value="">—</option>
-                                <option value="O">Oui</option>
-                                <option value="N">Non</option>
-                              </select>
-                            </Field>
-                            <Field label="Date dernière MAJ / obtention">
-                              <TextInput disabled={!unlocked} type="date" value={o.dateMaj || ""} onChange={(e) => onUpdate(o.id, { dateMaj: e.target.value })} />
-                            </Field>
-                            <Field label="Prochaine échéance">
-                              <TextInput disabled={!unlocked} type="date" value={o.prochaineEcheance || ""} onChange={(e) => onUpdate(o.id, { prochaineEcheance: e.target.value })} />
-                            </Field>
-                            <Field label="Responsable">
-                              <TextInput disabled={!unlocked} value={o.responsable || ""} onChange={(e) => onUpdate(o.id, { responsable: e.target.value })} placeholder="Nom" />
-                            </Field>
-                            <Field label="Catégorie">
-                              <TextInput disabled={!unlocked} value={o.categorie || ""} onChange={(e) => onUpdate(o.id, { categorie: e.target.value })} />
-                            </Field>
-                          </ResponsiveGrid>
-                          <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: "2fr 1fr" }}>
-                            <Field label="Document / obligation">
-                              <TextInput disabled={!unlocked} value={o.nom || ""} onChange={(e) => onUpdate(o.id, { nom: e.target.value })} />
-                            </Field>
-                            <Field label="Type">
-                              <TextInput disabled={!unlocked} value={o.type || ""} onChange={(e) => onUpdate(o.id, { type: e.target.value })} placeholder="Ex. Obligatoire..." />
-                            </Field>
-                          </div>
-                          <Field label="Commentaires">
-                            <textarea
-                              disabled={!unlocked}
-                              value={o.commentaires || ""}
-                              onChange={(e) => onUpdate(o.id, { commentaires: e.target.value })}
-                              rows={2}
-                              style={{ ...inputStyle, width: "100%", resize: "vertical" }}
-                            />
-                          </Field>
-                          {unlocked && (
-                            <div className="flex justify-end mt-2">
-                              <Btn size="sm" variant="danger" onClick={() => handleRemoveObligation(o)}><Trash2 size={12} /> Supprimer</Btn>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </Card>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-function categoriesFirstOrEmpty(categories) {
-  return (categories && categories[0]) || "";
-}
-
 // ---------- Caution bancaire ----------
 // Vue globale (tous chantiers) des marchés/TS dont la retenue de garantie
 // est une caution bancaire (m.rgMode === "banque") : "Cautions actives" tant
@@ -8687,11 +8247,6 @@ export default function App() {
   // l'autre) — les contrats/DC4/attestations, eux, restent rattachés à
   // chaque chantier (chantier.sousTraitance, voir ChantierDetail).
   const [sousTraitants, setSousTraitants] = useState([]);
-  // Registre "Sécurité & obligations" : à l'échelle de la société, pas d'un
-  // chantier précis (voir SEED_SECURITE_OBLIGATIONS) — délibérément HORS du
-  // système "Annuler la dernière action" (comme le répertoire sous-traitants),
-  // ce sont des fiches de suivi administratif, pas des saisies comptables.
-  const [securiteObligations, setSecuriteObligations] = useState([]);
   // Lien dynamique "Voir le dossier administratif" : posé depuis la fiche
   // chantier (ou une alerte du tableau de bord), lu directement par
   // SousTraitantsView (rendu uniquement quand tab === "soustraitants") pour
@@ -8729,7 +8284,6 @@ export default function App() {
   const chantiersWriteChainRef = useRef(Promise.resolve());
   const rgWriteChainRef = useRef(Promise.resolve());
   const sousTraitantsWriteChainRef = useRef(Promise.resolve());
-  const securiteObligationsWriteChainRef = useRef(Promise.resolve());
 
   // ---- Bouton "Annuler la dernière action" -------------------------------
   // On garde en mémoire (jamais en base) un historique des derniers états
@@ -8753,12 +8307,11 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        let ch, rg, settings, stt, sec;
+        let ch, rg, settings, stt;
         try { ch = await storage.get("chantiers", true); } catch { ch = null; }
         try { rg = await storage.get("rg-dues", true); } catch { rg = null; }
         try { settings = await storage.get("settings", true); } catch { settings = null; }
         try { stt = await storage.get("sous-traitants", true); } catch { stt = null; }
-        try { sec = await storage.get("securite-obligations", true); } catch { sec = null; }
 
         const parsedSettings = settings && settings.value ? JSON.parse(settings.value) : {};
         // Sous-traitants analysés en premier : normalizeChantiersData en a
@@ -8808,18 +8361,11 @@ export default function App() {
           setSousTraitants(SEED_SOUS_TRAITANTS);
           await storage.set("sous-traitants", JSON.stringify(SEED_SOUS_TRAITANTS), true);
         }
-        if (sec && sec.value) {
-          setSecuriteObligations(JSON.parse(sec.value));
-        } else {
-          setSecuriteObligations(SEED_SECURITE_OBLIGATIONS);
-          await storage.set("securite-obligations", JSON.stringify(SEED_SECURITE_OBLIGATIONS), true);
-        }
       } catch (e) {
         console.error("Erreur de chargement", e);
         setChantiers(SEED_CHANTIERS);
         setRgDues(SEED_RG);
         setSousTraitants(SEED_SOUS_TRAITANTS);
-        setSecuriteObligations(SEED_SECURITE_OBLIGATIONS);
       } finally {
         setLoading(false);
       }
@@ -8921,50 +8467,6 @@ export default function App() {
     });
   }, [persistSousTraitants]);
 
-  // Registre "Sécurité & obligations" : même logique que le répertoire
-  // sous-traitants ci-dessus (hors système "Annuler la dernière action").
-  const persistSecuriteObligations = useCallback((next) => {
-    setSecuriteObligations(next);
-    pendingWritesRef.current++;
-    const payload = JSON.stringify(next);
-    const run = securiteObligationsWriteChainRef.current
-      .catch(() => {})
-      .then(() => storage.set("securite-obligations", payload, true))
-      .then(() => setSaveError(false))
-      .catch((e) => {
-        console.error("Erreur de sauvegarde", e);
-        setSaveError(true);
-      })
-      .finally(() => {
-        pendingWritesRef.current--;
-      });
-    securiteObligationsWriteChainRef.current = run;
-    return run;
-  }, []);
-  const addSecuriteObligation = useCallback((patch) => {
-    const entry = emptySecuriteObligation(patch);
-    setSecuriteObligations((prev) => {
-      const next = [...prev, entry];
-      persistSecuriteObligations(next);
-      return next;
-    });
-    return entry.id;
-  }, [persistSecuriteObligations]);
-  const updateSecuriteObligation = useCallback((id, patch) => {
-    setSecuriteObligations((prev) => {
-      const next = prev.map((o) => (o.id === id ? { ...o, ...patch } : o));
-      persistSecuriteObligations(next);
-      return next;
-    });
-  }, [persistSecuriteObligations]);
-  const removeSecuriteObligation = useCallback((id) => {
-    setSecuriteObligations((prev) => {
-      const next = prev.filter((o) => o.id !== id);
-      persistSecuriteObligations(next);
-      return next;
-    });
-  }, [persistSecuriteObligations]);
-
   // Dépile le dernier instantané et le réécrit (chantiers + rg-dues
   // ensemble, pour rester cohérent même si un seul des deux a changé).
   const undoLastAction = useCallback(() => {
@@ -9017,11 +8519,10 @@ export default function App() {
     if (pendingWritesRef.current > 0) return;
     const seq = ++refreshSeqRef.current;
     try {
-      const [ch, rg, stt, sec] = await Promise.all([
+      const [ch, rg, stt] = await Promise.all([
         storage.get("chantiers", true).catch(() => null),
         storage.get("rg-dues", true).catch(() => null),
         storage.get("sous-traitants", true).catch(() => null),
-        storage.get("securite-obligations", true).catch(() => null),
       ]);
       if (pendingWritesRef.current > 0 || seq !== refreshSeqRef.current) return;
       const parsedSousTraitants = stt && stt.value ? normalizeSousTraitants(JSON.parse(stt.value)) : null;
@@ -9034,9 +8535,6 @@ export default function App() {
       }
       if (parsedSousTraitants) {
         setSousTraitants(parsedSousTraitants);
-      }
-      if (sec && sec.value) {
-        setSecuriteObligations(JSON.parse(sec.value));
       }
     } catch (e) {
       console.error("Erreur de resynchronisation", e);
@@ -9316,15 +8814,15 @@ export default function App() {
             La dernière modification n'a pas pu être sauvegardée. Vérifiez la connexion et réessayez.
           </div>
         )}
-        {tab === "dashboard" && <Dashboard chantiers={chantiers} rgDues={rgDues} computed={computed} setTab={setTab} setSelectedChantier={setSelectedChantierId} sousTraitants={sousTraitants} onOpenSousTraitantDossier={openSousTraitantDossier} securiteObligations={securiteObligations} />}
+        {tab === "dashboard" && <Dashboard chantiers={chantiers} rgDues={rgDues} computed={computed} setTab={setTab} setSelectedChantier={setSelectedChantierId} sousTraitants={sousTraitants} onOpenSousTraitantDossier={openSousTraitantDossier} />}
         {tab === "reglements" && (
           <Reglements computed={computed} unlocked={unlocked} onMarkPaid={markPaid} onMarkFactureSeulePaid={markFactureSeulePaid} onMarkAddPaid={markAddPaid} onMarkRgReceived={markRgReceived} onDeleteRgEchue={deleteRgEchue} setTab={setTab} setSelectedChantier={setSelectedChantierId} onCreateFactureSeule={createFactureSeule} onDeleteSituation={deleteSituationGlobal} />
         )}
         {tab === "chantiers" && (
-          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} />
+          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} sousTraitants={sousTraitants} />
         )}
         {tab === "archives" && (
-          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} archivedOnly />
+          <ChantiersList chantiers={chantiers} setTab={setTab} setSelectedChantier={setSelectedChantierId} unlocked={unlocked} onCreateChantier={createChantier} onArchiveChantier={archiveChantier} onDeleteChantier={deleteChantier} sousTraitants={sousTraitants} archivedOnly />
         )}
         {tab === "chantierDetail" && selectedChantier && (
           <ChantierDetail chantier={selectedChantier} updateChantier={updateChantier} unlocked={unlocked} setTab={setTab} onArchiveChantier={archiveChantier} sousTraitants={sousTraitants} onAddSousTraitant={addSousTraitant} onOpenSousTraitantDossier={openSousTraitantDossier} />
@@ -9344,15 +8842,6 @@ export default function App() {
             onRemoveSousTraitant={removeSousTraitant}
             dossierSousTraitantId={pendingDossierSousTraitantId}
             onSetDossierSousTraitantId={setPendingDossierSousTraitantId}
-          />
-        )}
-        {tab === "securite" && (
-          <SecuriteView
-            obligations={securiteObligations}
-            unlocked={unlocked}
-            onAdd={addSecuriteObligation}
-            onUpdate={updateSecuriteObligation}
-            onRemove={removeSecuriteObligation}
           />
         )}
       </div>
