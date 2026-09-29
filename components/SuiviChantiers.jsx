@@ -3555,14 +3555,19 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
 // Filtres rapides de l'onglet Chantiers (et Archives, qui réutilise le même
 // composant) — demandés par Morgane en plus de la recherche texte libre :
 // repérer d'un coup d'œil les chantiers avec cession de créance fournisseur,
-// avec sous-traitant(s) en cours, en marché public, ou avec une RG cautionnée
-// banque. Chaque chip est un filtre indépendant, cumulable (ET logique) avec
-// les autres et avec la recherche texte.
+// avec sous-traitant(s) en cours, en marché public, avec une RG cautionnée
+// banque, ou avec une avance de démarrage (ADD). Chaque chip est un filtre
+// indépendant, cumulable (ET logique) avec les autres et avec la recherche
+// texte.
 const CHANTIERS_QUICK_FILTERS = [
   { key: "cession", label: "Cession fournisseur", test: (c) => c.cessionPaiement === "OUI" },
   { key: "sousTraitants", label: "Sous-traitants", test: (c) => (c.sousTraitance || []).some((e) => e.statutContrat !== "annule") },
   { key: "marchePublic", label: "Marché public", test: (c) => c.marchePublic === true },
   { key: "cautionBanque", label: "Caution bancaire", test: (c) => (c.marches || []).some((m) => m.rgMode === "banque") },
+  // ADD = avance de démarrage (voir m.addMontant, en T.T.C. — cf.
+  // normalizeChantiersData / AvanceDemarragePdfModal) : un chantier a au
+  // moins un marché/TS pour lequel une avance a été saisie, réglée ou non.
+  { key: "avanceDemarrage", label: "Avance de démarrage", test: (c) => (c.marches || []).some((m) => !!m.addMontant) },
 ];
 
 function ChantiersList({ chantiers, setTab, setSelectedChantier, unlocked, onCreateChantier, onArchiveChantier, onDeleteChantier, archivedOnly = false }) {
