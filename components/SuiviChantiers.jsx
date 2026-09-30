@@ -47,6 +47,26 @@ const MARCHE_COLOR_SCHEME = {
 
 const MONTHS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 
+// CA mensuel HT "officiel" communiqué directement par Morgane pour ces mois
+// (comptabilité réelle), à utiliser sur le bâton HT du graphique du tableau
+// de bord À LA PLACE du calcul automatique (somme des montants HT des
+// situations par date de facture, voir useComputed/byMonthFacture) : les
+// données saisies dans l'appli pour ces mois ne reflètent pas exactement son
+// CA réel. Le bâton TTC, lui, reste calculé automatiquement (elle n'a donné
+// que du HT) — décalage possible entre les deux bâtons sur ces mois-là, ce
+// qui est normal. Les mois qui ne sont pas dans cette liste (septembre 2026
+// et au-delà) continuent d'être calculés en direct depuis les chantiers.
+const CA_MENSUEL_HT_MANUEL = {
+  "2026-01": 371262.29,
+  "2026-02": 841661.37,
+  "2026-03": 664891.36,
+  "2026-04": 582439.41,
+  "2026-05": 531072.99,
+  "2026-06": 671772.90,
+  "2026-07": 670439.56,
+  "2026-08": 248689.78,
+};
+
 function fmtEUR(n) {
   // Number(n) explicite (pas seulement isNaN, qui coerce déjà pour son test
   // mais laissait ensuite passer n tel quel) : certaines valeurs saisies
@@ -2609,7 +2629,9 @@ function useComputed(chantiers, rgDues) {
     }
     const chartData = rollingMonths.map((k) => ({
       mois: monthLabel(k),
-      ht: Math.round(byMonthFacture[k] || 0),
+      // CA_MENSUEL_HT_MANUEL (voir plus haut) prend le pas sur le calcul
+      // automatique quand Morgane a communiqué le chiffre réel du mois.
+      ht: Math.round(k in CA_MENSUEL_HT_MANUEL ? CA_MENSUEL_HT_MANUEL[k] : (byMonthFacture[k] || 0)),
       ttc: Math.round(byMonthFactureTtc[k] || 0),
     }));
 
