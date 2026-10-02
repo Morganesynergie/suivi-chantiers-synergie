@@ -2528,7 +2528,15 @@ function allSituationsFlat(chantiers) {
       const displayTitre = ch.isFacturesLibres
         ? ((ch.marches.find((m) => m.id === s.marcheId) || {}).nom || ch.titre)
         : ch.titre;
-      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier, isFacturesLibres: !!ch.isFacturesLibres, cessionPaiement: ch.cessionPaiement === "OUI" });
+      // cessionPaiement ici = cette SITUATION précise porte effectivement un
+      // montant en cession fournisseur (s.fournisseurs, saisi dans "Cessions
+      // fournisseur" du formulaire de situation) — pas seulement "le chantier a
+      // une cession enregistrée quelque part". Un chantier peut avoir une
+      // cession fournisseur active sans que toutes ses situations en portent
+      // une (Morgane : "il n'y a pas des montants en cession sur toutes les
+      // situations").
+      const hasCessionMontant = (s.fournisseurs || []).some((f) => Number(f.montant) > 0);
+      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier, isFacturesLibres: !!ch.isFacturesLibres, cessionPaiement: hasCessionMontant });
     }
   }
   return out;
@@ -2554,7 +2562,11 @@ function computeAddPendingEntries(chantiers) {
           id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: m.addDate || c.dateDemarrage || null,
           totalARecevoir: reste, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
           chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
-          marcheId: m.id, isADDPending: true, cessionPaiement: c.cessionPaiement === "OUI",
+          // Pas une situation facturée avec des "Cessions fournisseur" propres —
+          // ne compte jamais dans le filtre "Cession fournisseur" (voir
+          // allSituationsFlat : le filtre porte sur un montant en cession réel
+          // sur la situation, pas sur le chantier dans son ensemble).
+          marcheId: m.id, isADDPending: true, cessionPaiement: false,
         });
       }
     }
@@ -2562,22 +2574,18 @@ function computeAddPendingEntries(chantiers) {
   return out;
 }
 
-function computeRgEchuesPendingEntries(rgDues, chantiers = []) {
+function computeRgEchuesPendingEntries(rgDues) {
   return (rgDues.echues || [])
     .filter((r) => r.validBet)
-    .map((r) => {
-      // r.chantierId (facultatif, voir RgView) relie la RG à une fiche chantier
-      // réelle — on s'en sert uniquement pour savoir si ce chantier est marqué
-      // "cession fournisseur", afin que le filtre "Cession fournisseur" de
-      // Règlements en attente couvre aussi les RG échues liées à un tel chantier.
-      const chantier = r.chantierId ? chantiers.find((c) => c.id === r.chantierId) : null;
-      return {
-        id: `rg-echue-${r.id}`, nSituation: 0, nFact: "RG", dateFacture: r.dateEnvoi || null,
-        totalARecevoir: r.montantTtc || r.montantHt || 0, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
-        chantierId: null, chantierTitre: r.nom, chantierClient: null, chantierNChantier: r.nChantier,
-        isRgPending: true, rgEchueId: r.id, cessionPaiement: chantier?.cessionPaiement === "OUI",
-      };
-    });
+    .map((r) => ({
+      id: `rg-echue-${r.id}`, nSituation: 0, nFact: "RG", dateFacture: r.dateEnvoi || null,
+      totalARecevoir: r.montantTtc || r.montantHt || 0, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+      chantierId: null, chantierTitre: r.nom, chantierClient: null, chantierNChantier: r.nChantier,
+      // Pas une situation facturée avec des "Cessions fournisseur" propres —
+      // ne compte jamais dans le filtre "Cession fournisseur" (voir
+      // allSituationsFlat).
+      isRgPending: true, rgEchueId: r.id, cessionPaiement: false,
+    }));
 }
 
 // Une par marché entièrement payé dont les situations laissent malgré tout un solde net non
@@ -2600,7 +2608,10 @@ function computeMarcheSoldeEntries(chantiers) {
         validBet: null, dateEnvoi: null,
         chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
         marcheId, marcheNom: marche ? marcheDisplayName(marche) : "—",
-        isMarcheSoldePending: true, cessionPaiement: c.cessionPaiement === "OUI",
+        // Pas une situation facturée avec des "Cessions fournisseur" propres —
+        // ne compte jamais dans le filtre "Cession fournisseur" (voir
+        // allSituationsFlat).
+        isMarcheSoldePending: true, cessionPaiement: false,
       });
     }
   }
@@ -2611,7 +2622,7 @@ function useComputed(chantiers, rgDues) {
   return useMemo(() => {
     const flat = allSituationsFlat(chantiers);
     const addPending = computeAddPendingEntries(chantiers);
-    const rgPending = computeRgEchuesPendingEntries(rgDues, chantiers);
+    const rgPending = computeRgEchuesPendingEntries(rgDues);
     const marcheSoldePending = computeMarcheSoldeEntries(chantiers);
     // Montant réellement dû par situation encore en attente, calculé pour chaque chantier via
     // walkMarcheLedger : reporte déjà les trop-perçus/manques des situations payées du même
