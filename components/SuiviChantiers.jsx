@@ -2499,7 +2499,7 @@ function allSituationsFlat(chantiers) {
       const displayTitre = ch.isFacturesLibres
         ? ((ch.marches.find((m) => m.id === s.marcheId) || {}).nom || ch.titre)
         : ch.titre;
-      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier, isFacturesLibres: !!ch.isFacturesLibres });
+      out.push({ ...s, chantierId: ch.id, chantierTitre: displayTitre, chantierClient: ch.client, chantierNChantier: ch.nChantier, isFacturesLibres: !!ch.isFacturesLibres, cessionPaiement: ch.cessionPaiement === "OUI" });
     }
   }
   return out;
@@ -2525,7 +2525,7 @@ function computeAddPendingEntries(chantiers) {
           id: `add-${c.id}-${m.id}`, nSituation: 0, nFact: "ADD", dateFacture: m.addDate || c.dateDemarrage || null,
           totalARecevoir: reste, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
           chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
-          marcheId: m.id, isADDPending: true,
+          marcheId: m.id, isADDPending: true, cessionPaiement: c.cessionPaiement === "OUI",
         });
       }
     }
@@ -2533,15 +2533,22 @@ function computeAddPendingEntries(chantiers) {
   return out;
 }
 
-function computeRgEchuesPendingEntries(rgDues) {
+function computeRgEchuesPendingEntries(rgDues, chantiers = []) {
   return (rgDues.echues || [])
     .filter((r) => r.validBet)
-    .map((r) => ({
-      id: `rg-echue-${r.id}`, nSituation: 0, nFact: "RG", dateFacture: r.dateEnvoi || null,
-      totalARecevoir: r.montantTtc || r.montantHt || 0, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
-      chantierId: null, chantierTitre: r.nom, chantierClient: null, chantierNChantier: r.nChantier,
-      isRgPending: true, rgEchueId: r.id,
-    }));
+    .map((r) => {
+      // r.chantierId (facultatif, voir RgView) relie la RG à une fiche chantier
+      // réelle — on s'en sert uniquement pour savoir si ce chantier est marqué
+      // "cession fournisseur", afin que le filtre "Cession fournisseur" de
+      // Règlements en attente couvre aussi les RG échues liées à un tel chantier.
+      const chantier = r.chantierId ? chantiers.find((c) => c.id === r.chantierId) : null;
+      return {
+        id: `rg-echue-${r.id}`, nSituation: 0, nFact: "RG", dateFacture: r.dateEnvoi || null,
+        totalARecevoir: r.montantTtc || r.montantHt || 0, montantHt: 0, paye: false, validBet: null, dateEnvoi: null,
+        chantierId: null, chantierTitre: r.nom, chantierClient: null, chantierNChantier: r.nChantier,
+        isRgPending: true, rgEchueId: r.id, cessionPaiement: chantier?.cessionPaiement === "OUI",
+      };
+    });
 }
 
 // Une par marché entièrement payé dont les situations laissent malgré tout un solde net non
@@ -2564,7 +2571,7 @@ function computeMarcheSoldeEntries(chantiers) {
         validBet: null, dateEnvoi: null,
         chantierId: c.id, chantierTitre: c.titre, chantierClient: c.client, chantierNChantier: c.nChantier,
         marcheId, marcheNom: marche ? marcheDisplayName(marche) : "—",
-        isMarcheSoldePending: true,
+        isMarcheSoldePending: true, cessionPaiement: c.cessionPaiement === "OUI",
       });
     }
   }
@@ -2575,7 +2582,7 @@ function useComputed(chantiers, rgDues) {
   return useMemo(() => {
     const flat = allSituationsFlat(chantiers);
     const addPending = computeAddPendingEntries(chantiers);
-    const rgPending = computeRgEchuesPendingEntries(rgDues);
+    const rgPending = computeRgEchuesPendingEntries(rgDues, chantiers);
     const marcheSoldePending = computeMarcheSoldeEntries(chantiers);
     // Montant réellement dû par situation encore en attente, calculé pour chaque chantier via
     // walkMarcheLedger : reporte déjà les trop-perçus/manques des situations payées du même
@@ -3017,18 +3024,20 @@ function buildReglementGroups(source) {
 }
 function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
   const [q, setQ] = useState("");
+  const [cessionOnly, setCessionOnly] = useState(false);
   const groups = useMemo(() => {
     const qLower = q.trim().toLowerCase();
-    const source = qLower
-      ? computed.impayees.filter((s) =>
-          (s.chantierTitre || "").toLowerCase().includes(qLower) ||
-          (s.chantierClient || "").toLowerCase().includes(qLower) ||
-          (s.chantierNChantier || "").toLowerCase().includes(qLower) ||
-          (s.nFact || "").toLowerCase().includes(qLower)
-        )
-      : computed.impayees;
+    let source = cessionOnly ? computed.impayees.filter((s) => s.cessionPaiement) : computed.impayees;
+    if (qLower) {
+      source = source.filter((s) =>
+        (s.chantierTitre || "").toLowerCase().includes(qLower) ||
+        (s.chantierClient || "").toLowerCase().includes(qLower) ||
+        (s.chantierNChantier || "").toLowerCase().includes(qLower) ||
+        (s.nFact || "").toLowerCase().includes(qLower)
+      );
+    }
     return buildReglementGroups(source);
-  }, [computed.impayees, q]);
+  }, [computed.impayees, q, cessionOnly]);
 
   // Regroupement pour l'export PDF — indépendant de la recherche à l'écran (q),
   // pour que l'export "global" couvre bien tout, même si une recherche est active.
@@ -3165,16 +3174,29 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
       <p className="text-sm mb-3" style={{ color: COLORS.inkSoft }}>Situations facturées et non réglées, groupées par mois de facturation</p>
       {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
-      <div className="relative mb-2 max-w-sm">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
-        <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="relative max-w-sm" style={{ flex: "1 1 280px" }}>
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
+          <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+        </div>
+        <button
+          onClick={() => setCessionOnly((v) => !v)}
+          className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap"
+          style={{
+            background: cessionOnly ? COLORS.navy : "transparent",
+            color: cessionOnly ? "#fff" : COLORS.inkSoft,
+            border: `1px solid ${cessionOnly ? COLORS.navy : COLORS.line}`,
+          }}
+        >
+          Cession fournisseur
+        </button>
       </div>
-      {q.trim() && (
+      {(q.trim() || cessionOnly) && (
         <p className="text-sm mb-5" style={{ color: COLORS.ink }}>
           {groups.reduce((a, g) => a + g.items.length, 0)} résultat(s) — total <span className="font-semibold" style={{ color: COLORS.accent }}>{fmtEUR(groups.reduce((a, g) => a + g.total, 0))}</span>
         </p>
       )}
-      {!q.trim() && <div className="mb-5" />}
+      {!q.trim() && !cessionOnly && <div className="mb-5" />}
 
       {showFacture && (
         <Card className="p-4 mb-5" style={{ background: COLORS.accentSoft }}>
