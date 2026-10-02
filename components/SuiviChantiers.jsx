@@ -3221,38 +3221,25 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
         <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
       </div>
 
-      {/* Tous les filtres rapides de cette page regroupés dans une seule liste
-          (cession fournisseur + statuts) — Morgane les trouvait trop éparpillés
-          quand ils étaient répartis sur plusieurs lignes séparées. */}
-      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-        <button
-          onClick={() => setCessionOnly((v) => !v)}
-          className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap"
-          style={{
-            background: cessionOnly ? COLORS.navy : "transparent",
-            color: cessionOnly ? "#fff" : COLORS.inkSoft,
-            border: `1px solid ${cessionOnly ? COLORS.navy : COLORS.line}`,
-          }}
+      {/* Filtres rapides de cette page regroupés en une seule liste déroulante
+          pour le statut (Morgane trouvait la rangée de boutons trop
+          éparpillée), + une case à cocher pour la cession fournisseur. */}
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <select
+          value={statusFilter || ""}
+          onChange={(e) => setStatusFilter(e.target.value || null)}
+          style={{ ...inputStyle, maxWidth: 240 }}
+          className="outline-none focus:ring-2"
         >
-          Cession fournisseur
-        </button>
-        {REGLEMENT_STATUS_OPTIONS.map((opt) => {
-          const active = statusFilter === opt.key;
-          return (
-            <button
-              key={opt.key}
-              onClick={() => setStatusFilter((v) => (v === opt.key ? null : opt.key))}
-              className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
-              style={{
-                background: active ? COLORS.navy : "transparent",
-                color: active ? "#fff" : COLORS.inkSoft,
-                border: `1px solid ${active ? COLORS.navy : COLORS.line}`,
-              }}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+          <option value="">Tous les statuts</option>
+          {REGLEMENT_STATUS_OPTIONS.map((opt) => (
+            <option key={opt.key} value={opt.key}>{opt.label}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-xs font-medium whitespace-nowrap" style={{ color: COLORS.inkSoft }}>
+          <input type="checkbox" checked={cessionOnly} onChange={(e) => setCessionOnly(e.target.checked)} style={{ width: 15, height: 15 }} />
+          Cession fournisseur uniquement
+        </label>
       </div>
 
       {(q.trim() || cessionOnly || statusFilter) && (
