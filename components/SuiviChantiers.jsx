@@ -317,6 +317,35 @@ function joursRetardReglement(s) {
   const ech = echeanceReglement(s);
   return ech ? daysSince(ech) : null;
 }
+// Statut d'un règlement en attente — centralisé ici pour être utilisé à la fois
+// par l'affichage (Pill, colonne "Retard" de Règlements en attente) et par le
+// filtre "Statut" de ce même écran, pour que les deux restent toujours
+// cohérents. L'envoi (dateEnvoi) précède la validation BET (validBet) dans le
+// circuit réel : tant que la facture n'a même pas été envoyée, on n'attend pas
+// "la validation BET" mais simplement "l'envoi" — d'où la distinction.
+function reglementStatusInfo(s) {
+  if (s.isMarcheSoldePending) return { key: "solde", label: "solde net du marché", color: "red" };
+  if (s.totalARecevoirOriginal != null) return { key: "partiel", label: "partiel", color: "amber" };
+  if (s.isADDPending) return { key: "add", label: "avance de démarrage", color: "amber" };
+  if (s.isRgPending) return { key: "rg", label: "RG à réclamer", color: "purple" };
+  if (!s.dateEnvoi) return { key: "envoi", label: "envoi en attente", color: "ink" };
+  if (!s.validBet) return { key: "bet", label: "validation BET en attente", color: "ink" };
+  const retard = joursRetardReglement(s);
+  if (retard > 0) return { key: "retard", label: `${retard} j de retard`, color: "red" };
+  if (retard > -7) return { key: "proche", label: `échéance dans ${Math.abs(retard)} j`, color: "amber" };
+  return { key: "ajour", label: "à jour", color: "green" };
+}
+const REGLEMENT_STATUS_OPTIONS = [
+  { key: "solde", label: "Solde net du marché" },
+  { key: "partiel", label: "Partiel" },
+  { key: "add", label: "Avance de démarrage" },
+  { key: "rg", label: "RG à réclamer" },
+  { key: "envoi", label: "Envoi en attente" },
+  { key: "bet", label: "Validation BET en attente" },
+  { key: "retard", label: "En retard" },
+  { key: "proche", label: "Échéance proche" },
+  { key: "ajour", label: "À jour" },
+];
 function uid(prefix) {
   return prefix + "-" + Math.random().toString(36).slice(2, 10);
 }
@@ -3025,9 +3054,11 @@ function buildReglementGroups(source) {
 function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, onMarkAddPaid, onMarkRgReceived, onDeleteRgEchue, setTab, setSelectedChantier, onCreateFactureSeule, onDeleteSituation }) {
   const [q, setQ] = useState("");
   const [cessionOnly, setCessionOnly] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(null);
   const groups = useMemo(() => {
     const qLower = q.trim().toLowerCase();
     let source = cessionOnly ? computed.impayees.filter((s) => s.cessionPaiement) : computed.impayees;
+    if (statusFilter) source = source.filter((s) => reglementStatusInfo(s).key === statusFilter);
     if (qLower) {
       source = source.filter((s) =>
         (s.chantierTitre || "").toLowerCase().includes(qLower) ||
@@ -3037,7 +3068,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
       );
     }
     return buildReglementGroups(source);
-  }, [computed.impayees, q, cessionOnly]);
+  }, [computed.impayees, q, cessionOnly, statusFilter]);
 
   // Regroupement pour l'export PDF — indépendant de la recherche à l'écran (q),
   // pour que l'export "global" couvre bien tout, même si une recherche est active.
@@ -3191,12 +3222,33 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
           Cession fournisseur
         </button>
       </div>
-      {(q.trim() || cessionOnly) && (
+
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+        {REGLEMENT_STATUS_OPTIONS.map((opt) => {
+          const active = statusFilter === opt.key;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => setStatusFilter((v) => (v === opt.key ? null : opt.key))}
+              className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+              style={{
+                background: active ? COLORS.navy : "transparent",
+                color: active ? "#fff" : COLORS.inkSoft,
+                border: `1px solid ${active ? COLORS.navy : COLORS.line}`,
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {(q.trim() || cessionOnly || statusFilter) && (
         <p className="text-sm mb-5" style={{ color: COLORS.ink }}>
           {groups.reduce((a, g) => a + g.items.length, 0)} résultat(s) — total <span className="font-semibold" style={{ color: COLORS.accent }}>{fmtEUR(groups.reduce((a, g) => a + g.total, 0))}</span>
         </p>
       )}
-      {!q.trim() && !cessionOnly && <div className="mb-5" />}
+      {!q.trim() && !cessionOnly && !statusFilter && <div className="mb-5" />}
 
       {showFacture && (
         <Card className="p-4 mb-5" style={{ background: COLORS.accentSoft }}>
@@ -3286,7 +3338,6 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
               </thead>
               <tbody>
                 {g.items.map((s) => {
-                  const retard = joursRetardReglement(s);
                   return (
                     <tr key={s.id} style={{ borderTop: `1px solid ${COLORS.line}`, background: s.isADDPending ? "#FBF8F0" : s.isRgPending ? "#F5F3FF" : s.isMarcheSoldePending ? "#FEF2F2" : undefined }}>
                       <td className="px-4 py-2">
@@ -3313,24 +3364,11 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
                         {fmtEUR(s.totalARecevoir)}
                         {s.totalARecevoirOriginal != null ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
                       </td>
-                      <td className="px-2 py-2" title={s.isMarcheSoldePending ? "Écart net entre le total facturé et les règlements reçus sur ce marché (compense les trop-perçus et manques entre situations déjà réglées) — à corriger situation par situation depuis la fiche chantier" : s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : "Échéance = date de validation BET + 30 jours"}>
-                        {s.isMarcheSoldePending ? (
-                          <Pill color="red">solde net du marché</Pill>
-                        ) : s.totalARecevoirOriginal != null ? (
-                          <Pill color="amber">partiel</Pill>
-                        ) : s.isADDPending ? (
-                          <Pill color="amber">avance de démarrage</Pill>
-                        ) : s.isRgPending ? (
-                          <Pill color="purple">RG à réclamer</Pill>
-                        ) : !s.validBet ? (
-                          <Pill>validation BET en attente</Pill>
-                        ) : retard > 0 ? (
-                          <Pill color="red">{retard} j de retard</Pill>
-                        ) : retard > -7 ? (
-                          <Pill color="amber">échéance dans {Math.abs(retard)} j</Pill>
-                        ) : (
-                          <Pill color="green">à jour</Pill>
-                        )}
+                      <td className="px-2 py-2" title={s.isMarcheSoldePending ? "Écart net entre le total facturé et les règlements reçus sur ce marché (compense les trop-perçus et manques entre situations déjà réglées) — à corriger situation par situation depuis la fiche chantier" : s.isADDPending ? "Avance de démarrage non encore réglée" : s.isRgPending ? "RG échue, validation BET obtenue, en attente de réclamation" : !s.dateEnvoi ? "Facture pas encore envoyée pour validation" : !s.validBet ? "Envoyée, en attente de validation BET" : "Échéance = date de validation BET + 30 jours"}>
+                        {(() => {
+                          const info = reglementStatusInfo(s);
+                          return <Pill color={info.color}>{info.label}</Pill>;
+                        })()}
                       </td>
                       {unlocked && (
                         <td className="px-4 py-2">
