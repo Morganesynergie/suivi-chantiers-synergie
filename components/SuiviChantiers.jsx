@@ -3216,11 +3216,15 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
       <p className="text-sm mb-3" style={{ color: COLORS.inkSoft }}>Situations facturées et non réglées, groupées par mois de facturation</p>
       {exportPdfError && <p className="text-xs mb-3" style={{ color: COLORS.red }}>{exportPdfError}</p>}
 
-      <div className="flex items-center gap-2 mb-2 flex-wrap">
-        <div className="relative max-w-sm" style={{ flex: "1 1 280px" }}>
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
-          <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
-        </div>
+      <div className="relative mb-2 max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" color={COLORS.inkSoft} />
+        <TextInput placeholder="Rechercher un client, chantier, n° facture..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 28, width: "100%" }} />
+      </div>
+
+      {/* Tous les filtres rapides de cette page regroupés dans une seule liste
+          (cession fournisseur + statuts) — Morgane les trouvait trop éparpillés
+          quand ils étaient répartis sur plusieurs lignes séparées. */}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <button
           onClick={() => setCessionOnly((v) => !v)}
           className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap"
@@ -3232,9 +3236,6 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
         >
           Cession fournisseur
         </button>
-      </div>
-
-      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         {REGLEMENT_STATUS_OPTIONS.map((opt) => {
           const active = statusFilter === opt.key;
           return (
