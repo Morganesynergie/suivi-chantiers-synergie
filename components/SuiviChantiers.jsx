@@ -3332,6 +3332,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
                   <th className="text-left font-medium px-2 py-2">Date</th>
                   <th className="text-right font-medium px-2 py-2">À recevoir</th>
                   <th className="text-left font-medium px-2 py-2">Retard</th>
+                  <th className="text-left font-medium px-2 py-2" title="Date de validation BET si elle est renseignée, sinon date d'envoi (validation BET encore en attente)">Date</th>
                   {unlocked && <th className="px-4 py-2"></th>}
                 </tr>
               </thead>
@@ -3368,6 +3369,17 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
                           const info = reglementStatusInfo(s);
                           return <Pill color={info.color}>{info.label}</Pill>;
                         })()}
+                      </td>
+                      {/* Date de validation BET si renseignée, sinon date d'envoi
+                          (validation BET encore en attente). Petit libellé dessous
+                          pour distinguer des deux dates sans ambiguïté, et pour ne
+                          pas la confondre avec la colonne "Date" de facturation. */}
+                      <td className="px-2 py-2 whitespace-nowrap" style={{ color: COLORS.ink }}>
+                        {s.validBet ? (
+                          <>{fmtDate(s.validBet)}<div className="text-[10px] font-normal" style={{ color: COLORS.inkSoft }}>validation BET</div></>
+                        ) : s.dateEnvoi ? (
+                          <>{fmtDate(s.dateEnvoi)}<div className="text-[10px] font-normal" style={{ color: COLORS.inkSoft }}>envoi</div></>
+                        ) : "—"}
                       </td>
                       {unlocked && (
                         <td className="px-4 py-2">
