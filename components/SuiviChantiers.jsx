@@ -3323,13 +3323,27 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
               <span className="text-sm font-semibold tabular-nums" style={{ color: COLORS.ink }}>{fmtEUR(g.total)}</span>
             </div>
             <div style={{ overflowX: "auto" }}>
-            <table className="text-xs" style={{ width: "100%", minWidth: 720 }}>
+            {/* Largeurs de colonnes FIXES (table-layout: fixed + colgroup) : chaque
+                groupe (RG, avances, un mois...) est un tableau à part, donc sans
+                ça les colonnes se calent sur le contenu de chaque tableau et ne
+                sont plus alignées d'un groupe à l'autre. */}
+            <table className="text-xs" style={{ width: "100%", minWidth: unlocked ? 1010 : 820, tableLayout: "fixed" }}>
+              <colgroup>
+                <col />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 60 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 200 }} />
+                <col style={{ width: 110 }} />
+                {unlocked && <col style={{ width: 190 }} />}
+              </colgroup>
               <thead>
                 <tr style={{ color: COLORS.inkSoft }}>
                   <th className="text-left font-medium px-4 py-2">Client / Chantier</th>
+                  <th className="text-left font-medium px-2 py-2">Date facture</th>
                   <th className="text-left font-medium px-2 py-2">N° Sit.</th>
                   <th className="text-left font-medium px-2 py-2">N° Fact.</th>
-                  <th className="text-left font-medium px-2 py-2">Date</th>
                   <th className="text-right font-medium px-2 py-2">À recevoir</th>
                   <th className="text-left font-medium px-2 py-2">Retard</th>
                   <th className="text-left font-medium px-2 py-2" title="Date de validation BET si elle est renseignée, sinon date d'envoi (validation BET encore en attente)">Date</th>
@@ -3357,9 +3371,9 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
                         )}
                         {s.isMarcheSoldePending && <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>{s.marcheNom}</div>}
                       </td>
+                      <td className="px-2 py-2 whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtDate(s.dateFacture)}</td>
                       <td className="px-2 py-2" style={{ color: COLORS.ink }}>{s.nSituation ?? "—"}</td>
                       <td className="px-2 py-2" style={{ color: COLORS.ink, fontWeight: (s.isADDPending || s.isRgPending || s.isMarcheSoldePending) ? 600 : 400 }}>{s.nFact || "—"}</td>
-                      <td className="px-2 py-2" style={{ color: COLORS.ink }}>{fmtDate(s.dateFacture)}</td>
                       <td className="px-2 py-2 text-right font-medium tabular-nums" style={{ color: COLORS.ink }}>
                         {fmtEUR(s.totalARecevoir)}
                         {s.totalARecevoirOriginal != null ? <div className="text-xs font-normal" style={{ color: COLORS.inkSoft }}>reste sur {fmtEUR(s.totalARecevoirOriginal)}</div> : null}
