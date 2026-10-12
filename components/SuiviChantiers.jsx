@@ -3081,46 +3081,92 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
     return buildReglementGroups(source);
   }, [computed.impayees, q, cessionOnly, statusFilter]);
 
-  // Regroupement pour l'export PDF — indépendant de la recherche à l'écran (q),
-  // pour que l'export "global" couvre bien tout, même si une recherche est active.
+  // Regroupement pour l'export PDF — indépendant de la recherche/des filtres à
+  // l'écran, pour que le panneau de sélection propose bien TOUS les règlements
+  // (un raccourci "Résultats affichés" permet de ne cocher que ce qui est filtré).
   const exportGroups = useMemo(() => buildReglementGroups(computed.impayees), [computed.impayees]);
 
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [exportPdfError, setExportPdfError] = useState("");
-  const [exportSelectedMonths, setExportSelectedMonths] = useState([]);
+  // Sélection règlement par règlement (id de ligne), tout coché par défaut.
+  const [exportSelectedIds, setExportSelectedIds] = useState([]);
+  const allExportIds = useMemo(() => computed.impayees.map((s) => s.id), [computed.impayees]);
+  const exportSelectedSet = useMemo(() => new Set(exportSelectedIds), [exportSelectedIds]);
+  const exportSelectedTotal = useMemo(
+    () => computed.impayees.filter((s) => exportSelectedSet.has(s.id)).reduce((a, s) => a + (s.totalARecevoir || 0), 0),
+    [computed.impayees, exportSelectedSet]
+  );
+  const filtersActive = !!(q.trim() || cessionOnly || statusFilter);
 
   function openExportPanel() {
-    setExportSelectedMonths(exportGroups.map((g) => g.key));
+    setExportSelectedIds(allExportIds);
     setShowExportPanel(true);
   }
 
-  function toggleExportMonth(key) {
-    setExportSelectedMonths((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  function toggleExportId(id) {
+    setExportSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function exportReglementsPdf(selectedKeys) {
-    const monthsToExport = exportGroups.filter((g) => selectedKeys.includes(g.key));
-    if (!monthsToExport.length) return;
+  // Coche/décoche d'un coup tous les règlements d'un groupe (mois, avances, RG...).
+  function toggleExportGroup(g) {
+    const ids = g.items.map((s) => s.id);
+    const allSelected = ids.every((id) => exportSelectedSet.has(id));
+    setExportSelectedIds((prev) => (allSelected ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]));
+  }
+
+  function exportReglementsPdf(selectedIds) {
+    const sel = new Set(selectedIds);
+    const picked = computed.impayees.filter((s) => sel.has(s.id));
+    if (!picked.length) return;
     setExportPdfError("");
-    const grandTotal = monthsToExport.reduce((a, g) => a + g.total, 0);
-    const isGlobal = selectedKeys.length === exportGroups.length;
-    const periodLabel = isGlobal ? "Toutes échéances" : monthsToExport.map((g) => g.label).join(", ");
-    const blocks = monthsToExport.map((g) => {
-      const rows = g.items.map((s) => `<tr>
-          <td>${s.chantierTitre || "—"}${s.chantierClient ? " — " + s.chantierClient : ""}</td>
-          <td>${s.nSituation ?? "—"}</td><td>${s.nFact || "—"}</td><td>${fmtDate(s.dateFacture)}</td>
-          <td style="text-align:right">${fmtEUR(s.totalARecevoir)}</td>
-        </tr>`).join("");
+    const pdfGroups = buildReglementGroups(picked);
+    const grandTotal = pdfGroups.reduce((a, g) => a + g.total, 0);
+    const isGlobal = picked.length === computed.impayees.length;
+    const periodLabel = isGlobal ? "Toutes échéances" : `Sélection de ${picked.length} règlement${picked.length > 1 ? "s" : ""}`;
+    const totalRetard = picked.filter((s) => reglementStatusInfo(s).key === "retard").reduce((a, s) => a + (s.totalARecevoir || 0), 0);
+    const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const pillColors = {
+      ink: ["#EDEAE0", "#5B6779"], amber: [COLORS.amberSoft, COLORS.amber], red: [COLORS.redSoft, COLORS.red],
+      green: [COLORS.greenSoft, COLORS.green], purple: ["#EDE9FE", "#6D28D9"],
+    };
+    const pillHtml = (info) => {
+      const [bg, fg] = pillColors[info.color] || pillColors.ink;
+      return `<span class="pill" style="background:${bg};color:${fg}">${esc(info.label)}</span>`;
+    };
+    const blocks = pdfGroups.map((g) => {
+      const rows = g.items.map((s) => {
+        const info = reglementStatusInfo(s);
+        const subParts = [];
+        if (s.isMarcheSoldePending && s.marcheNom) subParts.push(s.marcheNom);
+        if (s.chantierClient) subParts.push(s.chantierClient);
+        if (s.chantierNChantier) subParts.push("n° " + s.chantierNChantier);
+        const dateCell = s.validBet
+          ? `${fmtDate(s.validBet)}<div class="sub">validation BET</div>`
+          : s.dateEnvoi ? `${fmtDate(s.dateEnvoi)}<div class="sub">envoi</div>` : "—";
+        return `<tr>
+          <td class="nowrap">${fmtDate(s.dateFacture)}</td>
+          <td><div class="name">${esc(s.chantierTitre || "—")}</div>${subParts.length ? `<div class="sub">${esc(subParts.join(" · "))}</div>` : ""}</td>
+          <td class="c">${s.nSituation || "—"}</td><td class="nowrap">${esc(s.nFact || "—")}</td>
+          <td>${pillHtml(info)}</td>
+          <td class="nowrap">${dateCell}</td>
+          <td class="r amt">${fmtEUR(s.totalARecevoir)}</td>
+        </tr>`;
+      }).join("");
       return `
         <div class="month-block">
-          <div class="month-header"><span>${g.label}</span><span>${fmtEUR(g.total)}</span></div>
-          <table><thead><tr><th>Client / Chantier</th><th>N° Sit.</th><th>N° Fact.</th><th>Date</th><th>À recevoir</th></tr></thead>
-          <tbody>${rows}</tbody></table>
+          <div class="month-header"><span class="ml">${esc(g.label)} <span class="cnt">${g.items.length} règlement${g.items.length > 1 ? "s" : ""}</span></span><span>${fmtEUR(g.total)}</span></div>
+          <table>
+            <colgroup><col style="width:70px"/><col/><col style="width:34px"/><col style="width:78px"/><col style="width:122px"/><col style="width:78px"/><col style="width:86px"/></colgroup>
+            <thead><tr><th>Date fact.</th><th>Client / Chantier</th><th class="c">Sit.</th><th>N° Fact.</th><th>Statut</th><th>Date</th><th class="r">À recevoir</th></tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr><td colspan="6" class="r">Sous-total — ${esc(g.label)}</td><td class="r amt">${fmtEUR(g.total)}</td></tr></tfoot>
+          </table>
         </div>`;
     }).join("");
     const html = `
       <html><head><title>Règlements en attente — SYNERGIE BTP</title>
       <style>
+        *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         body{font-family:system-ui,sans-serif;color:#16233B;padding:32px;}
         .close-bar{position:sticky;top:0;z-index:10;background:linear-gradient(120deg,#16233B 0%,#22314D 100%);padding:10px 16px;margin:-32px -32px 24px -32px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;box-shadow:0 2px 10px rgba(22,35,59,0.25);}
         .close-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;}
@@ -3135,19 +3181,35 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
           .close-bar-brand img{height:20px;}
           .print-btn,.close-btn{padding:7px 11px;font-size:12px;}
         }
-        @media print { .close-bar{display:none;} .month-block{page-break-inside:avoid;} }
-        .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:16px;margin-bottom:20px;}
+        @page{size:A4;margin:12mm;}
+        @media print { .close-bar{display:none;} body{padding:0;} .month-block{page-break-inside:avoid;} }
+        .header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid #16233B;padding-bottom:14px;margin-bottom:16px;}
         .header img{height:34px;}
-        .header .meta{text-align:right;font-size:11px;color:#5B6472;}
+        .header .meta{text-align:right;font-size:11px;color:#5B6472;line-height:1.5;}
         h1{font-size:19px;margin:0 0 2px 0;}
-        h2{font-size:13px;font-weight:500;color:#5B6779;margin:0 0 20px 0;}
-        .grand-total{background:#DCE9F7;color:#16233B;border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;font-size:15px;font-weight:600;}
-        .month-block{margin-bottom:22px;}
-        .month-header{display:flex;justify-content:space-between;background:#F7F5EF;padding:8px 12px;font-size:12px;font-weight:600;border-radius:6px 6px 0 0;}
-        table{width:100%;border-collapse:collapse;font-size:11px;}
-        th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;}
-        th{background:#F7F5EF;}
-        footer{margin-top:28px;font-size:10px;color:#9AA3B1;text-align:center;}
+        h2{font-size:12.5px;font-weight:500;color:#5B6779;margin:0 0 14px 0;}
+        .kpis{display:flex;gap:10px;margin-bottom:20px;}
+        .kpi{flex:1;border:1px solid #E5E1D8;border-radius:8px;padding:9px 12px;background:#FBFAF6;}
+        .kpi .k-label{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A93A3;}
+        .kpi .k-value{font-size:15px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums;}
+        .kpi.main{background:#DCE9F7;border-color:#C5DAF0;}
+        .kpi.alert .k-value{color:#B42318;}
+        .month-block{margin-bottom:18px;}
+        .month-header{display:flex;justify-content:space-between;align-items:center;background:#16233B;color:#fff;padding:7px 12px;font-size:12px;font-weight:600;border-radius:6px 6px 0 0;text-transform:capitalize;}
+        .month-header .cnt{font-weight:400;opacity:.65;font-size:10.5px;margin-left:8px;text-transform:none;}
+        table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:fixed;}
+        thead{display:table-header-group;}
+        th{background:#F7F5EF;color:#5B6779;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:5px 7px;border-bottom:1px solid #D9D4C7;}
+        td{padding:4px 7px;border-bottom:1px solid #ECE8DD;vertical-align:top;}
+        tbody tr:nth-child(even) td{background:#FBFAF6;}
+        tr{page-break-inside:avoid;}
+        .c{text-align:center;} .r{text-align:right;} .nowrap{white-space:nowrap;}
+        .amt{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .name{font-weight:600;line-height:1.25;}
+        .sub{font-size:9px;color:#8A93A3;line-height:1.25;}
+        .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:600;white-space:nowrap;}
+        tfoot td{background:#F7F5EF;font-weight:700;border-top:1px solid #D9D4C7;border-bottom:none;font-size:10.5px;}
+        footer{margin-top:24px;font-size:10px;color:#9AA3B1;text-align:center;border-top:1px solid #ECE8DD;padding-top:8px;}
       </style></head><body>
       <div class="close-bar">
         <div class="close-bar-brand">
@@ -3160,12 +3222,18 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
         </div>
       </div>
       <div class="header">
-        <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
-        <div class="meta">Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
+        <div>
+          <img src="${LOGO_SYNERGIE}" alt="SYNERGIE BTP" />
+        </div>
+        <div class="meta">Règlements clients en attente<br/>Édité le ${fmtDate(new Date().toISOString().slice(0, 10))}</div>
       </div>
       <h1>Règlements clients à recevoir</h1>
-      <h2>${periodLabel}</h2>
-      <div class="grand-total"><span>Total à recevoir</span><span>${fmtEUR(grandTotal)}</span></div>
+      <h2>${esc(periodLabel)}</h2>
+      <div class="kpis">
+        <div class="kpi main"><div class="k-label">Total à recevoir</div><div class="k-value">${fmtEUR(grandTotal)}</div></div>
+        <div class="kpi"><div class="k-label">Règlements</div><div class="k-value">${picked.length}</div></div>
+        ${totalRetard > 0 ? `<div class="kpi alert"><div class="k-label">Dont en retard</div><div class="k-value">${fmtEUR(totalRetard)}</div></div>` : ""}
+      </div>
       ${blocks}
       <footer>SYNERGIE BTP — Suivi Chantiers</footer>
       </body></html>
@@ -3270,42 +3338,81 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
 
       {showExportPanel && (
         <Card className="p-4 mb-5" style={{ background: COLORS.accentSoft }}>
-          <p className="text-xs font-medium mb-3" style={{ color: COLORS.inkSoft }}>
-            Choisis les mois à inclure dans le PDF (tous cochés par défaut = export global).
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <p className="text-xs font-medium" style={{ color: COLORS.inkSoft }}>
+              Coche les règlements à inclure dans le PDF (tout est coché par défaut = export global).
+            </p>
+            <span className="text-xs font-semibold tabular-nums" style={{ color: COLORS.ink }}>
+              {exportSelectedIds.length} / {allExportIds.length} sélectionné(s) — {fmtEUR(exportSelectedTotal)}
+            </span>
+          </div>
           {exportGroups.length === 0 ? (
             <p className="text-xs mb-3" style={{ color: COLORS.inkSoft }}>Aucun règlement en attente à exporter.</p>
           ) : (
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="mb-4 rounded-md overflow-y-auto" style={{ maxHeight: 380, background: COLORS.paper, border: `1px solid ${COLORS.line}` }}>
               {exportGroups.map((g) => {
-                const checked = exportSelectedMonths.includes(g.key);
+                const ids = g.items.map((s) => s.id);
+                const nSel = ids.filter((id) => exportSelectedSet.has(id)).length;
                 return (
-                  <label
-                    key={g.key}
-                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md cursor-pointer capitalize"
-                    style={{ background: checked ? COLORS.paper : "#F0EEE6", border: `1px solid ${checked ? COLORS.accent : COLORS.line}` }}
-                  >
-                    <input type="checkbox" checked={checked} onChange={() => toggleExportMonth(g.key)} />
-                    {g.label} <span style={{ color: COLORS.inkSoft }}>({fmtEUR(g.total)})</span>
-                  </label>
+                  <div key={g.key}>
+                    <label
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold capitalize cursor-pointer sticky top-0"
+                      style={{ background: "#F7F5EF", borderBottom: `1px solid ${COLORS.line}`, color: COLORS.ink, zIndex: 1 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nSel === ids.length}
+                        ref={(el) => { if (el) el.indeterminate = nSel > 0 && nSel < ids.length; }}
+                        onChange={() => toggleExportGroup(g)}
+                      />
+                      <span>{g.label}</span>
+                      <span className="font-normal normal-case" style={{ color: COLORS.inkSoft }}>({nSel}/{ids.length})</span>
+                      <span className="ml-auto tabular-nums">{fmtEUR(g.total)}</span>
+                    </label>
+                    {g.items.map((s) => {
+                      const info = reglementStatusInfo(s);
+                      return (
+                        <label key={s.id} className="flex items-center gap-2 px-3 py-1 text-xs cursor-pointer" style={{ borderBottom: `1px solid ${COLORS.line}`, color: COLORS.ink }}>
+                          <input type="checkbox" checked={exportSelectedSet.has(s.id)} onChange={() => toggleExportId(s.id)} />
+                          <span className="tabular-nums whitespace-nowrap" style={{ width: 74, color: COLORS.inkSoft }}>{fmtDate(s.dateFacture)}</span>
+                          <span className="truncate font-medium" style={{ flex: "1 1 0", minWidth: 0 }}>{s.chantierTitre}</span>
+                          <span className="truncate" style={{ width: 90, color: COLORS.inkSoft }}>{s.nFact || "—"}</span>
+                          <span className="hidden sm:block" style={{ width: 170 }}><Pill color={info.color}>{info.label}</Pill></span>
+                          <span className="tabular-nums text-right font-medium whitespace-nowrap" style={{ width: 90 }}>{fmtEUR(s.totalARecevoir)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>
           )}
           <div className="flex items-center gap-3 flex-wrap">
-            <Btn variant="primary" disabled={exportSelectedMonths.length === 0} onClick={() => { exportReglementsPdf(exportSelectedMonths); setShowExportPanel(false); }}>
+            <Btn variant="primary" disabled={exportSelectedIds.length === 0} onClick={() => { exportReglementsPdf(exportSelectedIds); setShowExportPanel(false); }}>
               Générer le PDF
             </Btn>
             <Btn variant="ghost" onClick={() => setShowExportPanel(false)}>Annuler</Btn>
             {exportGroups.length > 0 && (
-              <button
-                type="button"
-                className="text-xs underline"
-                style={{ color: COLORS.inkSoft }}
-                onClick={() => setExportSelectedMonths(exportSelectedMonths.length === exportGroups.length ? [] : exportGroups.map((g) => g.key))}
-              >
-                {exportSelectedMonths.length === exportGroups.length ? "Tout désélectionner" : "Tout sélectionner"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  style={{ color: COLORS.inkSoft }}
+                  onClick={() => setExportSelectedIds(exportSelectedIds.length === allExportIds.length ? [] : allExportIds)}
+                >
+                  {exportSelectedIds.length === allExportIds.length ? "Tout désélectionner" : "Tout sélectionner"}
+                </button>
+                {filtersActive && (
+                  <button
+                    type="button"
+                    className="text-xs underline"
+                    style={{ color: COLORS.inkSoft }}
+                    onClick={() => setExportSelectedIds(groups.flatMap((g) => g.items.map((s) => s.id)))}
+                  >
+                    Seulement les résultats affichés à l'écran
+                  </button>
+                )}
+              </>
             )}
           </div>
         </Card>
