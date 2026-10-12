@@ -3083,7 +3083,7 @@ function Reglements({ computed, unlocked, onMarkPaid, onMarkFactureSeulePaid, on
 
   // Regroupement pour l'export PDF — indépendant de la recherche/des filtres à
   // l'écran, pour que le panneau de sélection propose bien TOUS les règlements
-  // (un raccourci "Résultats affichés" permet de ne cocher que ce qui est filtré).
+  // (un raccourci "Résultats affichés à l'écran" permet de ne cocher que ce qui est filtré).
   const exportGroups = useMemo(() => buildReglementGroups(computed.impayees), [computed.impayees]);
 
   const [showExportPanel, setShowExportPanel] = useState(false);
