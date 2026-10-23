@@ -4265,10 +4265,30 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
   function removeChantierFournisseur(idx) {
     updateChantier({ ...chantier, fournisseurs: (chantier.fournisseurs || []).filter((_, i) => i !== idx) });
   }
+  // Clé de rapprochement des noms de fournisseurs : insensible à la casse, aux
+  // accents et aux espaces/tirets/ponctuation multiples ("Transbéton" =
+  // "TRANSBETON" = "Trans béton").
+  function fournisseurKey(nom) {
+    return (nom || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
   function montantUtiliseFournisseur(nom) {
-    const key = (nom || "").trim().toLowerCase();
+    const key = fournisseurKey(nom);
     if (!key) return 0;
-    return chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + ((f.nom || "").trim().toLowerCase() === key ? (f.montant || 0) : 0), 0), 0);
+    return chantier.situations.reduce((a, s) => a + (s.fournisseurs || []).reduce((a2, f) => a2 + (fournisseurKey(f.nom) === key ? (Number(f.montant) || 0) : 0), 0), 0);
+  }
+  // Cessions saisies sur des situations dont le nom ne correspond à AUCUN
+  // fournisseur du chantier (faute de frappe, ex. "Tranbéton") : elles ne sont
+  // pas déduites du restant disponible, donc on les signale.
+  function cessionsNonRattachees() {
+    const known = new Set((chantier.fournisseurs || []).map((f) => fournisseurKey(f.nom)).filter(Boolean));
+    const out = [];
+    for (const s of chantier.situations) {
+      for (const f of s.fournisseurs || []) {
+        const k = fournisseurKey(f.nom);
+        if (k && Number(f.montant) && !known.has(k)) out.push({ nom: f.nom, montant: Number(f.montant), nSituation: s.nSituation });
+      }
+    }
+    return out;
   }
   // Petite bulle PDF pour l'acte de cession d'un fournisseur cessionnaire —
   // même mécanique visuelle que les bulles Récap/Avancement/EA/Facture des
@@ -6232,6 +6252,19 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                   );
                 })}
               </div>
+              {(() => {
+                const orphans = cessionsNonRattachees();
+                if (orphans.length === 0) return null;
+                return (
+                  <div className="text-xs mt-2 p-2 rounded" style={{ background: "#fef2f2", color: COLORS.red }}>
+                    ⚠ Cession(s) non rattachée(s) à un fournisseur du chantier (nom différent ?), donc NON déduite(s) du restant :{" "}
+                    {orphans.map((o, i) => (
+                      <span key={i}>{i > 0 && " ; "}« {o.nom} » {fmtEUR(o.montant)} (situation {o.nSituation ?? "—"})</span>
+                    ))}
+                    . Corrige le nom dans la situation concernée.
+                  </div>
+                );
+              })()}
             </Card>
           )}
 
@@ -6795,9 +6828,10 @@ function ChantierDetail({ chantier, updateChantier, unlocked, setTab, onArchiveC
                 {(!form.fournisseurs || form.fournisseurs.length === 0) && (
                   <p className="text-xs" style={{ color: COLORS.inkSoft }}>Aucun fournisseur cédé sur cette situation.</p>
                 )}
+                <datalist id="fournisseurs-chantier-list">{allSupplierNames.map((n) => <option key={n} value={n} />)}</datalist>
                 {(form.fournisseurs || []).map((f, idx) => (
                   <div key={idx} className="flex items-center gap-2 mb-2">
-                    <TextInput placeholder="Nom du fournisseur" value={f.nom} onChange={(e) => updateFournisseurRow(idx, "nom", e.target.value)} style={{ flex: 2 }} />
+                    <TextInput list="fournisseurs-chantier-list" placeholder="Nom du fournisseur" value={f.nom} onChange={(e) => updateFournisseurRow(idx, "nom", e.target.value)} style={{ flex: 2 }} />
                     <TextInput type="number" step="0.01" placeholder="Montant" value={f.montant} onChange={(e) => updateFournisseurRow(idx, "montant", e.target.value)} style={{ flex: 1 }} />
                     <button onClick={() => removeFournisseurRow(idx)} title="Supprimer"><X size={14} color={COLORS.red} /></button>
                   </div>
