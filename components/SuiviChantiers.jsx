@@ -1834,8 +1834,7 @@ function sousTraitantActiveChantiers(sousTraitantId, chantiers) {
     if (c.isFacturesLibres) continue;
     for (const e of c.sousTraitance || []) {
       if (e.sousTraitantId !== sousTraitantId) continue;
-      if (e.statutContrat === "annule") continue;
-      if (e.dateFin && daysUntil(e.dateFin) < 0) continue;
+      if (contratSousTraitanceTermine(e)) continue;
       out.push({ chantierId: c.id, chantierTitre: c.titre, entryId: e.id });
     }
   }
@@ -7215,6 +7214,17 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
 // saisis sur les chantiers (lecture seule ici — l'édition détaillée d'un
 // contrat, avec ses bulles PDF DC4/Contrat/attestations, se fait toujours
 // depuis la fiche du chantier concerné ; cliquer une ligne y amène).
+// Un contrat de sous-traitance est "terminé" (archivé) quand sa date de fin
+// est dépassée (strictement : le jour même, il est encore en cours) ou qu'il
+// a été annulé. Un contrat sans date de fin reste en cours.
+function contratSousTraitanceTermine(e) {
+  if (e.statutContrat === "annule") return true;
+  if (!e.dateFin) return false;
+  const d = new Date();
+  const aujourdhui = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return e.dateFin < aujourdhui;
+}
+
 function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSelectedChantier, onAddSousTraitant, onUpdateSousTraitant, onRemoveSousTraitant, dossierSousTraitantId, onSetDossierSousTraitantId }) {
   const [section, setSection] = useState("repertoire");
   const [q, setQ] = useState("");
@@ -7254,15 +7264,23 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
   }, [chantiers, sousTraitants]);
 
   const qLower = q.trim().toLowerCase();
+  // Contrats ACTIFS (date de fin non dépassée, ou sans date de fin) d'un côté,
+  // ARCHIVÉS (date de fin dépassée ou contrat annulé) de l'autre.
+  const contratsArchives = allContrats.filter(contratSousTraitanceTermine);
+  const contratsActifs = allContrats.filter((e) => !contratSousTraitanceTermine(e));
+  const contratsSelonSection = section === "archives" ? contratsArchives : contratsActifs;
   const filteredContrats = qLower
-    ? allContrats.filter((e) => (e.sousTraitantNom || "").toLowerCase().includes(qLower) || (e.chantierTitre || "").toLowerCase().includes(qLower))
-    : allContrats;
+    ? contratsSelonSection.filter((e) => (e.sousTraitantNom || "").toLowerCase().includes(qLower) || (e.chantierTitre || "").toLowerCase().includes(qLower))
+    : contratsSelonSection;
+  // Sous-traitants "en activité" = au moins un contrat actif : seuls eux
+  // reçoivent la pastille de vérification des pièces dans le répertoire.
+  const idsSousTraitantsActifs = new Set(contratsActifs.map((e) => e.sousTraitantId).filter(Boolean));
   const filteredRepertoire = qLower
     ? sousTraitants.filter((s) => (s.nom || "").toLowerCase().includes(qLower) || (s.representant || "").toLowerCase().includes(qLower))
     : sousTraitants;
 
   return (
-    <div className="p-4 max-w-6xl">
+    <div className="p-4" style={{ maxWidth: "none" }}>
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-semibold" style={{ color: COLORS.ink }}>Sous-traitants</h1>
         {unlocked && (
@@ -7272,7 +7290,7 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
         )}
       </div>
       <p className="text-sm mb-5" style={{ color: COLORS.inkSoft }}>
-        Répertoire des entreprises sous-traitantes et vue globale de tous leurs contrats, tous chantiers confondus.
+        Répertoire des entreprises sous-traitantes et vue globale de leurs contrats (actifs / archivés), tous chantiers confondus.
       </p>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -7288,7 +7306,14 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
           className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
           style={{ background: section === "contrats" ? COLORS.navy : "transparent", color: section === "contrats" ? "#fff" : COLORS.inkSoft }}
         >
-          Tous les contrats ({allContrats.length})
+          Contrats actifs ({contratsActifs.length})
+        </button>
+        <button
+          onClick={() => setSection("archives")}
+          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+          style={{ background: section === "archives" ? COLORS.navy : "transparent", color: section === "archives" ? "#fff" : COLORS.inkSoft }}
+        >
+          Contrats archivés ({contratsArchives.length})
         </button>
         <div className="relative ml-auto">
           <Search size={13} style={{ position: "absolute", left: 8, top: 9 }} color={COLORS.inkSoft} />
@@ -7305,7 +7330,7 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
           )}
           <Card className="overflow-x-auto">
             <div style={{ overflowX: "auto" }}>
-              <table className="text-xs" style={{ width: "100%", minWidth: 1220 }}>
+              <table className="text-xs" style={{ width: "100%", minWidth: editable ? 1220 : 0 }}>
                 <thead>
                   <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
                     <th className="text-left font-medium px-3 py-2">Entreprise</th>
@@ -7313,7 +7338,7 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                     <th className="text-left font-medium px-2 py-2">Téléphone</th>
                     <th className="text-left font-medium px-2 py-2">Email</th>
                     <th className="text-left font-medium px-2 py-2">Banque</th>
-                    <th className="text-left font-medium px-2 py-2" style={{ minWidth: 240 }}>IBAN</th>
+                    <th className="text-left font-medium px-2 py-2" style={{ minWidth: 200 }}>IBAN</th>
                     <th className="text-left font-medium px-2 py-2">SIRET</th>
                     <th className="text-left font-medium px-2 py-2">Adresse</th>
                     {editable && <th className="px-3 py-2"></th>}
@@ -7344,14 +7369,26 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                         ) : (
                           <>
                             <td className="px-3 py-2 font-medium" style={{ color: COLORS.ink }}>
-                              <button onClick={() => setDossierModalId(s.id)} className="hover:underline text-left" style={{ color: COLORS.ink }}>{s.nom || "—"}</button>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button onClick={() => setDossierModalId(s.id)} className="hover:underline text-left" style={{ color: COLORS.ink }}>{s.nom || "—"}</button>
+                                {idsSousTraitantsActifs.has(s.id) && (() => {
+                                  const alertes = sousTraitantPieceAlerts(s);
+                                  return (
+                                    <button onClick={() => setDossierModalId(s.id)} title="Vérification des pièces du dossier (sous-traitant en activité)">
+                                      <Pill color={alertes.length === 0 ? "green" : alertes.some((p) => p.status === "perimee") ? "red" : "amber"}>
+                                        {alertes.length === 0 ? "À jour" : `${alertes.length} à vérifier`}
+                                      </Pill>
+                                    </button>
+                                  );
+                                })()}
+                              </div>
                             </td>
                             <td className="px-2 py-2">{s.representant || "—"}</td>
-                            <td className="px-2 py-2">{s.telephone || "—"}</td>
-                            <td className="px-2 py-2">{s.email || "—"}</td>
+                            <td className="px-2 py-2 whitespace-nowrap">{s.telephone || "—"}</td>
+                            <td className="px-2 py-2" style={{ wordBreak: "break-word" }}>{s.email || "—"}</td>
                             <td className="px-2 py-2">{s.banque || "—"}</td>
-                            <td className="px-2 py-2" style={{ minWidth: 240 }}>{s.iban || "—"}</td>
-                            <td className="px-2 py-2">{s.siret || "—"}</td>
+                            <td className="px-2 py-2" style={{ minWidth: 200, wordBreak: "break-word" }}>{s.iban || "—"}</td>
+                            <td className="px-2 py-2 whitespace-nowrap">{s.siret || "—"}</td>
                             <td className="px-2 py-2">{s.adresse || "—"}</td>
                           </>
                         )}
@@ -7364,9 +7401,15 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
           </Card>
         </>
       ) : (
+        <>
+        {section === "archives" && (
+          <p className="text-xs mb-2" style={{ color: COLORS.inkSoft }}>
+            Contrats dont la date de fin est dépassée, ou annulés — archivés automatiquement. Ils ne déclenchent plus d'alerte sur les pièces du sous-traitant.
+          </p>
+        )}
         <Card className="overflow-x-auto">
           <div style={{ overflowX: "auto" }}>
-            <table className="text-xs" style={{ width: "100%", minWidth: 900 }}>
+            <table className="text-xs" style={{ width: "100%", minWidth: 760 }}>
               <thead>
                 <tr style={{ color: COLORS.inkSoft, background: "#F7F5EF" }}>
                   <th className="text-left font-medium px-3 py-2">Sous-traitant</th>
@@ -7376,12 +7419,11 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                   <th className="text-left font-medium px-2 py-2">Fin</th>
                   <th className="text-left font-medium px-2 py-2">Statut DC4</th>
                   <th className="text-left font-medium px-2 py-2">Statut Contrat</th>
-                  <th className="text-center font-medium px-2 py-2">Dossier sous-traitant</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredContrats.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>Aucun contrat de sous-traitance{qLower ? " ne correspond à cette recherche" : " enregistré pour l'instant"}</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: COLORS.inkSoft }}>{qLower ? "Aucun contrat de sous-traitance ne correspond à cette recherche" : section === "archives" ? "Aucun contrat archivé pour l'instant" : "Aucun contrat actif pour l'instant"}</td></tr>
                 )}
                 {filteredContrats.map((e) => (
                   <tr key={e.id} style={{ borderTop: `1px solid ${COLORS.line}` }}>
@@ -7396,21 +7438,13 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                     <td className="px-2 py-2">{fmtDate(e.dateFin)}</td>
                     <td className="px-2 py-2">{e.statutDc4 ? <Pill color={ssTraitanceStatutColor(e.statutDc4)}>{ssTraitanceStatutLabel(e.statutDc4)}</Pill> : "—"}</td>
                     <td className="px-2 py-2">{e.statutContrat ? <Pill color={ssTraitanceStatutColor(e.statutContrat)}>{ssTraitanceStatutLabel(e.statutContrat)}</Pill> : "—"}</td>
-                    <td className="px-2 py-2 text-center">
-                      {e.sousTraitantId ? (
-                        <button onClick={() => setDossierModalId(e.sousTraitantId)}>
-                          <Pill color={e.pieceAlertes.length === 0 ? "green" : e.pieceAlertes.some((p) => p.status === "perimee") ? "red" : "amber"}>
-                            {e.pieceAlertes.length === 0 ? "À jour" : `${e.pieceAlertes.length} à vérifier`}
-                          </Pill>
-                        </button>
-                      ) : "—"}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </Card>
+        </>
       )}
 
       {dossierSousTraitant && (
