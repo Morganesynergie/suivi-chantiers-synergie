@@ -1808,6 +1808,13 @@ function mmAaFromIso(iso) {
 function sanitizeFileNamePart(s) {
   return String(s || "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
 }
+// Pièce d'un salarié étranger : "Type mm.aa - Nom du salarié - Nom du sous-traitant".
+function pieceSalarieExportFileName(label, salarieNom, sousTraitantNom, dateIso, originalFileName) {
+  const dot = (originalFileName || "").lastIndexOf(".");
+  const ext = dot > 0 ? originalFileName.slice(dot) : "";
+  const left = [label, mmAaFromIso(dateIso)].filter(Boolean).map(sanitizeFileNamePart).join(" ");
+  return [left, sanitizeFileNamePart(salarieNom), sanitizeFileNamePart(sousTraitantNom)].filter(Boolean).join(" - ") + ext;
+}
 // Intitulés raccourcis pour l'export (demande Morgane) : "Assurance" et non
 // "Assurance RC Pro", et pas de date mm.aa sur la pièce d'identité.
 const PIECE_EXPORT_LABELS = { assurance: "Assurance" };
@@ -1832,8 +1839,8 @@ function pieceExpiryIso(entry, typeDef) {
   return d.toISOString().slice(0, 10);
 }
 // Télécharge en un seul .zip la version EN COURS de chaque pièce de
-// l'entreprise déjà déposée (pas les anciennes versions archivées, ni les
-// pièces individuelles des salariés étrangers). Utilisé par le bouton du
+// l'entreprise déjà déposée (pas les anciennes versions archivées), plus
+// celles des salariés étrangers dans un dossier "Salariés". Utilisé par le bouton du
 // répertoire ET celui du dossier du sous-traitant. Renvoie le nombre de
 // pièces exportées (0 = rien à exporter, aucun téléchargement).
 async function exportPiecesSousTraitant(sousTraitant) {
@@ -1856,7 +1863,17 @@ async function exportPiecesSousTraitant(sousTraitant) {
     const entry = currentPieceEntry(documents[LISTE_NOMINATIVE_PIECE_TYPE.key] || []);
     if (entry && entry.filePath) items.push({ label: LISTE_NOMINATIVE_PIECE_TYPE.label, entry });
   }
-  if (items.length === 0) return 0;
+  // Pièces individuelles des salariés étrangers (DPAE, contrat de travail,
+  // titre de séjour) : version en cours de chaque type, rangées dans un
+  // sous-dossier "Salariés" du zip.
+  const salarieItems = [];
+  for (const sal of sousTraitant.salariesEtrangers || []) {
+    for (const typeDef of SALARIE_ETRANGER_PIECE_TYPES) {
+      const entry = currentPieceEntry(((sal.documents || {})[typeDef.key]) || []);
+      if (entry && entry.filePath) salarieItems.push({ label: typeDef.label, entry, salarie: sal.nom || "salarié" });
+    }
+  }
+  if (items.length === 0 && salarieItems.length === 0) return 0;
   const zip = new JSZip();
   const usedNames = new Set();
   let count = 0;
@@ -1868,6 +1885,25 @@ async function exportPiecesSousTraitant(sousTraitant) {
     const blob = await fileRes.blob();
     let name = pieceExportFileName(label, sousTraitant.nom, sansDate ? "" : entry.date, entry.fileName);
     // Deux pièces au même nom ne doivent jamais s'écraser dans le zip.
+    if (usedNames.has(name)) {
+      const dot = name.lastIndexOf(".");
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : "";
+      let i = 2;
+      while (usedNames.has(`${base} (${i})${ext}`)) i++;
+      name = `${base} (${i})${ext}`;
+    }
+    usedNames.add(name);
+    zip.file(name, blob);
+    count++;
+  }
+  for (const { label, entry, salarie } of salarieItems) {
+    const res = await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`);
+    const data = await res.json();
+    if (!data.url) continue;
+    const fileRes = await fetch(data.url);
+    const blob = await fileRes.blob();
+    let name = "Salariés/" + pieceSalarieExportFileName(label, salarie, sousTraitant.nom, entry.date, entry.fileName);
     if (usedNames.has(name)) {
       const dot = name.lastIndexOf(".");
       const base = dot > 0 ? name.slice(0, dot) : name;
