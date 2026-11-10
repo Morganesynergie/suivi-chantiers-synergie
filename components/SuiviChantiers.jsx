@@ -7441,21 +7441,23 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                         ) : (
                           <>
                             <td className="px-3 py-2 font-medium" style={{ color: COLORS.ink }}>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <button onClick={() => setDossierModalId(s.id)} className="hover:underline text-left" style={{ color: COLORS.ink }}>{s.nom || "—"}</button>
-                                <button onClick={() => exportPiecesDe(s)} disabled={exportingId === s.id} title="Télécharger toutes les pièces (zip)" className="inline-flex items-center">
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => exportPiecesDe(s)} disabled={exportingId === s.id} title="Télécharger toutes les pièces (zip)" className="inline-flex items-center justify-center flex-shrink-0" style={{ width: 18 }}>
                                   {exportingId === s.id ? <Loader2 size={14} className="animate-spin" color={COLORS.accent} /> : <Upload size={14} color={COLORS.accent} style={{ transform: "rotate(180deg)" }} />}
                                 </button>
-                                {idsSousTraitantsActifs.has(s.id) && (() => {
-                                  const alertes = sousTraitantPieceAlerts(s);
-                                  return (
-                                    <button onClick={() => setDossierModalId(s.id)} title="Vérification des pièces du dossier (sous-traitant en activité)">
-                                      <Pill color={alertes.length === 0 ? "green" : alertes.some((p) => p.status === "perimee") ? "red" : "amber"}>
-                                        {alertes.length === 0 ? "À jour" : `${alertes.length} à vérifier`}
-                                      </Pill>
-                                    </button>
-                                  );
-                                })()}
+                                <span className="inline-flex flex-shrink-0" style={{ width: 86 }}>
+                                  {idsSousTraitantsActifs.has(s.id) && (() => {
+                                    const alertes = sousTraitantPieceAlerts(s);
+                                    return (
+                                      <button onClick={() => setDossierModalId(s.id)} title="Vérification des pièces du dossier (sous-traitant en activité)">
+                                        <Pill color={alertes.length === 0 ? "green" : alertes.some((p) => p.status === "perimee") ? "red" : "amber"}>
+                                          {alertes.length === 0 ? "À jour" : `${alertes.length} à vérifier`}
+                                        </Pill>
+                                      </button>
+                                    );
+                                  })()}
+                                </span>
+                                <button onClick={() => setDossierModalId(s.id)} className="hover:underline text-left" style={{ color: COLORS.ink }}>{s.nom || "—"}</button>
                               </div>
                             </td>
                             <td className="px-2 py-2">{s.representant || "—"}</td>
