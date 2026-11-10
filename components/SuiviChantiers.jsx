@@ -1808,6 +1808,10 @@ function mmAaFromIso(iso) {
 function sanitizeFileNamePart(s) {
   return String(s || "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
 }
+// Intitulés raccourcis pour l'export (demande Morgane) : "Assurance" et non
+// "Assurance RC Pro", et pas de date mm.aa sur la pièce d'identité.
+const PIECE_EXPORT_LABELS = { assurance: "Assurance" };
+const PIECE_EXPORT_SANS_DATE = new Set(["pieceIdentite"]);
 function pieceExportFileName(label, sousTraitantNom, dateIso, originalFileName) {
   const dot = (originalFileName || "").lastIndexOf(".");
   const ext = dot > 0 ? originalFileName.slice(dot) : "";
@@ -1840,7 +1844,13 @@ async function exportPiecesSousTraitant(sousTraitant) {
     if (typeDef.key === "pieceIdentite" && sousTraitant.titreSejourApplicable !== false) continue;
     if (typeDef.key === "caces" && sousTraitant.cacesApplicable !== true) continue;
     const entry = currentPieceEntry(documents[typeDef.key] || []);
-    if (entry && entry.filePath) items.push({ label: typeDef.label, entry });
+    if (entry && entry.filePath) {
+      items.push({
+        label: PIECE_EXPORT_LABELS[typeDef.key] || typeDef.label,
+        entry,
+        sansDate: PIECE_EXPORT_SANS_DATE.has(typeDef.key),
+      });
+    }
   }
   if ((sousTraitant.salariesEtrangers || []).length > 0) {
     const entry = currentPieceEntry(documents[LISTE_NOMINATIVE_PIECE_TYPE.key] || []);
@@ -1850,13 +1860,13 @@ async function exportPiecesSousTraitant(sousTraitant) {
   const zip = new JSZip();
   const usedNames = new Set();
   let count = 0;
-  for (const { label, entry } of items) {
+  for (const { label, entry, sansDate } of items) {
     const res = await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`);
     const data = await res.json();
     if (!data.url) continue;
     const fileRes = await fetch(data.url);
     const blob = await fileRes.blob();
-    let name = pieceExportFileName(label, sousTraitant.nom, entry.date, entry.fileName);
+    let name = pieceExportFileName(label, sousTraitant.nom, sansDate ? "" : entry.date, entry.fileName);
     // Deux pièces au même nom ne doivent jamais s'écraser dans le zip.
     if (usedNames.has(name)) {
       const dot = name.lastIndexOf(".");
