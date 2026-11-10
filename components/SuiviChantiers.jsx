@@ -1792,9 +1792,8 @@ function currentPieceEntry(entries) {
   if (!entries || !entries.length) return null;
   return [...entries].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
 }
-// Nommage automatique des pièces exportées (voir handleExportPieces dans
-// SousTraitantDossierModal) : "Nom de la pièce - Nom du sous-traitant -
-// mm.aa de la pièce", demande Morgane — mm.aa vient de la date SAISIE sur la
+// Nommage automatique des pièces exportées (voir exportPiecesSousTraitant) :
+// "Type de pièce mm.aa - Nom du sous-traitant", demande Morgane — mm.aa vient de la date SAISIE sur la
 // pièce (entry.date, ex. date d'émission du KBIS), pas de la date de dépôt
 // dans l'appli.
 function mmAaFromIso(iso) {
@@ -1812,7 +1811,10 @@ function sanitizeFileNamePart(s) {
 function pieceExportFileName(label, sousTraitantNom, dateIso, originalFileName) {
   const dot = (originalFileName || "").lastIndexOf(".");
   const ext = dot > 0 ? originalFileName.slice(dot) : "";
-  const parts = [label, sousTraitantNom, mmAaFromIso(dateIso)].filter(Boolean).map(sanitizeFileNamePart);
+  // Format demandé par Morgane : "Type de pièce mm.aa - Nom du sous-traitant"
+  // (le "/" de "mm/aa" est interdit dans un nom de fichier -> point).
+  const left = [label, mmAaFromIso(dateIso)].filter(Boolean).map(sanitizeFileNamePart).join(" ");
+  const parts = [left, sanitizeFileNamePart(sousTraitantNom)].filter(Boolean);
   return parts.join(" - ") + ext;
 }
 // Date d'expiration effective d'une pièce, selon sa règle de validité (voir
@@ -1824,6 +1826,61 @@ function pieceExpiryIso(entry, typeDef) {
   if (isNaN(d.getTime())) return null;
   d.setMonth(d.getMonth() + typeDef.validityMonths);
   return d.toISOString().slice(0, 10);
+}
+// Télécharge en un seul .zip la version EN COURS de chaque pièce de
+// l'entreprise déjà déposée (pas les anciennes versions archivées, ni les
+// pièces individuelles des salariés étrangers). Utilisé par le bouton du
+// répertoire ET celui du dossier du sous-traitant. Renvoie le nombre de
+// pièces exportées (0 = rien à exporter, aucun téléchargement).
+async function exportPiecesSousTraitant(sousTraitant) {
+  const documents = sousTraitant.documents || {};
+  const items = [];
+  for (const typeDef of SOUS_TRAITANT_PIECE_TYPES) {
+    if (typeDef.key === "titreSejour" && sousTraitant.titreSejourApplicable === false) continue;
+    if (typeDef.key === "pieceIdentite" && sousTraitant.titreSejourApplicable !== false) continue;
+    if (typeDef.key === "caces" && sousTraitant.cacesApplicable !== true) continue;
+    const entry = currentPieceEntry(documents[typeDef.key] || []);
+    if (entry && entry.filePath) items.push({ label: typeDef.label, entry });
+  }
+  if ((sousTraitant.salariesEtrangers || []).length > 0) {
+    const entry = currentPieceEntry(documents[LISTE_NOMINATIVE_PIECE_TYPE.key] || []);
+    if (entry && entry.filePath) items.push({ label: LISTE_NOMINATIVE_PIECE_TYPE.label, entry });
+  }
+  if (items.length === 0) return 0;
+  const zip = new JSZip();
+  const usedNames = new Set();
+  let count = 0;
+  for (const { label, entry } of items) {
+    const res = await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`);
+    const data = await res.json();
+    if (!data.url) continue;
+    const fileRes = await fetch(data.url);
+    const blob = await fileRes.blob();
+    let name = pieceExportFileName(label, sousTraitant.nom, entry.date, entry.fileName);
+    // Deux pièces au même nom ne doivent jamais s'écraser dans le zip.
+    if (usedNames.has(name)) {
+      const dot = name.lastIndexOf(".");
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : "";
+      let i = 2;
+      while (usedNames.has(`${base} (${i})${ext}`)) i++;
+      name = `${base} (${i})${ext}`;
+    }
+    usedNames.add(name);
+    zip.file(name, blob);
+    count++;
+  }
+  if (count === 0) return 0;
+  const content = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFileNamePart(sousTraitant.nom || "sous-traitant")} - pièces.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return count;
 }
 // Chantiers sur lesquels ce sous-traitant est actuellement en mission —
 // contrat ni annulé, ni déjà terminé (date de fin dépassée). Sert à ne
@@ -6912,7 +6969,19 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
   const [editMode, setEditMode] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
   const editable = unlocked && editMode;
+  async function exportPiecesDe(st) {
+    setExportingId(st.id);
+    try {
+      const n = await exportPiecesSousTraitant(st);
+      if (n === 0) alert(`Aucune pièce déposée pour ${st.nom || "ce sous-traitant"}.`);
+    } catch (err) {
+      alert("Erreur lors de l'export des pièces : " + (err.message || err));
+    } finally {
+      setExportingId(null);
+    }
+  }
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
   const [q, setQ] = useState("");
 
@@ -7363,6 +7432,9 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-1 py-1"><TextInput value={s.adresse || ""} onChange={(e) => onUpdateSousTraitant(s.id, { adresse: e.target.value })} style={{ minWidth: 200 }} /></td>
                             <td className="px-2 py-1 whitespace-nowrap">
                               <button onClick={() => setDossierModalId(s.id)} title="Ouvrir le dossier administratif" className="mr-2"><FolderOpen size={14} color={COLORS.accent} /></button>
+                              <button onClick={() => exportPiecesDe(s)} disabled={exportingId === s.id} title="Télécharger toutes les pièces (zip)" className="mr-2 inline-flex align-middle">
+                                {exportingId === s.id ? <Loader2 size={14} className="animate-spin" color={COLORS.accent} /> : <Upload size={14} color={COLORS.accent} style={{ transform: "rotate(180deg)" }} />}
+                              </button>
                               <button onClick={() => onRemoveSousTraitant(s.id)} title="Supprimer du répertoire"><Trash2 size={13} color={COLORS.red} /></button>
                             </td>
                           </>
@@ -7371,6 +7443,9 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
                             <td className="px-3 py-2 font-medium" style={{ color: COLORS.ink }}>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <button onClick={() => setDossierModalId(s.id)} className="hover:underline text-left" style={{ color: COLORS.ink }}>{s.nom || "—"}</button>
+                                <button onClick={() => exportPiecesDe(s)} disabled={exportingId === s.id} title="Télécharger toutes les pièces (zip)" className="inline-flex items-center">
+                                  {exportingId === s.id ? <Loader2 size={14} className="animate-spin" color={COLORS.accent} /> : <Upload size={14} color={COLORS.accent} style={{ transform: "rotate(180deg)" }} />}
+                                </button>
                                 {idsSousTraitantsActifs.has(s.id) && (() => {
                                   const alertes = sousTraitantPieceAlerts(s);
                                   return (
@@ -7706,64 +7781,13 @@ function SousTraitantDossierModal({ sousTraitant, chantiers, unlocked, onClose, 
     }
   }
 
-  // Bouton "Export pièces" (voir la section "Pièces de l'entreprise" plus
-  // bas) : télécharge en un seul .zip la version EN COURS de chaque pièce de
-  // l'entreprise déjà déposée (pas les anciennes versions archivées, ni les
-  // pièces individuelles des salariés étrangers — celles-ci concernent une
-  // personne précise, pas le sous-traitant lui-même). Nommage demandé par
-  // Morgane : "Nom de la pièce - Nom du sous-traitant - mm.aa de la pièce".
+  // Bouton "Export pièces" : voir exportPiecesSousTraitant (zip des pièces
+  // en cours, nommées "Type de pièce mm.aa - Nom du sous-traitant").
   async function handleExportPieces() {
-    const items = [];
-    for (const typeDef of SOUS_TRAITANT_PIECE_TYPES) {
-      if (typeDef.key === "titreSejour" && sousTraitant.titreSejourApplicable === false) continue;
-      if (typeDef.key === "pieceIdentite" && sousTraitant.titreSejourApplicable !== false) continue;
-      if (typeDef.key === "caces" && sousTraitant.cacesApplicable !== true) continue;
-      const entry = currentPieceEntry(documents[typeDef.key] || []);
-      if (entry) items.push({ label: typeDef.label, entry });
-    }
-    if (salaries.length > 0) {
-      const entry = currentPieceEntry(documents[LISTE_NOMINATIVE_PIECE_TYPE.key] || []);
-      if (entry) items.push({ label: LISTE_NOMINATIVE_PIECE_TYPE.label, entry });
-    }
-    if (items.length === 0) {
-      alert("Aucune pièce disponible à exporter pour ce sous-traitant.");
-      return;
-    }
     setExportingPieces(true);
     try {
-      const zip = new JSZip();
-      const usedNames = new Set();
-      for (const { label, entry } of items) {
-        if (!entry.filePath) continue;
-        const res = await fetch(`/api/documents?path=${encodeURIComponent(entry.filePath)}`);
-        const data = await res.json();
-        if (!data.url) continue;
-        const fileRes = await fetch(data.url);
-        const blob = await fileRes.blob();
-        let name = pieceExportFileName(label, sousTraitant.nom, entry.date, entry.fileName);
-        // Deux pièces avec le même libellé/mois (rare, ex. après un
-        // renommage manuel) ne doivent jamais s'écraser l'une l'autre dans
-        // le zip.
-        if (usedNames.has(name)) {
-          const dot = name.lastIndexOf(".");
-          const base = dot > 0 ? name.slice(0, dot) : name;
-          const ext = dot > 0 ? name.slice(dot) : "";
-          let i = 2;
-          while (usedNames.has(`${base} (${i})${ext}`)) i++;
-          name = `${base} (${i})${ext}`;
-        }
-        usedNames.add(name);
-        zip.file(name, blob);
-      }
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFileNamePart(sousTraitant.nom || "sous-traitant")} - pièces.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      const n = await exportPiecesSousTraitant(sousTraitant);
+      if (n === 0) alert("Aucune pièce disponible à exporter pour ce sous-traitant.");
     } catch (err) {
       alert("Erreur lors de l'export des pièces : " + (err.message || err));
     } finally {
