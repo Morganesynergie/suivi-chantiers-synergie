@@ -6969,19 +6969,7 @@ function RgView({ rgDues, updateRg, unlocked, chantiers, setTab, setSelectedChan
   const [formE, setFormE] = useState(emptyRgEchue());
   const [formV, setFormV] = useState(emptyRgVenir());
   const [editMode, setEditMode] = useState(false);
-  const [exportingId, setExportingId] = useState(null);
   const editable = unlocked && editMode;
-  async function exportPiecesDe(st) {
-    setExportingId(st.id);
-    try {
-      const n = await exportPiecesSousTraitant(st);
-      if (n === 0) alert(`Aucune pièce déposée pour ${st.nom || "ce sous-traitant"}.`);
-    } catch (err) {
-      alert("Erreur lors de l'export des pièces : " + (err.message || err));
-    } finally {
-      setExportingId(null);
-    }
-  }
   const autoRg = useMemo(() => computeAutoRgCumulees(chantiers), [chantiers]);
   const [q, setQ] = useState("");
 
@@ -7298,7 +7286,19 @@ function SousTraitantsView({ chantiers, sousTraitants, unlocked, setTab, setSele
   const [section, setSection] = useState("repertoire");
   const [q, setQ] = useState("");
   const [editMode, setEditMode] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
   const editable = unlocked && editMode;
+  async function exportPiecesDe(st) {
+    setExportingId(st.id);
+    try {
+      const n = await exportPiecesSousTraitant(st);
+      if (n === 0) alert(`Aucune pièce déposée pour ${st.nom || "ce sous-traitant"}.`);
+    } catch (err) {
+      alert("Erreur lors de l'export des pièces : " + (err.message || err));
+    } finally {
+      setExportingId(null);
+    }
+  }
 
   // L'identifiant du sous-traitant dont la modale "dossier" est ouverte vit
   // dans le composant App (pas ici) : ça permet à la fois d'ouvrir cette
